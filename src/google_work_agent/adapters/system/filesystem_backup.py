@@ -20,12 +20,12 @@ from google_work_agent.ports.system.backup_port import (
     RestoreResultV1,
 )
 from google_work_agent.ports.system.clock_port import ClockPort
-from google_work_agent.ports.system.contracts.operational_command_replay import (
-    OperationalReconcileResultV1,
-)
-from google_work_agent.ports.system.contracts.runtime import (
+from google_work_agent.ports.system.contracts.backup import (
     BackupCreateResult,
     BackupManifestRecord,
+)
+from google_work_agent.ports.system.contracts.operational_command_replay import (
+    OperationalReconcileResultV1,
 )
 
 

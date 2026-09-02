@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.plan.record_review_result import (
 )
 
 
-def test_records_only_current_review_generation_with_audit_and_replay(tmp_path: Path) -> None:
+def test_records_only_current__review_generation_with__audit_and_replay(tmp_path: Path) -> None:
     handler = _handler(_database(tmp_path))
     command = _command()
 
@@ -27,7 +27,7 @@ def test_records_only_current_review_generation_with_audit_and_replay(tmp_path: 
     ]
 
 
-def test_rejects_stale_review_without_opening_the_gate(tmp_path: Path) -> None:
+def test_rejects_stale__review_without__opening_the_gate(tmp_path: Path) -> None:
     handler = _handler(_database(tmp_path))
 
     result = handler(replace(_command(), command_id="review-stale", expected_review_version=0))

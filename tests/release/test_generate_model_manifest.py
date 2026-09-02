@@ -8,7 +8,7 @@ import pytest
 from release.generate_model_manifest import ApprovedModelEntryV1, generate_model_manifest
 
 
-def test_model_manifest_is_deterministic_and_uses_only_current_closed_schema(
+def test_model_manifest_is__deterministic_and_uses__only_current_closed_schema(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "model-manifest-v1.json"
@@ -28,7 +28,7 @@ def test_model_manifest_is_deterministic_and_uses_only_current_closed_schema(
     assert output.read_bytes() == manifest.to_canonical_bytes() + b"\n"
 
 
-def test_model_manifest_rejects_placeholder_identity_or_hash() -> None:
+def test_model_manifest__rejects_placeholder__identity_or_hash() -> None:
     with pytest.raises(ValueError, match="concrete release-approved"):
         ApprovedModelEntryV1("approved-model", hashlib.sha256(b"real").hexdigest())
     with pytest.raises(ValueError, match="concrete lowercase"):

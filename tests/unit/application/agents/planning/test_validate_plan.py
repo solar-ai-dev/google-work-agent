@@ -21,7 +21,7 @@ def _plan() -> dict[str, object]:
     }
 
 
-def test_validate_plan_preserves_frozen_route_tool_effect_and_evidence() -> None:
+def test_validate_plan_preserves__frozen_route_tool__effect_and_evidence() -> None:
     route = {"route_id": "r", "selected_tool_id": "gmail_send", "effect": "SEND"}
     assert (
         validate_plan(_plan(), output_routes=[route], allowed_evidence_refs={"e1"})["actions"][0][

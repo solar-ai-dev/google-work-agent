@@ -77,7 +77,7 @@ def _receipt(
         {"has_explicit_resource_relation": True, "independent_evidence_count": 0},
     ],
 )
-def test_existing_resource_modification_accepts_each_canonical_evidence_alternative(
+def test_existing_resource__modification_accepts_each__canonical_evidence_alternative(
     authority: dict[str, object],
 ) -> None:
     result = EvaluateActionPolicyHandler()(_query(**authority))
@@ -85,13 +85,13 @@ def test_existing_resource_modification_accepts_each_canonical_evidence_alternat
     assert result.confirmation_kind is None
 
 
-def test_unproven_existing_resource_requires_confirmation_instead_of_false_block() -> None:
+def test_unproven_existing_resource__requires_confirmation_instead__of_false_block() -> None:
     result = EvaluateActionPolicyHandler()(_query(evidence_count=1, independent_evidence_count=1))
     assert result.decision == "CONFIRMATION_REQUIRED"
     assert result.confirmation_kind == "SCOPE_EXPANSION"
 
 
-def test_confirmation_only_unlocks_the_exact_current_context() -> None:
+def test_confirmation_only__unlocks_the__exact_current_context() -> None:
     current = _query(duplicate_detected=True)
     receipt = _receipt(
         current,
@@ -132,7 +132,7 @@ def test_confirmation_only_unlocks_the_exact_current_context() -> None:
     assert unreferenced.decision == "CONFIRMATION_REQUIRED"
 
 
-def test_exact_declined_confirmation_is_denied() -> None:
+def test_exact_declined__confirmation_is__denied() -> None:
     current = _query(conflict_detected=True)
     receipt = _receipt(
         current,
@@ -152,7 +152,7 @@ def test_exact_declined_confirmation_is_denied() -> None:
 
 
 @pytest.mark.parametrize("invalid_field", ["semantic_owner_id", "based_on"])
-def test_confirmation_receipt_requires_canonical_owner_and_provenance(
+def test_confirmation_receipt__requires_canonical__owner_and_provenance(
     invalid_field: str,
 ) -> None:
     current = _query(duplicate_detected=True)
@@ -187,11 +187,11 @@ def test_confirmation_receipt_requires_canonical_owner_and_provenance(
         {"feasibility_blocked": True},
     ],
 )
-def test_non_overridable_policy_failures_are_denied(changes: dict[str, object]) -> None:
+def test_non_overridable__policy_failures__are_denied(changes: dict[str, object]) -> None:
     assert EvaluateActionPolicyHandler()(_query(**changes)).decision == "DENY"
 
 
-def test_evaluator_exports_only_the_ledger_symbols_and_no_surrogate_receipt() -> None:
+def test_evaluator_exports_only__the_ledger_symbols__and_no_surrogate_receipt() -> None:
     from google_work_agent.application.use_cases.action import evaluate_action_policy
 
     assert evaluate_action_policy.__all__ == [

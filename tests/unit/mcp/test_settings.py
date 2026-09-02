@@ -12,7 +12,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.credentia
 )
 
 
-def test_google_credential_provider_load_from_local_env_file(
+def test_google_credential__provider_load_from__local_env_file(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     another_directory = tmp_path / "another-directory"
@@ -36,7 +36,7 @@ def test_google_credential_provider_load_from_local_env_file(
     assert "compatibility-client-secret" not in repr(credential_provider)
 
 
-def test_process_environment_overrides_local_env_file(
+def test_process_environment__overrides_local__env_file(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
@@ -57,7 +57,7 @@ def test_process_environment_overrides_local_env_file(
     assert not hasattr(credential_provider, "google_oauth_client_secret")
 
 
-def test_google_oauth_client_id_is_optional_at_import_and_load_time(
+def test_google_oauth_client__id_is_optional_at__import_and_load_time(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
@@ -71,7 +71,7 @@ def test_google_oauth_client_id_is_optional_at_import_and_load_time(
     assert not hasattr(credential_provider, "google_oauth_client_secret")
 
 
-def test_whitespace_google_oauth_client_id_is_not_configured() -> None:
+def test_whitespace_google__oauth_client_id__is_not_configured() -> None:
     credential_provider = GoogleOAuthSettings.load(
         runtime_environment="DEVELOPMENT",
         environment={"GOOGLE_OAUTH_CLIENT_ID": "  \t  "},
@@ -80,7 +80,9 @@ def test_whitespace_google_oauth_client_id_is_not_configured() -> None:
     assert credential_provider.google_oauth_client_id is None
 
 
-def test_production_does_not_load_local_env_file(tmp_path: Path, monkeypatch: MonkeyPatch) -> None:
+def test_production_does__not_load__local_env_file(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
     monkeypatch.setattr(settings, "PROJECT_ROOT", tmp_path)
     (tmp_path / ".env.local").write_text(
         "GOOGLE_OAUTH_CLIENT_ID=dev-desktop-client-id\n"
@@ -94,7 +96,7 @@ def test_production_does_not_load_local_env_file(tmp_path: Path, monkeypatch: Mo
     assert not hasattr(credential_provider, "google_oauth_client_secret")
 
 
-def test_desktop_oauth_secret_environment_value_is_ignored() -> None:
+def test_desktop_oauth__secret_environment__value_is_ignored() -> None:
     credential_provider = GoogleOAuthSettings.load(
         runtime_environment="DEVELOPMENT",
         environment={

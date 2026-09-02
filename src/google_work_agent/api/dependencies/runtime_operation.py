@@ -4,7 +4,7 @@ from fastapi import Request
 
 from google_work_agent.api.dependencies.request_context import get_api_container
 from google_work_agent.api.errors.api_request_error import ApiRequestError
-from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
+from google_work_agent.ports.system.contracts.runtime_operation import RuntimeOperation
 
 
 def enforce_runtime_operation(request: Request, *, operation: str) -> None:

@@ -8,7 +8,7 @@ from google_work_agent.domain.execution_attempt.transitions.mark_failed import (
 from google_work_agent.domain.results import InvariantViolationError
 
 
-def test_mark_failed_requires_not_sent_delivery_certainty() -> None:
+def test_mark_failed__requires_not__sent_delivery_certainty() -> None:
     with pytest.raises(InvariantViolationError):
         transition_mark_failed(
             ActionStatusV1.EXECUTING,

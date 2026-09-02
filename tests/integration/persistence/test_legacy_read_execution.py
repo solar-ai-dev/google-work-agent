@@ -41,10 +41,10 @@ from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
-FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "google"
 
 
-def test_fresh_legacy_read_reaches_connector_and_closes_without_write_facts(
+def test_fresh_legacy_read__reaches_connector_and__closes_without_write_facts(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "legacy-read.db"
@@ -87,7 +87,9 @@ def test_fresh_legacy_read_reaches_connector_and_closes_without_write_facts(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=lambda: 1020,
     )
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot(
+        "workspace/product_fixture_v1.json"
+    )
     gateway = FakeGoogleGateway(snapshot)
     execute_service = CompleteReadActionHandler(
         unit_of_work_factory=unit_of_work_factory,

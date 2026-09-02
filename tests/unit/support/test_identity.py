@@ -1,7 +1,7 @@
 from tests.support.fakes import DeterministicUUID
 
 
-def test_deterministic_uuid_generates_same_sequence_for_same_seed() -> None:
+def test_deterministic_uuid__generates_same_sequence__for_same_seed() -> None:
     left = DeterministicUUID(prefix="run", start=7)
     right = DeterministicUUID(prefix="run", start=7)
 
@@ -12,7 +12,7 @@ def test_deterministic_uuid_generates_same_sequence_for_same_seed() -> None:
     ]
 
 
-def test_deterministic_uuid_uses_queued_ids_in_order() -> None:
+def test_deterministic_uuid__uses_queued__ids_in_order() -> None:
     generator = DeterministicUUID(queued_ids=("fixed-1", "fixed-2"))
 
     assert generator.next_id() == "fixed-1"
@@ -20,7 +20,7 @@ def test_deterministic_uuid_uses_queued_ids_in_order() -> None:
     assert generator.next_id() == "id-0001"
 
 
-def test_deterministic_uuid_blocks_duplicate_or_exhausted_queue() -> None:
+def test_deterministic_uuid__blocks_duplicate__or_exhausted_queue() -> None:
     duplicate = DeterministicUUID(queued_ids=("same", "same"))
     duplicate.next_id()
     try:

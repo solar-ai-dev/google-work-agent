@@ -8,13 +8,13 @@ MANIFEST = ROOT / "prompts/agent/prompt-manifest-v0.9.2-candidate.json"
 CONTRACT = ROOT / "prompts/agent/contracts/prompt-runtime-input-contract-v3.json"
 
 
-def test_planning_review_prompt_candidate_is_fail_closed() -> None:
+def test_planning_review__prompt_candidate__is_fail_closed() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     assert manifest["activation_status"] != "RUNTIME_ACTIVE"
     assert manifest["discovery_status"] == "CANDIDATE_NOT_RUNTIME_SELECTED"
 
 
-def test_review_recheck_identity_is_coherent_and_unique() -> None:
+def test_review_recheck__identity_is__coherent_and_unique() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     contract = json.loads(CONTRACT.read_text(encoding="utf-8"))
     slot_ids = {slot["slot_id"] for slot in manifest["slots"]}
@@ -32,7 +32,7 @@ def test_review_recheck_identity_is_coherent_and_unique() -> None:
     assert slot["assembled_path"].endswith("review.recheck_affected_dimensions.md")
 
 
-def test_planning_has_no_dependency_prompt_slot() -> None:
+def test_planning_has__no_dependency__prompt_slot() -> None:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     slot_ids = {slot["slot_id"] for slot in manifest["slots"]}
     assert "planning.compose_dependencies" not in slot_ids

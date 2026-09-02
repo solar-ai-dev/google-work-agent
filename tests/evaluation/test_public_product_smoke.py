@@ -21,7 +21,7 @@ from google_work_agent.api import composition
 from google_work_agent.api.app import create_app
 
 
-def test_dataset_to_real_product_to_grader_to_result_uses_public_http_boundary(
+def test_dataset_to_real_product__to_grader_to_result__uses_public_http_boundary(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     port = _loopback_port()

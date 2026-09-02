@@ -5,7 +5,7 @@ from google_work_agent.domain.action.transitions.reject_action import transition
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_reject_action_closes_approved_write() -> None:
+def test_reject_action__closes_approved__write() -> None:
     result = transition_reject_action(
         ActionStatusV1.APPROVED,
         2,
@@ -19,7 +19,7 @@ def test_reject_action_closes_approved_write() -> None:
 
 @pytest.mark.parametrize("effect_type", [EffectType.CREATE, EffectType.READ])
 @pytest.mark.parametrize("plan_status", list(PlanStatusV1))
-def test_reject_action_exact_effect_plan_matrix(
+def test_reject_action__exact_effect__plan_matrix(
     effect_type: EffectType, plan_status: PlanStatusV1
 ) -> None:
     result = transition_reject_action(

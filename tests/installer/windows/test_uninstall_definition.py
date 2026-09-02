@@ -1,7 +1,7 @@
 from installer.windows.uninstall_definition import WindowsUninstallDefinition
 
 
-def test_default_uninstall_deletes_credentials_and_preserves_user_data() -> None:
+def test_default_uninstall__deletes_credentials_and__preserves_user_data() -> None:
     definition = WindowsUninstallDefinition()
 
     assert definition.delete_google_oauth_keyring_entry is True

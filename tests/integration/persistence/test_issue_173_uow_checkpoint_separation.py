@@ -33,7 +33,7 @@ def _migrated_database(path: Path) -> None:
         connection.close()
 
 
-def test_write_and_read_uow_entry_execute_no_checkpoint_setup_sql(
+def test_write_and_read__uow_entry_execute__no_checkpoint_setup_sql(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database_path = tmp_path / "uow.db"
@@ -65,7 +65,7 @@ def test_write_and_read_uow_entry_execute_no_checkpoint_setup_sql(
     assert setup == []
 
 
-def test_initial_binding_writer_is_narrow_and_rolls_back_with_run(tmp_path: Path) -> None:
+def test_initial_binding_writer__is_narrow_and__rolls_back_with_run(tmp_path: Path) -> None:
     database_path = tmp_path / "binding.db"
     _migrated_database(database_path)
     binding = WorkflowBindingV1(

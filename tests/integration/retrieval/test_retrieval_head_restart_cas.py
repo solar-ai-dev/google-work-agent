@@ -64,7 +64,7 @@ def _result(artifact_id: str, revision: int) -> dict[str, object]:
     }
 
 
-def test_retrieval_head_is_checkpoint_owned_and_survives_restart(tmp_path: Path) -> None:
+def test_retrieval_head__is_checkpoint_owned__and_survives_restart(tmp_path: Path) -> None:
     database_path = tmp_path / "retrieval-head.db"
     checkpoint = SqliteCheckpointAdapter(database_path, now_ms=lambda: 10)
     builder = StateGraph(_State)

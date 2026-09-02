@@ -22,7 +22,7 @@ def _route() -> dict[str, object]:
     }
 
 
-def test_explicit_container_wins_and_is_const_bound() -> None:
+def test_explicit_container__wins_and__is_const_bound() -> None:
     result = resolve_default_container(
         route=_route(),  # type: ignore[arg-type]
         selected_tool_schema=planning_tool_argument_schema("tasks_create_task"),
@@ -33,7 +33,7 @@ def test_explicit_container_wins_and_is_const_bound() -> None:
     assert result["argument_schema"]["properties"]["task_list_id"]["const"] == "explicit"  # type: ignore[index]
 
 
-def test_required_container_without_source_fails_before_prompt() -> None:
+def test_required_container__without_source__fails_before_prompt() -> None:
     with pytest.raises(RequiredContainerUnresolvedError):
         resolve_default_container(
             route=_route(),  # type: ignore[arg-type]

@@ -39,7 +39,7 @@ from google_work_agent.api.container import ApiContainer
     "safe_code",
     ("MIGRATION_FAILED", "MCP_HANDSHAKE_FAILED", "KEYRING_UNAVAILABLE"),
 )
-def test_core_failure_keeps_health_and_blocks_commands(safe_code: str) -> None:
+def test_core_failure__keeps_health__and_blocks_commands(safe_code: str) -> None:
     def fail_core(**_: object) -> NoReturn:
         raise CoreInitializationError(safe_code)
 
@@ -70,7 +70,7 @@ def test_core_failure_keeps_health_and_blocks_commands(safe_code: str) -> None:
         assert command.json()["detail_code"] == "SAFE_MODE_BLOCKED"
 
 
-def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) -> None:
+def test_initializing_window__is_live_blocked__then_becomes_ready(tmp_path: Path) -> None:
     started = threading.Event()
     release = threading.Event()
 
@@ -110,7 +110,7 @@ def test_initializing_window_is_live_blocked_then_becomes_ready(tmp_path: Path) 
     container.close()
 
 
-def test_start_run_reaches_the_durable_execution_runtime_after_core_initialization(
+def test_start_run_reaches__the_durable_execution__runtime_after_core_initialization(
     tmp_path: Path,
 ) -> None:
     """POST /runs commits and schedules through the bound durable runtime."""
@@ -170,7 +170,7 @@ def test_start_run_reaches_the_durable_execution_runtime_after_core_initializati
         assert response.json().get("detail_code") != "AttributeError"
 
 
-def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: Path) -> None:
+def test_shutdown_awaits__inflight_initialization_and__closes_late_core(tmp_path: Path) -> None:
     started = threading.Event()
     release = threading.Event()
 
@@ -204,7 +204,7 @@ def test_shutdown_awaits_inflight_initialization_and_closes_late_core(tmp_path: 
     assert container._core is None
 
 
-def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_once() -> None:
+def test_deferred_initialization_runs__core_reconciliation_startup__and_shutdown_once() -> None:
     lifecycle: list[str] = []
 
     async def startup() -> None:
@@ -228,7 +228,7 @@ def test_deferred_initialization_runs_core_reconciliation_startup_and_shutdown_o
     ]
 
 
-def test_safe_mode_restore_migrates_then_rebinds_ready_core(tmp_path: Path) -> None:
+def test_safe_mode__restore_migrates_then__rebinds_ready_core(tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
     database_path = runtime_root / "data" / "google_work_agent.db"
     database_path.parent.mkdir(parents=True)

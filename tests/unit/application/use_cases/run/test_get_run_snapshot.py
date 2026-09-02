@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
 )
 
 
-def test_run_snapshot_projects_durable_terminal_kind_and_run_messages_after_restart(
+def test_run_snapshot_projects__durable_terminal_kind_and__run_messages_after_restart(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "snapshot.db"

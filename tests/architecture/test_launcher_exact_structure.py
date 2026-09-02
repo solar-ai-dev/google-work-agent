@@ -25,7 +25,7 @@ EXPECTED_OPERATIONS = {
 }
 
 
-def test_launcher_file_and_formal_operation_sets_are_exact() -> None:
+def test_launcher_file__and_formal_operation__sets_are_exact() -> None:
     actual_files = {path.name for path in LAUNCHER_ROOT.glob("*.py") if path.name != "__init__.py"}
     assert actual_files == set(EXPECTED_OPERATIONS)
 
@@ -39,7 +39,7 @@ def test_launcher_file_and_formal_operation_sets_are_exact() -> None:
         assert required_symbols <= actual_symbols, filename
 
 
-def test_legacy_packaged_launcher_authority_and_callers_are_absent() -> None:
+def test_legacy_packaged__launcher_authority_and__callers_are_absent() -> None:
     assert list((SOURCE_ROOT / "launcher").glob("*.py")) == []
     assert not (SOURCE_ROOT / "adapters" / "runtime" / "launcher.py").exists()
     assert not (SOURCE_ROOT / "adapters" / "runtime" / "crash.py").exists()
@@ -52,7 +52,7 @@ def test_legacy_packaged_launcher_authority_and_callers_are_absent() -> None:
     assert offenders == []
 
 
-def test_launcher_has_no_core_business_or_second_composition_authority() -> None:
+def test_launcher_has_no__core_business_or__second_composition_authority() -> None:
     forbidden_imports = (
         "google_work_agent.application",
         "google_work_agent.domain",
@@ -76,7 +76,7 @@ def test_launcher_has_no_core_business_or_second_composition_authority() -> None
     assert violations == []
 
 
-def test_runtime_artifact_writers_do_not_contain_bootstrap_or_provider_secrets() -> None:
+def test_runtime_artifact_writers__do_not_contain__bootstrap_or_provider_secrets() -> None:
     artifact_owners = (
         LAUNCHER_ROOT / "acquire_single_instance.py",
         LAUNCHER_ROOT / "create_service_instance_id.py",
@@ -92,7 +92,7 @@ def test_runtime_artifact_writers_do_not_contain_bootstrap_or_provider_secrets()
     assert violations == []
 
 
-def test_signed_locked_fields_have_no_ambient_launcher_override() -> None:
+def test_signed_locked__fields_have_no__ambient_launcher_override() -> None:
     signed_fields = (
         "APP_VERSION",
         "BUILD_CHANNEL",

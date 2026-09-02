@@ -9,7 +9,7 @@ from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 
 
-def test_recheck_unknown_result_to_executed_enters_verifying() -> None:
+def test_recheck_unknown__result_to__executed_enters_verifying() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
@@ -23,7 +23,7 @@ def test_recheck_unknown_result_to_executed_enters_verifying() -> None:
     assert decision.current_status is RunStatusV1.VERIFYING
 
 
-def test_recheck_unknown_result_to_failed_restores_pre_recovery_status() -> None:
+def test_recheck_unknown_result__to_failed_restores__pre_recovery_status() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
@@ -37,7 +37,7 @@ def test_recheck_unknown_result_to_failed_restores_pre_recovery_status() -> None
     assert decision.current_status is RunStatusV1.CANCEL_REQUESTED
 
 
-def test_verification_mismatch_recheck_reopens_the_bound_action_for_verification() -> None:
+def test_verification_mismatch_recheck__reopens_the_bound__action_for_verification() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
@@ -56,7 +56,7 @@ def test_verification_mismatch_recheck_reopens_the_bound_action_for_verification
     "reason",
     ("UNKNOWN_RESULT", "VERIFICATION_MISMATCH", "CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"),
 )
-def test_same_input_recheck_stays_suspended(reason: str) -> None:
+def test_same_input__recheck_stays__suspended(reason: str) -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
@@ -81,7 +81,7 @@ def test_same_input_recheck_stays_suspended(reason: str) -> None:
         ("CONTRACT_VIOLATION", RecoveryResolution.CREATE_CORRECTIVE_PLAN),
     ),
 )
-def test_reason_resolution_matrix_rejects_forbidden_combinations(
+def test_reason_resolution__matrix_rejects__forbidden_combinations(
     reason: str, resolution: RecoveryResolution
 ) -> None:
     decision = transition_resolve_recovery(
@@ -96,7 +96,7 @@ def test_reason_resolution_matrix_rejects_forbidden_combinations(
     assert decision.result_code is ResultCode.RESOLUTION_NOT_ALLOWED
 
 
-def test_checkpoint_recheck_requires_validated_pre_recovery_status() -> None:
+def test_checkpoint_recheck__requires_validated__pre_recovery_status() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.RECHECK,
@@ -110,7 +110,7 @@ def test_checkpoint_recheck_requires_validated_pre_recovery_status() -> None:
     assert decision.result_code is ResultCode.NO_PROGRESS
 
 
-def test_recheck_target_does_not_reapply() -> None:
+def test_recheck_target__does_not__reapply() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.VERIFYING,
         resolution=RecoveryResolution.RECHECK,
@@ -123,7 +123,7 @@ def test_recheck_target_does_not_reapply() -> None:
     assert decision.result_code is ResultCode.STATE_CONFLICT
 
 
-def test_fail_is_rejected_while_durable_cancel_intent_is_active() -> None:
+def test_fail_is_rejected__while_durable_cancel__intent_is_active() -> None:
     decision = transition_resolve_recovery(
         RunStatusV1.RECOVERY_REQUIRED,
         resolution=RecoveryResolution.FAIL,

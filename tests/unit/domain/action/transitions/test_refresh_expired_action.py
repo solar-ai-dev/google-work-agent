@@ -7,7 +7,7 @@ from google_work_agent.domain.action.transitions.refresh_expired_action import (
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_refresh_expired_action_requires_fresh_review_before_reapproval() -> None:
+def test_refresh_expired__action_requires_fresh__review_before_reapproval() -> None:
     result = transition_refresh_expired_action(
         ActionStatusV1.EXPIRED,
         4,
@@ -20,7 +20,7 @@ def test_refresh_expired_action_requires_fresh_review_before_reapproval() -> Non
 
 
 @pytest.mark.parametrize("plan_status", list(PlanStatusV1))
-def test_refresh_expired_action_requires_current_waiting_write_plan(
+def test_refresh_expired__action_requires_current__waiting_write_plan(
     plan_status: PlanStatusV1,
 ) -> None:
     result = transition_refresh_expired_action(

@@ -8,7 +8,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.plan_repository 
 from google_work_agent.domain.plan.model import Plan, PlanReviewStatus, PlanStatusV1
 
 
-def test_plan_repository_exact_revision_review_and_status_cas_surface(tmp_path: Path) -> None:
+def test_plan_repository_exact__revision_review_and__status_cas_surface(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "plan-repository.db")
     apply_migrations(connection, now_ms=lambda: 1)
     connection.execute(

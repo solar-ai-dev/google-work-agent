@@ -9,7 +9,7 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 
 
-def test_current_schema_indexes_and_handoff_constraints_fail_closed(tmp_path: Path) -> None:
+def test_current_schema__indexes_and_handoff__constraints_fail_closed(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "handoffs.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)

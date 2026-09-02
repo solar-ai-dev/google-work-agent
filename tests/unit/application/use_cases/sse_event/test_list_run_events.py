@@ -30,7 +30,7 @@ def _handler(tmp_path: Path) -> tuple[ListRunEventsHandler, InMemorySseEventBuff
     ), buffer
 
 
-def test_lists_bounded_events_and_projects_cursor_expiry(tmp_path: Path) -> None:
+def test_lists_bounded__events_and__projects_cursor_expiry(tmp_path: Path) -> None:
     handler, buffer = _handler(tmp_path)
     for index in range(1, 4):
         buffer.append(RunSseEventV1(1, "", "run-1", None, index, "RUN_UPDATED", {}, 1))
@@ -41,7 +41,7 @@ def test_lists_bounded_events_and_projects_cursor_expiry(tmp_path: Path) -> None
     assert expired.cursor_status == "CURSOR_EXPIRED"
 
 
-def test_missing_run_never_exposes_buffer_content(tmp_path: Path) -> None:
+def test_missing_run__never_exposes__buffer_content(tmp_path: Path) -> None:
     handler, buffer = _handler(tmp_path)
     buffer.append(RunSseEventV1(1, "", "missing", None, 1, "RUN_UPDATED", {}, 1))
     result = handler(ListRunEventsQuery("missing"))

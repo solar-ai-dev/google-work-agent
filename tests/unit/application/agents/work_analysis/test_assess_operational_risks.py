@@ -6,7 +6,7 @@ from google_work_agent.application.agents.work_analysis.assess_operational_risks
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, intent, prompt_ref
 
 
-def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
+def test_assess_operational__risks_uses__canonical_risk_vocabulary() -> None:
     output = {
         "risks": [
             {
@@ -36,7 +36,7 @@ def test_assess_operational_risks_uses_canonical_risk_vocabulary() -> None:
     assert result == output
 
 
-def test_assess_operational_risks_rejects_legacy_severity() -> None:
+def test_assess_operational__risks_rejects__legacy_severity() -> None:
     runtime = WorkAnalysisRuntimeFake(
         {
             "risks": [

@@ -6,7 +6,7 @@ from google_work_agent.domain.results import CommandResult, ResultCode
 from google_work_agent.domain.run.model import RunCommand, RunStatusV1
 
 
-def test_command_result_is_frozen() -> None:
+def test_command_result__is__frozen() -> None:
     result: CommandResult[RunStatusV1, RunCommand] = CommandResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED,
@@ -19,7 +19,7 @@ def test_command_result_is_frozen() -> None:
         result.applied = False  # type: ignore[misc]
 
 
-def test_command_result_uses_tuple_for_next_allowed_commands() -> None:
+def test_command_result__uses_tuple_for__next_allowed_commands() -> None:
     result: CommandResult[RunStatusV1, RunCommand] = CommandResult(
         applied=False,
         result_code=ResultCode.STATE_CONFLICT,
@@ -33,7 +33,7 @@ def test_command_result_uses_tuple_for_next_allowed_commands() -> None:
     assert result.conflict_detail == "not allowed"
 
 
-def test_success_and_failure_result_fields() -> None:
+def test_success_and__failure_result__fields() -> None:
     success: CommandResult[RunStatusV1, RunCommand] = CommandResult(
         applied=True,
         result_code=ResultCode.TRANSITION_APPLIED,

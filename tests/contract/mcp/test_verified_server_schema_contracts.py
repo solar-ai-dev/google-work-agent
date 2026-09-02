@@ -13,7 +13,9 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server import (
 from google_work_agent.ports.connector.contracts.google_workspace import DeliveryCertainty
 
 
-def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_input__is_rejected__before_handler_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     calls: list[str] = []
 
     def forbidden_handler(
@@ -40,7 +42,7 @@ def test_invalid_input_is_rejected_before_handler_dispatch(monkeypatch: pytest.M
     assert calls == []
 
 
-def test_read_output_contract_failure_is_uncertain_read_only(
+def test_read_output__contract_failure_is__uncertain_read_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def malformed_read(
@@ -65,7 +67,7 @@ def test_read_output_contract_failure_is_uncertain_read_only(
     assert captured.value.certainty is DeliveryCertainty.MAY_HAVE_BEEN_SENT
 
 
-def test_write_output_contract_failure_is_sent_response_lost(
+def test_write_output__contract_failure_is__sent_response_lost(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -98,7 +100,7 @@ def test_write_output_contract_failure_is_sent_response_lost(
     assert captured.value.certainty is DeliveryCertainty.SENT_RESPONSE_LOST
 
 
-def test_internal_read_output_failure_never_claims_write_mutation() -> None:
+def test_internal_read__output_failure_never__claims_write_mutation() -> None:
     assert (
         verified_server._output_contract_failure_certainty("gmail_get_attachment")
         is DeliveryCertainty.MAY_HAVE_BEEN_SENT

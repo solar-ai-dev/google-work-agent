@@ -6,7 +6,7 @@ from google_work_agent.application.agents.work_analysis.resolve_entity_relations
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
 
-def test_entity_relation_is_candidate_only() -> None:
+def test_entity_relation__is_candidate__only() -> None:
     output = {
         "relation_candidates": [
             {
@@ -29,7 +29,7 @@ def test_entity_relation_is_candidate_only() -> None:
     assert result == output["relation_candidates"]
 
 
-def test_entity_relation_rejects_guarded_kind() -> None:
+def test_entity_relation__rejects_guarded__kind() -> None:
     output = {
         "relation_candidates": [
             {

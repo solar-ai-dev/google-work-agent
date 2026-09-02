@@ -55,7 +55,9 @@ class _ExecutionPort:
         return True
 
 
-def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_path: Path) -> None:
+def test_redrive_uses_schedule__handler_for_only_the__same_run_dispatch_head(
+    tmp_path: Path,
+) -> None:
     database_path = _database(tmp_path, run_status="CREATED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -87,7 +89,7 @@ def test_redrive_uses_schedule_handler_for_only_the_same_run_dispatch_head(tmp_p
     assert execution.submitted == ["h-1"]
 
 
-def test_redrive_checks_open_run_cache_without_existing_handoff(tmp_path: Path) -> None:
+def test_redrive_checks__open_run_cache__without_existing_handoff(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="WAITING_APPROVAL")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     calls: list[str] = []
@@ -119,7 +121,7 @@ def test_redrive_checks_open_run_cache_without_existing_handoff(tmp_path: Path) 
 # --- BLOCKED_BINDING reconciliation crash/idempotency scenarios (A-G) -------------
 
 
-def test_a_d_one_redrive_pass_reaches_recovery_required_and_settles_without_restart(
+def test_a_d_one_redrive__pass_reaches_recovery_required__and_settles_without_restart(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -136,7 +138,7 @@ def test_a_d_one_redrive_pass_reaches_recovery_required_and_settles_without_rest
     assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
 
 
-def test_b_crash_after_context_committed_before_superseded_completes_without_remutating(
+def test_b_crash_after__context_committed_before__superseded_completes_without_remutating(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -160,7 +162,7 @@ def test_b_crash_after_context_committed_before_superseded_completes_without_rem
     assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
 
 
-def test_c_repeated_redrive_passes_produce_exactly_one_transition(tmp_path: Path) -> None:
+def test_c_repeated__redrive_passes_produce__exactly_one_transition(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     _stage_blocked_binding(factory, database_path, "h-1", "cmd-1")
@@ -179,7 +181,7 @@ def test_c_repeated_redrive_passes_produce_exactly_one_transition(tmp_path: Path
     assert run.version == 1
 
 
-def test_e_terminal_run_supersedes_stale_handoff_without_creating_a_false_recovery(
+def test_e_terminal_run__supersedes_stale_handoff_without__creating_a_false_recovery(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="COMPLETED")
@@ -194,7 +196,7 @@ def test_e_terminal_run_supersedes_stale_handoff_without_creating_a_false_recove
     assert _handoff_status(database_path, "h-1") == "SUPERSEDED"
 
 
-def test_e_preempting_run_status_leaves_handoff_blocked_without_creating_a_false_recovery(
+def test_e_preempting_run_status__leaves_handoff_blocked_without__creating_a_false_recovery(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="CANCEL_REQUESTED")
@@ -209,7 +211,7 @@ def test_e_preempting_run_status_leaves_handoff_blocked_without_creating_a_false
     assert _handoff_status(database_path, "h-1") == "BLOCKED_BINDING"
 
 
-def test_f_non_matching_recovery_context_fails_closed_without_superseding(
+def test_f_non_matching__recovery_context_fails__closed_without_superseding(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -244,7 +246,7 @@ def test_f_non_matching_recovery_context_fails_closed_without_superseding(
     assert context["reason"] == "CONTRACT_VIOLATION"
 
 
-def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
+def test_g_later_handoff__cannot_bypass_the__blocked_head_before_settlement(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -318,7 +320,7 @@ def test_g_later_handoff_cannot_bypass_the_blocked_head_before_settlement(
 # --- Domain-progress pre-admission fence ------------------------------------------
 
 
-def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
+def test_recovery_required_run__blocks_normal_dispatch__with_zero_wep_calls(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
@@ -347,7 +349,7 @@ def test_recovery_required_run_blocks_normal_dispatch_with_zero_wep_calls(
     assert _handoff_status(database_path, "h-1") == "PENDING"
 
 
-def test_newer_recovery_preemption_blocks_stale_retrieval_restart_before_cache_reader(
+def test_newer_recovery_preemption__blocks_stale_retrieval__restart_before_cache_reader(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")

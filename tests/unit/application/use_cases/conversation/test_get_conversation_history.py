@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.conversation.get_conversation_histo
 )
 
 
-def test_history_is_a_bounded_timeline_projection(tmp_path: Path) -> None:
+def test_history_is__a_bounded__timeline_projection(tmp_path: Path) -> None:
     database_path = tmp_path / "history.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)
@@ -37,7 +37,7 @@ def test_history_is_a_bounded_timeline_projection(tmp_path: Path) -> None:
     assert result.truncated is False
 
 
-def test_history_bounds_messages_and_runs_independently(tmp_path: Path) -> None:
+def test_history_bounds__messages_and__runs_independently(tmp_path: Path) -> None:
     database_path = tmp_path / "independent-history.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)

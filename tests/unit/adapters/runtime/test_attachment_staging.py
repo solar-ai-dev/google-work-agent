@@ -14,7 +14,7 @@ from google_work_agent.ports.system.attachment_staging_port import (
 )
 
 
-def test_stage_replay_and_verified_read_are_deterministic(tmp_path: Path) -> None:
+def test_stage_replay__and_verified__read_are_deterministic(tmp_path: Path) -> None:
     staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path, now_ms=lambda: 1_000)
 
     first = staging.stage("operation-1", b"file bytes", "report.pdf", "application/pdf")
@@ -25,7 +25,7 @@ def test_stage_replay_and_verified_read_are_deterministic(tmp_path: Path) -> Non
     assert staging.reconcile_stage("operation-1").status == "COMPLETED"
 
 
-def test_stage_replay_rejects_different_payload(tmp_path: Path) -> None:
+def test_stage_replay__rejects_different__payload(tmp_path: Path) -> None:
     staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path, now_ms=lambda: 1_000)
     staging.stage("operation-1", b"first", "a.txt", "text/plain")
 
@@ -33,7 +33,7 @@ def test_stage_replay_rejects_different_payload(tmp_path: Path) -> None:
         staging.stage("operation-1", b"second", "a.txt", "text/plain")
 
 
-def test_verified_read_rejects_tampered_descriptor_and_expiry(tmp_path: Path) -> None:
+def test_verified_read__rejects_tampered__descriptor_and_expiry(tmp_path: Path) -> None:
     clock = {"now": 1_000}
     staging = FilesystemAttachmentStagingAdapter(
         staging_dir=tmp_path,
@@ -49,7 +49,7 @@ def test_verified_read_rejects_tampered_descriptor_and_expiry(tmp_path: Path) ->
         staging.open_bytes(descriptor.staged_attachment_id)
 
 
-def test_descriptor_json_round_trip_and_malformed_rejection() -> None:
+def test_descriptor_json__round_trip__and_malformed_rejection() -> None:
     descriptor = StagedAttachmentDescriptorV1(1, "id-1", "a.txt", "text/plain", 5, "a" * 64, 9)
 
     assert StagedAttachmentDescriptorV1.from_json(descriptor.to_json()) == descriptor

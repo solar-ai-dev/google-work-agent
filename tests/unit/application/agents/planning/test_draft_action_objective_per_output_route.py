@@ -5,7 +5,7 @@ from google_work_agent.application.agents.planning.draft_action_objective_per_ou
 )
 
 
-def test_objective_prompt_is_route_bounded_and_receives_no_tool_schema() -> None:
+def test_objective_prompt_is__route_bounded_and__receives_no_tool_schema() -> None:
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
         assert prompt_id == "planning.draft_action_objective_per_output_route"
         assert "tool_schema" not in prompt_input

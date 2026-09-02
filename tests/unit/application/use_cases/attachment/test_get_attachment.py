@@ -45,7 +45,7 @@ class _AttachmentRead:
         )
 
 
-def test_get_attachment_verifies_identity_size_and_hash() -> None:
+def test_get_attachment__verifies_identity__size_and_hash() -> None:
     result = GetAttachmentHandler(
         connector_read=_AttachmentRead(),
         tool_registry=load_signed_tool_registry(),
@@ -55,7 +55,7 @@ def test_get_attachment_verifies_identity_size_and_hash() -> None:
     assert result.size_bytes == len(result.data)
 
 
-def test_get_attachment_rejects_mismatched_connector_identity() -> None:
+def test_get_attachment__rejects_mismatched__connector_identity() -> None:
     handler = GetAttachmentHandler(
         connector_read=_AttachmentRead(message_id="other-message"),
         tool_registry=load_signed_tool_registry(),

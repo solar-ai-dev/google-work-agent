@@ -32,7 +32,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 )
 
 
-def test_bootstrap_cancel_supersedes_unadmitted_start_then_uses_graphless_resolution(
+def test_bootstrap_cancel_supersedes__unadmitted_start_then__uses_graphless_resolution(
     tmp_path: Path,
 ) -> None:
     path = _database(tmp_path)
@@ -63,7 +63,7 @@ def test_bootstrap_cancel_supersedes_unadmitted_start_then_uses_graphless_resolu
     assert start is not None and start.status == "SUPERSEDED"
 
 
-def test_bootstrap_cancel_preserves_admitted_start_and_waits_for_its_cancel_gate(
+def test_bootstrap_cancel_preserves__admitted_start_and_waits__for_its_cancel_gate(
     tmp_path: Path,
 ) -> None:
     path = _database(tmp_path)

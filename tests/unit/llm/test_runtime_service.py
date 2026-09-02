@@ -41,10 +41,10 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
+from google_work_agent.ports.system.contracts.application_settings import AppSettings
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
-from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT_REF = PromptReference(
@@ -178,7 +178,7 @@ def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter
     return router
 
 
-def test_api_only_invokes_external_provider() -> None:
+def test_api_only__invokes_external__provider() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -235,7 +235,7 @@ def test_api_only_invokes_external_provider() -> None:
     assert not ollama_transport.invocations
 
 
-def test_discard_run_is_a_harmless_noop() -> None:
+def test_discard_run__is_a__harmless_noop() -> None:
     """G3 RunBudgetV2: the structured-inference router does not own any per-run LLM call
     accounting (that authority moved to the checkpoint-persistent
     retry_budget/RunBudgetV2, gated by agent_kernel.ensure_llm_call_budget
@@ -298,7 +298,7 @@ def test_discard_run_is_a_harmless_noop() -> None:
     assert result.structured_output == {"answer": "ok"}
 
 
-def test_auto_falls_back_once_after_local_gpu_failure() -> None:
+def test_auto_falls__back_once_after__local_gpu_failure() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -362,7 +362,7 @@ def test_auto_falls_back_once_after_local_gpu_failure() -> None:
     assert "LLM_FALLBACK_COMPLETED" in recorder.events
 
 
-def test_local_gpu_mode_never_falls_back_to_api() -> None:
+def test_local_gpu__mode_never_falls__back_to_api() -> None:
     api_transport = FakeAPIProviderTransport()
     ollama_transport = FakeOllamaTransport()
     ollama_transport.queued_payloads.append(
@@ -415,7 +415,7 @@ def test_local_gpu_mode_never_falls_back_to_api() -> None:
     assert len([call for call in api_transport.invocations if call["kind"] == "invoke"]) == 0
 
 
-def test_local_gpu_blocked_when_hardware_not_validated() -> None:
+def test_local_gpu__blocked_when__hardware_not_validated() -> None:
     """LOCAL_GPU must only dispatch on a validated GPU (not merely approved+configured).
 
     Previously the router always set primary_runtime=LOCAL_GPU regardless of
@@ -472,7 +472,7 @@ def test_local_gpu_blocked_when_hardware_not_validated() -> None:
     assert len([call for call in ollama_transport.invocations if call["kind"] == "invoke"]) == 0
 
 
-def test_schema_repair_is_limited_to_one_attempt() -> None:
+def test_schema_repair__is_limited__to_one_attempt() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -530,7 +530,7 @@ def test_schema_repair_is_limited_to_one_attempt() -> None:
     assert len(repairer.calls) == 1
 
 
-def test_application_semantic_validation_does_not_create_a_second_router_repair_path() -> None:
+def test_application_semantic_validation__does_not_create_a__second_router_repair_path() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(
@@ -595,7 +595,7 @@ def test_application_semantic_validation_does_not_create_a_second_router_repair_
     assert repairer.calls == []
 
 
-def test_semantic_validate_failure_without_repairer_raises_once_no_repair_attempt() -> None:
+def test_semantic_validate_failure__without_repairer_raises__once_no_repair_attempt() -> None:
     api_transport = FakeAPIProviderTransport()
     api_transport.queued_payloads.append(
         ProviderResponsePayload(

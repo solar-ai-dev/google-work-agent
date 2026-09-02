@@ -58,7 +58,7 @@ class _UnitOfWork:
         self.committed = True
 
 
-def test_purge_retention_derives_configured_and_fixed_audit_cutoffs() -> None:
+def test_purge_retention__derives_configured_and__fixed_audit_cutoffs() -> None:
     unit_of_work = _UnitOfWork()
     now_ms = 100 * _DAY_MS
     handler = PurgeRetentionHandler(
@@ -84,7 +84,7 @@ def test_purge_retention_derives_configured_and_fixed_audit_cutoffs() -> None:
 
 
 @pytest.mark.parametrize("retention_days", [0, 31])
-def test_purge_retention_rejects_out_of_policy_setting(retention_days: int) -> None:
+def test_purge_retention__rejects_out__of_policy_setting(retention_days: int) -> None:
     handler = PurgeRetentionHandler(
         settings=cast(SettingsPort, _Settings(retention_days)),
         unit_of_work_factory=lambda: cast(UnitOfWork, _UnitOfWork()),

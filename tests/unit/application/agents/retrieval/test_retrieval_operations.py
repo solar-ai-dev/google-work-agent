@@ -44,7 +44,7 @@ def _route() -> InputToolRouteV1:
     }
 
 
-def test_build_query_preserves_frozen_connector_and_materializes_hash() -> None:
+def test_build_query__preserves_frozen_connector__and_materializes_hash() -> None:
     plan = cast(
         RetrievalQueryPlanV2,
         {
@@ -85,7 +85,7 @@ def test_build_query_preserves_frozen_connector_and_materializes_hash() -> None:
     assert len(result[0]["query_identity_hash"]) == 64
 
 
-def test_build_query_rejects_unchanged_changed_search() -> None:
+def test_build_query__rejects_unchanged__changed_search() -> None:
     prior = cast(
         SourceFetchPlanV1,
         {
@@ -148,7 +148,7 @@ def test_build_query_rejects_unchanged_changed_search() -> None:
         )
 
 
-def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments() -> None:
+def test_normalize_segments_strips__quoted_gmail_content__and_bounds_segments() -> None:
     acquisition = cast(
         AcquisitionResultV1,
         {
@@ -179,7 +179,7 @@ def test_normalize_segments_strips_quoted_gmail_content_and_bounds_segments() ->
     assert segments[0].text == "current reply"
 
 
-def test_rag_retrieve_rerank_forces_explicit_selected_resource() -> None:
+def test_rag_retrieve__rerank_forces__explicit_selected_resource() -> None:
     intent = cast(
         RequestIntentV2,
         {

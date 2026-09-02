@@ -28,7 +28,7 @@ def _parameters() -> ReleaseManifestParameters:
     )
 
 
-def test_release_manifest_is_closed_sorted_and_deterministic(tmp_path: Path) -> None:
+def test_release_manifest__is_closed__sorted_and_deterministic(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     assemble_application_bundle(
         profile=DeploymentProfile.API_ONLY,
@@ -63,7 +63,7 @@ def test_release_manifest_is_closed_sorted_and_deterministic(tmp_path: Path) -> 
     assert all("\\" not in path and not Path(path).is_absolute() for path in paths)
 
 
-def test_release_manifest_rejects_mcp_schema_different_from_installed_projection(
+def test_release_manifest_rejects__mcp_schema_different__from_installed_projection(
     tmp_path: Path,
 ) -> None:
     bundle = tmp_path / "bundle"

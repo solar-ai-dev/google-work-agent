@@ -33,7 +33,7 @@ from google_work_agent.ports.system.artifact_signature_verifier import (
 )
 
 
-def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path: Path) -> None:
+def test_subprocess_transport__handshakes_and__projects_exact_tools(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -61,7 +61,7 @@ def test_subprocess_transport_handshakes_and_projects_exact_tools(tmp_path: Path
         transport.close()
 
 
-def test_subprocess_transport_rejects_manifest_hash_mismatch(tmp_path: Path) -> None:
+def test_subprocess_transport__rejects_manifest__hash_mismatch(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -80,7 +80,7 @@ def test_subprocess_transport_rejects_manifest_hash_mismatch(tmp_path: Path) -> 
         )
 
 
-def test_mcp_projection_rejects_duplicate_json_fields(tmp_path: Path) -> None:
+def test_mcp_projection__rejects_duplicate__json_fields(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(
         '{"manifest_version":"2026-08-07.p0",'
@@ -94,7 +94,7 @@ def test_mcp_projection_rejects_duplicate_json_fields(tmp_path: Path) -> None:
         MCPServerManifest.load(manifest_path)
 
 
-def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path: Path) -> None:
+def test_subprocess_transport__preserves_server__delivery_certainty(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
     registry = load_signed_tool_registry()
@@ -119,7 +119,7 @@ def test_subprocess_transport_preserves_server_delivery_certainty(tmp_path: Path
         transport.close()
 
 
-def test_installed_transport_executes_verified_binary_without_pythonpath_or_parent_secrets(
+def test_installed_transport_executes__verified_binary_without__pythonpath_or_parent_secrets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -189,7 +189,7 @@ def test_installed_transport_executes_verified_binary_without_pythonpath_or_pare
     assert child_environment["GOOGLE_OAUTH_ENV"] == "PRODUCTION"
 
 
-def test_failed_handshake_terminates_spawned_child(
+def test_failed_handshake__terminates_spawned__child(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

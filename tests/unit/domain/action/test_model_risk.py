@@ -17,7 +17,7 @@ def _draft(action_id: str) -> WriteActionDraft:
     )
 
 
-def test_write_action_draft_risk_defaults_are_not_shared() -> None:
+def test_write_action__draft_risk_defaults__are_not_shared() -> None:
     first = _draft("action-1")
     second = _draft("action-2")
 
@@ -27,6 +27,6 @@ def test_write_action_draft_risk_defaults_are_not_shared() -> None:
 
 
 @pytest.mark.parametrize("risk", [[], "warning", {"score": float("nan")}])
-def test_action_risk_accepts_only_finite_json_objects(risk: object) -> None:
+def test_action_risk__accepts_only__finite_json_objects(risk: object) -> None:
     with pytest.raises(InvariantViolationError):
         canonicalize_action_risk(risk)

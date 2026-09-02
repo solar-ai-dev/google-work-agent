@@ -5,7 +5,7 @@ from google_work_agent.domain.execution_attempt.transitions.mark_unknown_result 
 )
 
 
-def test_mark_unknown_result_does_not_offer_direct_retry() -> None:
+def test_mark_unknown__result_does_not__offer_direct_retry() -> None:
     result = transition_mark_unknown_result(
         ActionStatusV1.EXECUTING,
         action_version=0,

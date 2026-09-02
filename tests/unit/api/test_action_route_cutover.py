@@ -5,7 +5,7 @@ import inspect
 from google_work_agent.api.routes import actions
 
 
-def test_action_route_has_zero_uow_or_repository_traversal() -> None:
+def test_action_route__has_zero_uow__or_repository_traversal() -> None:
     source = inspect.getsource(actions)
 
     assert "with dependencies.unit_of_work_factory()" not in source
@@ -15,7 +15,7 @@ def test_action_route_has_zero_uow_or_repository_traversal() -> None:
     assert ".conversations.get_by_id(" not in source
 
 
-def test_action_route_binds_only_canonical_action_use_cases() -> None:
+def test_action_route__binds_only_canonical__action_use_cases() -> None:
     source = inspect.getsource(actions)
 
     assert "application.use_cases.action.approve_action" in source
@@ -27,7 +27,7 @@ def test_action_route_binds_only_canonical_action_use_cases() -> None:
     assert "application.projections import" not in source
 
 
-def test_action_route_does_not_invoke_legacy_semantics_for_approve_reject_retry() -> None:
+def test_action_route_does__not_invoke_legacy_semantics__for_approve_reject_retry() -> None:
     source = inspect.getsource(actions)
 
     assert "approve_action_service()" not in source
@@ -38,7 +38,7 @@ def test_action_route_does_not_invoke_legacy_semantics_for_approve_reject_retry(
     assert "PrepareWriteRetryService" not in source
 
 
-def test_modify_uses_exact_injected_handler_without_legacy_surface() -> None:
+def test_modify_uses__exact_injected_handler__without_legacy_surface() -> None:
     source = inspect.getsource(actions)
 
     assert "modify_action_service()" not in source
@@ -47,7 +47,7 @@ def test_modify_uses_exact_injected_handler_without_legacy_surface() -> None:
     assert "ModifyActionHandler(" not in source
 
 
-def test_action_route_has_no_provider_or_persistence_import() -> None:
+def test_action_route__has_no_provider__or_persistence_import() -> None:
     source = inspect.getsource(actions)
 
     assert "google_work_agent.adapters." not in source

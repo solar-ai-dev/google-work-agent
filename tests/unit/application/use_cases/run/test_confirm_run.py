@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.run.resume_confirmation import (
 from google_work_agent.domain.results import ResultCode
 
 
-def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> None:
+def test_work_analysis__override_confirmation_creates__bound_policy_receipt() -> None:
     handler = ConfirmRunHandler(
         resolve_pending_confirmation=lambda _run_id: None,
         resume_confirmation=object(),  # type: ignore[arg-type]
@@ -66,7 +66,7 @@ def test_work_analysis_override_confirmation_creates_bound_policy_receipt() -> N
     )
 
 
-def test_prior_confirmation_receipt_replays_before_live_interrupt_lookup() -> None:
+def test_prior_confirmation__receipt_replays_before__live_interrupt_lookup() -> None:
     class _Resume:
         def replay_existing(self, **_identity: object) -> ResumeConfirmationResult:
             return ResumeConfirmationResult(
@@ -100,7 +100,7 @@ def test_prior_confirmation_receipt_replays_before_live_interrupt_lookup() -> No
     assert result.run_status == "ANALYZING"
 
 
-def test_applied_confirmation_remains_replayable_after_later_run_state_change(
+def test_applied_confirmation_remains__replayable_after_later__run_state_change(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "confirm-replay.db"

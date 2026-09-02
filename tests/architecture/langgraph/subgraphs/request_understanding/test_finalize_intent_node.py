@@ -18,7 +18,7 @@ def _calls(path: Path) -> set[str]:
     }
 
 
-def test_finalize_node_owns_finalize_and_validate_in_one_runtime_node() -> None:
+def test_finalize_node_owns__finalize_and_validate__in_one_runtime_node() -> None:
     node = OWNER / "nodes/finalize_intent_node.py"
     operation = SRC / "application/agents/request_understanding/finalize_intent.py"
     router = OWNER / "routing/route_after_finalize_intent.py"
@@ -29,7 +29,7 @@ def test_finalize_node_owns_finalize_and_validate_in_one_runtime_node() -> None:
     assert not (OWNER / "nodes/validate_intent_node.py").exists()
 
 
-def test_request_understanding_graph_and_state_are_exact() -> None:
+def test_request_understanding__graph_and__state_are_exact() -> None:
     graph = (OWNER / "graph.py").read_text(encoding="utf-8")
     state = (OWNER / "state.py").read_text(encoding="utf-8")
 

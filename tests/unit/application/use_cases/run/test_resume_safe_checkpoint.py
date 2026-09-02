@@ -32,7 +32,7 @@ class _State(TypedDict):
     value: int
 
 
-def test_safe_resume_replays_same_hash_and_rejects_different_hash(tmp_path: Path) -> None:
+def test_safe_resume_replays__same_hash_and__rejects_different_hash(tmp_path: Path) -> None:
     database_path, registry = _database_with_checkpoint(tmp_path)
     scheduled: list[str] = []
 
@@ -64,7 +64,7 @@ def test_safe_resume_replays_same_hash_and_rejects_different_hash(tmp_path: Path
         assert len(unit_of_work.workflow_handoffs.list_redriveable(limit=2)) == 1
 
 
-def test_safe_resume_binding_mismatch_enters_durable_recovery(tmp_path: Path) -> None:
+def test_safe_resume__binding_mismatch__enters_durable_recovery(tmp_path: Path) -> None:
     database_path, registry = _database_with_checkpoint(tmp_path)
     with connect_sqlite(database_path) as connection:
         connection.execute("UPDATE workflow_bindings SET graph_version='v2' WHERE run_id='r-1';")

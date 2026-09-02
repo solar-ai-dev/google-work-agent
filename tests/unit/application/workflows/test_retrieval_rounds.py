@@ -15,7 +15,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 
 
-def test_initial_round_is_zero_and_projects_one_completed_round() -> None:
+def test_initial_round_is__zero_and_projects__one_completed_round() -> None:
     assert initialize_current_round_no(prior_result=None, tool_route_plan=_route_plan(1)) == 0
     assert retrieval_round_count(current_round_no=0) == 1
 
@@ -24,7 +24,7 @@ def test_initial_round_is_zero_and_projects_one_completed_round() -> None:
     ("prior_rounds", "expected_round_no", "expected_count"),
     [(1, 1, 2), (2, 2, 3)],
 )
-def test_same_route_continues_from_prior_completed_count(
+def test_same_route__continues_from__prior_completed_count(
     prior_rounds: int, expected_round_no: int, expected_count: int
 ) -> None:
     current_round_no = initialize_current_round_no(
@@ -34,14 +34,14 @@ def test_same_route_continues_from_prior_completed_count(
     assert retrieval_round_count(current_round_no=current_round_no) == expected_count
 
 
-def test_same_route_additional_retrieval_is_blocked_after_three_rounds() -> None:
+def test_same_route_additional__retrieval_is_blocked__after_three_rounds() -> None:
     with pytest.raises(RetrievalRoundLimitExceeded):
         initialize_current_round_no(
             prior_result=_result(3, route_revision=1), tool_route_plan=_route_plan(1)
         )
 
 
-def test_new_input_route_revision_starts_a_new_round_chain() -> None:
+def test_new_input_route__revision_starts_a__new_round_chain() -> None:
     assert (
         initialize_current_round_no(
             prior_result=_result(2, route_revision=1), tool_route_plan=_route_plan(2)

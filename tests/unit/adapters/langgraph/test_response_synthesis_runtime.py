@@ -26,7 +26,7 @@ def _answer() -> dict[str, object]:
     }
 
 
-def test_response_synthesis_materializes_terminal_commit_intent() -> None:
+def test_response_synthesis__materializes_terminal__commit_intent() -> None:
     state = cast(
         GraphState,
         {
@@ -60,7 +60,7 @@ def test_response_synthesis_materializes_terminal_commit_intent() -> None:
     "planning_result",
     [None, {"actions": []}, {"schema_version": 2, "answer": ""}],
 )
-def test_response_synthesis_fails_closed_on_invalid_answer(planning_result: object) -> None:
+def test_response_synthesis__fails_closed__on_invalid_answer(planning_result: object) -> None:
     state = cast(GraphState, {"run_id": "run-1", "planning_result": planning_result})
 
     with pytest.raises(ValueError, match="authorize terminal synthesis"):
@@ -78,7 +78,7 @@ def test_response_synthesis_fails_closed_on_invalid_answer(planning_result: obje
 
 
 @pytest.mark.parametrize("profile", list(GraphProfile))
-def test_response_synthesis_target_is_routable_for_every_profile(profile: GraphProfile) -> None:
+def test_response_synthesis__target_is_routable__for_every_profile(profile: GraphProfile) -> None:
     route = GraphRouteTranslator(profile).translate(RESPONSE_SYNTHESIS_TARGET)
 
     assert route.logical_target == "response_synthesis"

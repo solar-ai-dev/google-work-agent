@@ -15,7 +15,7 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports.system.contracts.workflow_handoff import MainControlResumeTargetV2
 
 
-def test_first_call_atomically_persists_run_transition_context_and_audit(
+def test_first_call_atomically__persists_run_transition__context_and_audit(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -40,7 +40,7 @@ def test_first_call_atomically_persists_run_transition_context_and_audit(
     ]
 
 
-def test_replay_with_same_request_hash_returns_cached_result_without_remutating(
+def test_replay_with_same__request_hash_returns__cached_result_without_remutating(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -58,7 +58,7 @@ def test_replay_with_same_request_hash_returns_cached_result_without_remutating(
     assert _count(database_path, "command_receipts") == 1
 
 
-def test_replay_with_different_request_hash_is_rejected_as_duplicate(tmp_path: Path) -> None:
+def test_replay_with_different__request_hash_is__rejected_as_duplicate(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -84,7 +84,7 @@ def test_replay_with_different_request_hash_is_rejected_as_duplicate(tmp_path: P
     assert _count(database_path, "recovery_contexts") == 1
 
 
-def test_terminal_run_is_not_applied_and_writes_no_context_or_audit(tmp_path: Path) -> None:
+def test_terminal_run_is__not_applied_and_writes__no_context_or_audit(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="COMPLETED")
     handler = RequireRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -104,7 +104,7 @@ def test_terminal_run_is_not_applied_and_writes_no_context_or_audit(tmp_path: Pa
     assert int(audits["n"]) == 0
 
 
-def test_second_independent_recovery_declaration_bumps_context_version(
+def test_second_independent__recovery_declaration__bumps_context_version(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -139,7 +139,7 @@ def test_second_independent_recovery_declaration_bumps_context_version(
     assert context["reason"] == "CONTRACT_VIOLATION"
 
 
-def test_clear_then_recreate_allocates_next_tombstone_version(tmp_path: Path) -> None:
+def test_clear_then__recreate_allocates__next_tombstone_version(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     handler = RequireRecoveryHandler(

@@ -6,7 +6,7 @@ def _event(*, event_id: str, occurred_at_ms: int) -> RunSseEventV1:
     return RunSseEventV1(1, event_id, "run-1", None, occurred_at_ms, "RUN_UPDATED", {}, 1)
 
 
-def test_in_memory_event_buffer_assigns_monotonic_ids_and_lists() -> None:
+def test_in_memory_event__buffer_assigns_monotonic__ids_and_lists() -> None:
     buffer = InMemorySseEventBuffer(service_instance_id="svc-a", capacity_per_run=4)
     buffer.append(_event(event_id="", occurred_at_ms=1))
     buffer.append(_event(event_id="", occurred_at_ms=2))
@@ -15,7 +15,7 @@ def test_in_memory_event_buffer_assigns_monotonic_ids_and_lists() -> None:
     assert page.cursor_status == "OK"
 
 
-def test_in_memory_event_buffer_marks_evicted_or_invalid_cursor_expired() -> None:
+def test_in_memory_event__buffer_marks_evicted__or_invalid_cursor_expired() -> None:
     buffer = InMemorySseEventBuffer(service_instance_id="svc-a", capacity_per_run=2)
     for occurred_at_ms in range(1, 5):
         buffer.append(_event(event_id="", occurred_at_ms=occurred_at_ms))

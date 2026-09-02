@@ -7,7 +7,7 @@ import pytest
 from google_work_agent.application.agents.planning.outline_answer import outline_answer
 
 
-def test_outline_uses_distinct_prompt_and_minimum_projection() -> None:
+def test_outline_uses__distinct_prompt__and_minimum_projection() -> None:
     captured: dict[str, object] = {}
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -34,7 +34,7 @@ def test_outline_uses_distinct_prompt_and_minimum_projection() -> None:
     }
 
 
-def test_outline_rejects_evidence_outside_current_projection() -> None:
+def test_outline_rejects__evidence_outside__current_projection() -> None:
     with pytest.raises(ValueError, match="outside"):
         outline_answer(
             user_request="Summarize.",

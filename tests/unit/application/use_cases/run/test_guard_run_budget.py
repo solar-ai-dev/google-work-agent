@@ -37,7 +37,7 @@ def _budget(**overrides: object) -> RunBudgetV2:
     return value
 
 
-def test_guard_run_budget_allows_without_mutating_current_budget() -> None:
+def test_guard_run__budget_allows_without__mutating_current_budget() -> None:
     budget = _budget()
     before = budget.copy()
 
@@ -63,7 +63,7 @@ def test_guard_run_budget_allows_without_mutating_current_budget() -> None:
         ),
     ],
 )
-def test_guard_run_budget_fails_before_exceeding_hard_limit(
+def test_guard_run__budget_fails_before__exceeding_hard_limit(
     delta: RunBudgetDeltaV1, overrides: dict[str, object], reason: str
 ) -> None:
     result = GuardRunBudgetHandler()(
@@ -73,7 +73,7 @@ def test_guard_run_budget_fails_before_exceeding_hard_limit(
     assert result.reason_code == reason
 
 
-def test_guard_run_budget_blocks_at_execution_deadline() -> None:
+def test_guard_run__budget_blocks__at_execution_deadline() -> None:
     result = GuardRunBudgetHandler()(
         GuardRunBudgetQueryV1(
             1,

@@ -36,7 +36,7 @@ def _entry(
     )
 
 
-def test_resolve_statuses_are_closed_and_do_not_disclose_cross_run_entries() -> None:
+def test_resolve_statuses_are__closed_and_do_not__disclose_cross_run_entries() -> None:
     cache = InMemoryRunRetrievalCache()
     cache.put_read_result(_entry())
 
@@ -56,7 +56,7 @@ def test_resolve_statuses_are_closed_and_do_not_disclose_cross_run_entries() -> 
         assert resolved.entry is None
 
 
-def test_exhausted_entry_remains_a_valid_bound_result() -> None:
+def test_exhausted_entry__remains_a__valid_bound_result() -> None:
     cache = InMemoryRunRetrievalCache()
     cache.put_read_result(_entry(token=None, exhausted=True))
 
@@ -66,7 +66,7 @@ def test_exhausted_entry_remains_a_valid_bound_result() -> None:
     assert resolved.entry is not None
 
 
-def test_conflicting_handle_fails_closed_and_discard_is_run_scoped() -> None:
+def test_conflicting_handle_fails__closed_and_discard__is_run_scoped() -> None:
     cache = InMemoryRunRetrievalCache()
     cache.put_read_result(_entry())
     cache.put_read_result(_entry(handle="read-2", run_id="run-2"))

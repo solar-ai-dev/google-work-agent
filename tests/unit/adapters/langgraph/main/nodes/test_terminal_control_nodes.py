@@ -29,7 +29,7 @@ def _intent(kind: str = "COMPLETE_WRITE") -> TerminalCommitIntentV1:
     )
 
 
-def test_terminal_commit_dispatches_exactly_one_handler_then_verifies_truth() -> None:
+def test_terminal_commit_dispatches__exactly_one_handler__then_verifies_truth() -> None:
     facts: dict[str, object] = {
         "status": "VERIFYING",
         "version": 4,
@@ -66,7 +66,7 @@ def test_terminal_commit_dispatches_exactly_one_handler_then_verifies_truth() ->
     assert patch["terminal_commit_intent"] is None
 
 
-def test_terminal_commit_replay_verifies_without_duplicate_dispatch() -> None:
+def test_terminal_commit__replay_verifies__without_duplicate_dispatch() -> None:
     calls = 0
 
     def unexpected(_state: object, _intent: object) -> None:
@@ -93,7 +93,7 @@ def test_terminal_commit_replay_verifies_without_duplicate_dispatch() -> None:
     assert patch["__target__"] == "finalize"
 
 
-def test_terminal_commit_unknown_kind_fails_closed() -> None:
+def test_terminal_commit__unknown_kind__fails_closed() -> None:
     with pytest.raises(ValueError, match="kind is invalid"):
         terminal_commit_node(
             {"run_id": "run-1", "terminal_commit_intent": _intent("UNKNOWN")},
@@ -107,7 +107,7 @@ def test_terminal_commit_unknown_kind_fails_closed() -> None:
         )
 
 
-def test_finalize_is_post_commit_best_effort_and_end_only() -> None:
+def test_finalize_is_post__commit_best_effort__and_end_only() -> None:
     calls: list[str] = []
 
     def failed_trace(_facts: object) -> None:
@@ -137,7 +137,7 @@ def test_finalize_is_post_commit_best_effort_and_end_only() -> None:
     }
 
 
-def test_finalize_rejects_nonterminal_fallthrough() -> None:
+def test_finalize_rejects__nonterminal__fallthrough() -> None:
     with pytest.raises(RuntimeError, match="durably terminal"):
         finalize_node(
             {"run_id": "run-1"},

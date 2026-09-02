@@ -23,7 +23,7 @@ def _fresh_store(tmp_path: Path):  # type: ignore[no-untyped-def]
     return sqlite_connected_account_store_factory(database_path), database_path
 
 
-def test_ensure_google_account_connected_creates_a_new_row(tmp_path: Path) -> None:
+def test_ensure_google__account_connected_creates__a_new_row(tmp_path: Path) -> None:
     factory, _ = _fresh_store(tmp_path)
     with factory() as store:
         store.ensure_connected(
@@ -39,7 +39,7 @@ def test_ensure_google_account_connected_creates_a_new_row(tmp_path: Path) -> No
     assert account.display_name == "User Name"
 
 
-def test_ensure_google_account_connected_is_idempotent_and_keeps_the_same_id(
+def test_ensure_google_account__connected_is_idempotent_and__keeps_the_same_id(
     tmp_path: Path,
 ) -> None:
     factory, _ = _fresh_store(tmp_path)
@@ -64,7 +64,7 @@ def test_ensure_google_account_connected_is_idempotent_and_keeps_the_same_id(
     assert second.account_id == first.account_id
 
 
-def test_ensure_google_account_connected_reactivates_a_disconnected_account(
+def test_ensure_google__account_connected_reactivates__a_disconnected_account(
     tmp_path: Path,
 ) -> None:
     factory, database_path = _fresh_store(tmp_path)
@@ -99,7 +99,7 @@ def test_ensure_google_account_connected_reactivates_a_disconnected_account(
     assert reconnected.account_id == original.account_id
 
 
-def test_ensure_google_account_connected_updates_display_name(tmp_path: Path) -> None:
+def test_ensure_google__account_connected__updates_display_name(tmp_path: Path) -> None:
     factory, _ = _fresh_store(tmp_path)
     with factory() as store:
         store.ensure_connected(
@@ -119,7 +119,7 @@ def test_ensure_google_account_connected_updates_display_name(tmp_path: Path) ->
     assert account.display_name == "New Name"
 
 
-def test_connecting_another_account_deactivates_the_previous_current_account(
+def test_connecting_another__account_deactivates_the__previous_current_account(
     tmp_path: Path,
 ) -> None:
     factory, database_path = _fresh_store(tmp_path)
@@ -144,7 +144,7 @@ def test_connecting_another_account_deactivates_the_previous_current_account(
     assert rows[1]["id"] == second.account_id and rows[1]["disconnected_at_ms"] is None
 
 
-def test_disconnect_is_idempotent_and_db_rejects_a_second_active_account(
+def test_disconnect_is_idempotent__and_db_rejects__a_second_active_account(
     tmp_path: Path,
 ) -> None:
     factory, database_path = _fresh_store(tmp_path)

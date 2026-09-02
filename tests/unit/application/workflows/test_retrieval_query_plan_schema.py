@@ -4,7 +4,7 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan_schema 
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 
-def test_v2_output_schema_rejects_legacy_v1_planner_shape() -> None:
+def test_v2_output__schema_rejects_legacy__v1_planner_shape() -> None:
     errors = validate_output_schema(
         {
             "schema_version": 1,
@@ -26,7 +26,7 @@ def test_v2_output_schema_rejects_legacy_v1_planner_shape() -> None:
     assert errors
 
 
-def test_v2_output_schema_accepts_v2_root_shape() -> None:
+def test_v2_output__schema_accepts__v2_root_shape() -> None:
     errors = validate_output_schema(
         {
             "schema_version": 2,

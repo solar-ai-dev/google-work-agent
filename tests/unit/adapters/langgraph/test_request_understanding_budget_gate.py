@@ -167,7 +167,7 @@ def _state(*, llm_calls_used: int) -> dict[str, object]:
     }
 
 
-def test_exhausted_budget_blocks_the_call_before_the_agent_is_ever_invoked() -> None:
+def test_exhausted_budget_blocks__the_call_before_the__agent_is_ever_invoked() -> None:
     subgraph = _subgraph()
     state = _state(llm_calls_used=NORMAL_MAX_LLM_CALLS)
 
@@ -177,7 +177,7 @@ def test_exhausted_budget_blocks_the_call_before_the_agent_is_ever_invoked() -> 
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_a_schema_repair_attempt_consumes_two_llm_calls_not_one() -> None:
+def test_a_schema_repair__attempt_consumes_two__llm_calls_not_one() -> None:
     """G3: SCHEMA_REPAIR must also count against llm_calls_used. The node
     consumes provider_calls_consumed==structured_output_attempts, so a call
     that needed one repair attempt (attempts=2) must add 2, not 1."""

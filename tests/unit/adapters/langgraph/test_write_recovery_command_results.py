@@ -130,7 +130,7 @@ def _coordinator(
     )
 
 
-def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() -> None:
+def test_recover_unknown_applied__false_is_never__reported_recovered_or_retried() -> None:
     action = _action(ActionStatusV1.UNKNOWN_RESULT)
     phase = _Phase(
         recover_response=_action_response(applied=False, status=ActionStatusV1.UNKNOWN_RESULT)
@@ -157,7 +157,7 @@ def test_recover_unknown_applied_false_is_never_reported_recovered_or_retried() 
     assert completion_calls == 0
 
 
-def test_begin_verification_applied_false_stops_verification_and_completion() -> None:
+def test_begin_verification__applied_false_stops__verification_and_completion() -> None:
     action = _action(ActionStatusV1.EXECUTED)
     phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0
@@ -189,7 +189,7 @@ def test_begin_verification_applied_false_stops_verification_and_completion() ->
     assert completion_calls == 0
 
 
-def test_verification_applied_false_stops_completion_and_additional_verification() -> None:
+def test_verification_applied__false_stops_completion__and_additional_verification() -> None:
     action = _action(ActionStatusV1.EXECUTED)
     phase = _Phase(verify_response=_action_response(applied=False, status=ActionStatusV1.EXECUTED))
     completion_calls = 0
@@ -213,7 +213,7 @@ def test_verification_applied_false_stops_completion_and_additional_verification
     assert completion_calls == 0
 
 
-def test_completion_not_ready_is_not_reported_restart_reconciled() -> None:
+def test_completion_not__ready_is_not__reported_restart_reconciled() -> None:
     action = _action(ActionStatusV1.EXECUTED)
     phase = _Phase(verify_response=_action_response(applied=True, status=ActionStatusV1.VERIFIED))
     completion_calls = 0

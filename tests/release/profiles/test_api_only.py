@@ -4,7 +4,7 @@ from release.profiles.api_only import build_api_only_profile
 from release.profiles import DeploymentProfile
 
 
-def test_api_only_has_no_local_runtime_or_model_dependency() -> None:
+def test_api_only_has__no_local_runtime__or_model_dependency() -> None:
     profile = build_api_only_profile()
 
     assert profile.deployment_profile is DeploymentProfile.API_ONLY
@@ -13,7 +13,7 @@ def test_api_only_has_no_local_runtime_or_model_dependency() -> None:
     assert "manifests/model-manifest-v1.json" not in profile.required_files
 
 
-def test_api_only_rejects_local_model_manifest() -> None:
+def test_api_only__rejects_local__model_manifest() -> None:
     profile = build_api_only_profile()
     paths = profile.required_files + (
         "runtime/python312.dll",

@@ -6,7 +6,7 @@ from google_work_agent.application.agents.work_analysis.resolve_temporal_depende
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
 
-def test_temporal_dependency_preserves_candidate_boundary() -> None:
+def test_temporal_dependency__preserves_candidate__boundary() -> None:
     output = {
         "relation_candidates": [
             {
@@ -32,7 +32,7 @@ def test_temporal_dependency_preserves_candidate_boundary() -> None:
     assert result == output["relation_candidates"]
 
 
-def test_temporal_dependency_rejects_unknown_kind() -> None:
+def test_temporal_dependency__rejects_unknown__kind() -> None:
     output = {
         "relation_candidates": [
             {

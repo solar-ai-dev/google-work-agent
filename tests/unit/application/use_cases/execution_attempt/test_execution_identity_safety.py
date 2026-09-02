@@ -188,7 +188,7 @@ def _attempt(
     )
 
 
-def test_cross_wired_action_attempt_is_rejected_before_receipt_mutation() -> None:
+def test_cross_wired_action__attempt_is_rejected__before_receipt_mutation() -> None:
     receipts = _Receipts()
     unit_of_work = _UnitOfWork(
         action=_action(),
@@ -220,7 +220,7 @@ def test_cross_wired_action_attempt_is_rejected_before_receipt_mutation() -> Non
     assert unit_of_work.commit_calls == 0
 
 
-def test_stale_attempt_verification_is_rejected_before_connector_io() -> None:
+def test_stale_attempt__verification_is_rejected__before_connector_io() -> None:
     connector = _ConnectorRead()
     unit_of_work = _UnitOfWork(
         action=_action(ActionStatusV1.EXECUTED),
@@ -248,7 +248,7 @@ def test_stale_attempt_verification_is_rejected_before_connector_io() -> None:
     assert connector.calls == 0
 
 
-def test_begin_verification_rejects_stale_attempt_before_mutation() -> None:
+def test_begin_verification__rejects_stale__attempt_before_mutation() -> None:
     receipts = _Receipts()
     unit_of_work = _UnitOfWork(
         action=_action(ActionStatusV1.EXECUTED),
@@ -279,7 +279,7 @@ def test_begin_verification_rejects_stale_attempt_before_mutation() -> None:
 
 
 @pytest.mark.parametrize("proof_attempt_id", [None, "attempt-other"])
-def test_resolve_as_failed_requires_same_attempt_durable_proof(
+def test_resolve_as__failed_requires_same__attempt_durable_proof(
     proof_attempt_id: str | None,
 ) -> None:
     proof_id = "lookup-proof-1"

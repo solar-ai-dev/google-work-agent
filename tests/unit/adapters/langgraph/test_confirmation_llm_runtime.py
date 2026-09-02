@@ -58,7 +58,7 @@ def _call(runtime: ConfirmationAwareLLMRuntime, prompt_id: str, *, run_id: str =
     )
 
 
-def test_confirmation_is_injected_only_into_originating_prompt_slot() -> None:
+def test_confirmation_is__injected_only_into__originating_prompt_slot() -> None:
     delegate = _Delegate()
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
@@ -78,7 +78,7 @@ def test_confirmation_is_injected_only_into_originating_prompt_slot() -> None:
     assert second["confirmation_response"] == _response()
 
 
-def test_confirmation_is_scoped_by_run_id() -> None:
+def test_confirmation_is__scoped_by__run_id() -> None:
     delegate = _Delegate()
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
@@ -92,7 +92,7 @@ def test_confirmation_is_scoped_by_run_id() -> None:
     assert "confirmation_response" not in delegate.calls[0]["prompt_input"]
 
 
-def test_clear_expires_pending_confirmation() -> None:
+def test_clear_expires__pending__confirmation() -> None:
     delegate = _Delegate()
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(
@@ -107,7 +107,7 @@ def test_clear_expires_pending_confirmation() -> None:
     assert "confirmation_response" not in delegate.calls[0]["prompt_input"]
 
 
-def test_tool_call_path_uses_the_same_bounded_projection() -> None:
+def test_tool_call__path_uses_the__same_bounded_projection() -> None:
     delegate = _Delegate()
     runtime = ConfirmationAwareLLMRuntime(delegate)
     runtime.register(

@@ -158,7 +158,7 @@ def _command() -> DispatchConnectorWriteCommandV1:
     )
 
 
-def test_exact_canonical_contract_fields() -> None:
+def test_exact_canonical__contract__fields() -> None:
     assert tuple(field.name for field in fields(DispatchConnectorWriteCommandV1)) == (
         "action_id",
         "approval_id",
@@ -176,7 +176,7 @@ def test_exact_canonical_contract_fields() -> None:
     "run_status",
     [RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING, RunStatusV1.CANCEL_REQUESTED],
 )
-def test_already_authorized_dispatch_is_not_blocked_by_concurrent_run_status(
+def test_already_authorized_dispatch__is_not_blocked__by_concurrent_run_status(
     run_status: RunStatusV1,
 ) -> None:
     port = _ConnectorWritePort()
@@ -201,7 +201,7 @@ def test_already_authorized_dispatch_is_not_blocked_by_concurrent_run_status(
         RunStatusV1.RECOVERY_REQUIRED,
     ],
 )
-def test_dispatch_still_rejected_for_run_status_outside_the_closed_set(
+def test_dispatch_still_rejected__for_run_status__outside_the_closed_set(
     run_status: RunStatusV1,
 ) -> None:
     port = _ConnectorWritePort()
@@ -217,7 +217,7 @@ def test_dispatch_still_rejected_for_run_status_outside_the_closed_set(
     assert port.calls == 0
 
 
-def test_claim_attempt_mismatch_is_rejected_before_connector_io() -> None:
+def test_claim_attempt__mismatch_is_rejected__before_connector_io() -> None:
     port = _ConnectorWritePort()
     handler = DispatchConnectorWriteHandler(
         unit_of_work_factory=cast(

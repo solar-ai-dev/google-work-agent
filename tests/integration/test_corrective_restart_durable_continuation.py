@@ -137,7 +137,7 @@ def _recovery_request() -> WorkflowRecoveryRequest:
     )
 
 
-def test_restart_after_save_commit_uses_only_durable_materialization(
+def test_restart_after__save_commit_uses__only_durable_materialization(
     tmp_path: Path,
 ) -> None:
     domain_database_path = tmp_path / "corrective-restart-domain.db"

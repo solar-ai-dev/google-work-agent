@@ -91,7 +91,7 @@ def _command(**changes: object) -> AdjustContextCommandV1:
     return AdjustContextCommandV1(**values)  # type: ignore[arg-type]
 
 
-def test_stale_or_nonmember_adjustment_never_invokes_workflow() -> None:
+def test_stale_or__nonmember_adjustment__never_invokes_workflow() -> None:
     begin_calls: list[BeginPlanningCommand] = []
     schedule_calls: list[object] = []
     handler = AdjustContextHandler(
@@ -109,7 +109,7 @@ def test_stale_or_nonmember_adjustment_never_invokes_workflow() -> None:
     assert begin_calls == schedule_calls == []
 
 
-def test_current_selector_uses_server_plan_and_schedules_once() -> None:
+def test_current_selector__uses_server_plan__and_schedules_once() -> None:
     begin_calls: list[BeginPlanningCommand] = []
     schedule_calls: list[object] = []
 
@@ -151,7 +151,7 @@ def test_current_selector_uses_server_plan_and_schedules_once() -> None:
         ),
     ),
 )
-def test_adjust_context_enforces_exact_discriminated_payload(
+def test_adjust_context__enforces_exact__discriminated_payload(
     command: AdjustContextCommandV1,
 ) -> None:
     handler = AdjustContextHandler(

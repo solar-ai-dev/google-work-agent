@@ -50,7 +50,7 @@ class _TaskRead:
         )
 
 
-def test_task_detail_projects_closed_contract_and_uses_canonical_connector_arguments() -> None:
+def test_task_detail_projects__closed_contract_and__uses_canonical_connector_arguments() -> None:
     signing_secret = b"s" * 32
     issuer = IssueSelectionHandle(
         signing_secret=signing_secret,

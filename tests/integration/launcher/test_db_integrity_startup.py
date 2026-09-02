@@ -10,14 +10,14 @@ from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.persistence_exceptions import MigrationIntegrityError
 from google_work_agent.api import composition
 from google_work_agent.api.composition import CoreInitializationError, DeferredApiContainer
-from google_work_agent.ports.system.contracts.runtime import RuntimeOperation
+from google_work_agent.ports.system.contracts.runtime_operation import RuntimeOperation
 from google_work_agent.ports.system.readiness_port import ReadinessState
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8000
 
 
-def test_build_container_classifies_migration_integrity_failure(
+def test_build_container__classifies_migration__integrity_failure(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -32,7 +32,7 @@ def test_build_container_classifies_migration_integrity_failure(
     assert exc_info.value.safe_code == "MIGRATION_FAILED"
 
 
-def test_migration_failure_enters_safe_mode_and_blocks_writes() -> None:
+def test_migration_failure__enters_safe_mode__and_blocks_writes() -> None:
     def fail_core(**kwargs: Any) -> Any:
         raise CoreInitializationError("MIGRATION_FAILED")
 
@@ -56,7 +56,7 @@ def test_migration_failure_enters_safe_mode_and_blocks_writes() -> None:
     assert shell.safe_mode_controller.allows(RuntimeOperation.RUN_COMMANDS) is False
 
 
-def test_full_foreign_key_check_rejects_fk_invalid_latest_database(tmp_path: Path) -> None:
+def test_full_foreign_key__check_rejects_fk__invalid_latest_database(tmp_path: Path) -> None:
     database_path = tmp_path / "fk-invalid.db"
     connection = connect_sqlite(database_path)
     try:
@@ -81,7 +81,7 @@ def test_full_foreign_key_check_rejects_fk_invalid_latest_database(tmp_path: Pat
         connection.close()
 
 
-def test_startup_quick_check_failure_is_fail_closed(tmp_path: Path) -> None:
+def test_startup_quick__check_failure__is_fail_closed(tmp_path: Path) -> None:
     database_path = tmp_path / "quick-check.db"
     connection = connect_sqlite(database_path)
     try:

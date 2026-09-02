@@ -6,13 +6,13 @@ from google_work_agent.domain.run.transitions.begin_planning import transition_b
 
 
 @pytest.mark.parametrize("status", (RunStatusV1.ANALYZING, RunStatusV1.RETRIEVING))
-def test_begin_planning_applies_pre_publish_transition(status: RunStatusV1) -> None:
+def test_begin_planning__applies_pre__publish_transition(status: RunStatusV1) -> None:
     assert transition_begin_planning(status) is RunStatusV1.PLANNING
 
 
 @pytest.mark.parametrize("disposition", ("REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION"))
 @pytest.mark.parametrize("status", (RunStatusV1.WAITING_APPROVAL, RunStatusV1.VERIFYING))
-def test_begin_planning_applies_guarded_published_review_reentry(
+def test_begin_planning__applies_guarded__published_review_reentry(
     status: RunStatusV1, disposition: str
 ) -> None:
     assert (
@@ -27,7 +27,7 @@ def test_begin_planning_applies_guarded_published_review_reentry(
 
 
 @pytest.mark.parametrize("disposition", (None, "PASS", "CONFIRM", "BLOCK"))
-def test_begin_planning_rejects_unapproved_published_review_disposition(
+def test_begin_planning__rejects_unapproved__published_review_disposition(
     disposition: str | None,
 ) -> None:
     with pytest.raises(RunTransitionRejected):
@@ -48,7 +48,7 @@ def test_begin_planning_rejects_unapproved_published_review_disposition(
         ActionStatusV1.MISMATCH,
     ),
 )
-def test_begin_planning_rejects_unresolved_external_effect(status: ActionStatusV1) -> None:
+def test_begin_planning__rejects_unresolved__external_effect(status: ActionStatusV1) -> None:
     with pytest.raises(RunTransitionRejected):
         transition_begin_planning(
             RunStatusV1.VERIFYING,
@@ -59,7 +59,7 @@ def test_begin_planning_rejects_unresolved_external_effect(status: ActionStatusV
         )
 
 
-def test_begin_planning_context_adjustment_requires_child_authority_fence() -> None:
+def test_begin_planning__context_adjustment_requires__child_authority_fence() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_begin_planning(
             RunStatusV1.WAITING_APPROVAL,
@@ -70,7 +70,7 @@ def test_begin_planning_context_adjustment_requires_child_authority_fence() -> N
         )
 
 
-def test_begin_planning_applies_context_adjustment_when_fence_is_clear() -> None:
+def test_begin_planning_applies__context_adjustment_when__fence_is_clear() -> None:
     assert (
         transition_begin_planning(
             RunStatusV1.WAITING_APPROVAL,
@@ -82,6 +82,6 @@ def test_begin_planning_applies_context_adjustment_when_fence_is_clear() -> None
     )
 
 
-def test_begin_planning_rejects_unrelated_status() -> None:
+def test_begin_planning__rejects_unrelated__status() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_begin_planning(RunStatusV1.FAILED)

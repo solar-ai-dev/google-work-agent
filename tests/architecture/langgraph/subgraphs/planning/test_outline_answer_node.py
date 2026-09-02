@@ -14,7 +14,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 )
 
 
-def test_outline_exact_node_projection_router_and_no_branch_node() -> None:
+def test_outline_exact_node__projection_router_and__no_branch_node() -> None:
     graph_source = inspect.getsource(PlanningSubgraph.build)
     assert 'graph.add_node("outline_answer"' in graph_source
     assert 'graph.add_node("compose_answer"' in graph_source
@@ -27,7 +27,7 @@ def test_outline_exact_node_projection_router_and_no_branch_node() -> None:
     )
 
 
-def test_outline_projection_excludes_route_provider_and_history_material() -> None:
+def test_outline_projection__excludes_route_provider__and_history_material() -> None:
     projected = outline_answer_projection.project_outline_answer_input(
         {
             "user_request": "Summarize.",

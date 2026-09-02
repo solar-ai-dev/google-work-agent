@@ -13,7 +13,7 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
 )
 
 
-def test_aggregate_node_owns_aggregation_and_validation_without_pseudo_node() -> None:
+def test_aggregate_node_owns__aggregation_and_validation__without_pseudo_node() -> None:
     state = {
         "review_phase": "INITIAL",
         "review_artifact_id": "review-1",

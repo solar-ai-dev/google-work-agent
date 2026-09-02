@@ -5,7 +5,7 @@ from google_work_agent.adapters.langgraph.main.plan_persistence import (
 )
 
 
-def test_next_plan_revision_counts_superseded_history() -> None:
+def test_next_plan__revision_counts__superseded_history() -> None:
     assert next_plan_revision_no(()) == 1
     assert next_plan_revision_no(
         (

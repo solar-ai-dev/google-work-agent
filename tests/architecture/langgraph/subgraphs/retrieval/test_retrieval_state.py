@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_retrieval_state_v2_declares_exact_semantic_fields() -> None:
+def test_retrieval_state__v2_declares__exact_semantic_fields() -> None:
     root = Path(__file__).resolve().parents[5]
     source = (
         root / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval/state.py"

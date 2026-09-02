@@ -23,7 +23,7 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
 )
 
 
-def test_default_run_budget_is_valid_and_checkpoint_safe() -> None:
+def test_default_run__budget_is_valid__and_checkpoint_safe() -> None:
     budget = validate_run_budget_v2(build_default_run_budget())
 
     assert budget["schema_version"] == 2
@@ -35,7 +35,7 @@ def test_default_run_budget_is_valid_and_checkpoint_safe() -> None:
     assert budget["semantic_revisions_used_by_failure"] == {}
 
 
-def test_run_budget_validator_rejects_invalid_counters_profile_and_duplicates() -> None:
+def test_run_budget_validator__rejects_invalid_counters__profile_and_duplicates() -> None:
     with pytest.raises(ValueError, match="run budget llm_calls_used must be non-negative"):
         validate_run_budget_v2(
             {
@@ -92,7 +92,7 @@ def test_run_budget_validator_rejects_invalid_counters_profile_and_duplicates() 
         )
 
 
-def test_semantic_failure_signature_is_canonicalized_by_node_and_reason_set() -> None:
+def test_semantic_failure_signature__is_canonicalized_by__node_and_reason_set() -> None:
     first = build_semantic_failure_signature_v1(
         node_id="review.inspect",
         failure_reason_codes=["B", "A", "B"],
@@ -111,7 +111,7 @@ def test_semantic_failure_signature_is_canonicalized_by_node_and_reason_set() ->
     assert first != third
 
 
-def test_profile_promotion_is_monotonic_and_has_no_absolute_profile() -> None:
+def test_profile_promotion_is__monotonic_and_has__no_absolute_profile() -> None:
     assert (
         promote_budget_profile(BudgetProfile.NORMAL, BudgetProfile.REVISION_HEAVY)
         is BudgetProfile.REVISION_HEAVY
@@ -130,7 +130,7 @@ def test_profile_promotion_is_monotonic_and_has_no_absolute_profile() -> None:
     )
 
 
-def test_llm_budget_gate_and_accounting_follow_profile_and_absolute_limits() -> None:
+def test_llm_budget_gate__and_accounting_follow__profile_and_absolute_limits() -> None:
     budget = {
         **build_default_run_budget(),
         "llm_calls_used": NORMAL_MAX_LLM_CALLS - 1,
@@ -158,7 +158,7 @@ def test_llm_budget_gate_and_accounting_follow_profile_and_absolute_limits() -> 
     )
 
 
-def test_neither_revision_nor_retrieval_triggered_keeps_the_plain_normal_cap() -> None:
+def test_neither_revision_nor__retrieval_triggered_keeps__the_plain_normal_cap() -> None:
     """G3 Final Closure F: with neither planning_revisions_used nor
     additional_retrieval_rounds_used ever incremented, the effective cap stays
     exactly NORMAL_MAX_LLM_CALLS -- no combined-cap headroom leaks in just
@@ -175,7 +175,7 @@ def test_neither_revision_nor_retrieval_triggered_keeps_the_plain_normal_cap() -
     assert deny["budget_reason_code"] == BudgetReasonCode.PROFILE_LLM_LIMIT_EXHAUSTED.value
 
 
-def test_revision_and_retrieval_both_triggered_raises_effective_cap_to_absolute() -> None:
+def test_revision_and_retrieval__both_triggered_raises__effective_cap_to_absolute() -> None:
     """G3 Final Closure E (docs/06 SS11, docs/15 SS8.2): once a Run has
     actually triggered both a planning revision (Review REVISE or mandatory
     Modify Review -- both consume planning_revisions_used via
@@ -213,7 +213,7 @@ def test_revision_and_retrieval_both_triggered_raises_effective_cap_to_absolute(
     )
 
 
-def test_only_one_of_revision_or_retrieval_triggered_keeps_its_own_single_profile_cap() -> None:
+def test_only_one_of_revision__or_retrieval_triggered_keeps__its_own_single_profile_cap() -> None:
     """Combined effective cap requires BOTH conditions actually triggered --
     only one triggered still uses that profile's own ceiling, not 16."""
     revision_only = approve_planning_revision(build_default_run_budget())
@@ -241,7 +241,7 @@ def test_only_one_of_revision_or_retrieval_triggered_keeps_its_own_single_profil
     )
 
 
-def test_mandatory_modify_review_reuses_planning_revision_to_allow_call_past_normal_cap() -> None:
+def test_mandatory_modify_review_reuses__planning_revision_to_allow__call_past_normal_cap() -> None:
     """G3 Final Closure A: approve_planning_revision is the same function
     runtime.py's _prepare_modify_review_state calls for a mandatory Modify
     Review re-entry. Even when a Run already exhausted NORMAL(8) on one
@@ -258,7 +258,7 @@ def test_mandatory_modify_review_reuses_planning_revision_to_allow_call_past_nor
     assert next_call["decision"] == BudgetDecision.ALLOW.value
 
 
-def test_additional_acquisition_counter_promotes_profile_and_denies_third_round() -> None:
+def test_additional_acquisition_counter__promotes_profile_and__denies_third_round() -> None:
     first = approve_additional_acquisition(build_default_run_budget())
     second = approve_additional_acquisition(first["run_budget"])
     third = approve_additional_acquisition(second["run_budget"])
@@ -277,7 +277,7 @@ def test_additional_acquisition_counter_promotes_profile_and_denies_third_round(
     )
 
 
-def test_planning_revision_counter_is_shared_by_answer_and_plan_revisions() -> None:
+def test_planning_revision_counter__is_shared_by__answer_and_plan_revisions() -> None:
     answer_revision = approve_planning_revision(build_default_run_budget())
     plan_revision = approve_planning_revision(answer_revision["run_budget"])
     third_revision = approve_planning_revision(plan_revision["run_budget"])
@@ -297,7 +297,7 @@ def test_planning_revision_counter_is_shared_by_answer_and_plan_revisions() -> N
     )
 
 
-def test_review_recheck_requires_revision_and_allows_once_per_revision() -> None:
+def test_review_recheck_requires__revision_and_allows__once_per_revision() -> None:
     no_revision = approve_review_recheck(build_default_run_budget())
     first_revision = approve_planning_revision(build_default_run_budget())
     first_recheck = approve_review_recheck(first_revision["run_budget"])
@@ -324,7 +324,7 @@ def test_review_recheck_requires_revision_and_allows_once_per_revision() -> None
     assert recheck_after_second_revision["run_budget"]["review_rechecks_used"] == 2
 
 
-def test_semantic_same_failure_gate_denies_same_node_and_reason_set_only() -> None:
+def test_semantic_same_failure__gate_denies_same_node__and_reason_set_only() -> None:
     signature = build_semantic_failure_signature_v1(
         node_id="review.inspect",
         failure_reason_codes=["PLAN_REQUIRED_ACTION_MISSING", "EVIDENCE_SUPPORTED"],
@@ -354,7 +354,7 @@ def test_semantic_same_failure_gate_denies_same_node_and_reason_set_only() -> No
     assert len(different["run_budget"]["semantic_revisions_used_by_failure"]) == 2
 
 
-def test_budget_profile_constants_match_frozen_contract() -> None:
+def test_budget_profile__constants_match__frozen_contract() -> None:
     assert NORMAL_MAX_LLM_CALLS == 14
     assert REVISION_HEAVY_MAX_LLM_CALLS == 18
     assert RETRIEVAL_HEAVY_MAX_LLM_CALLS == 20

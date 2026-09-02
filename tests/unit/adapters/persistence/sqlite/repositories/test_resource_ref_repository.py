@@ -9,7 +9,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_rep
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 
 
-def test_upsert_uses_connector_aware_identity_and_returns_existing_server_id(
+def test_upsert_uses_connector__aware_identity_and__returns_existing_server_id(
     tmp_path: Path,
 ) -> None:
     connection = _database(tmp_path)

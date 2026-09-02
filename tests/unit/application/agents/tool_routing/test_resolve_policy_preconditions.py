@@ -41,7 +41,7 @@ def _candidate(resource_type: str) -> SemanticRouteCandidate:
     )
 
 
-def test_task_create_adds_only_mandatory_duplicate_check_resources() -> None:
+def test_task_create__adds_only_mandatory__duplicate_check_resources() -> None:
     result = resolve_policy_preconditions(
         request_intent=_intent(),
         candidate=_candidate("TASK"),
@@ -56,7 +56,7 @@ def test_task_create_adds_only_mandatory_duplicate_check_resources() -> None:
     assert result.candidate.output_pairs == _candidate("TASK").output_pairs
 
 
-def test_calendar_create_adds_event_freebusy_and_calendar_resources() -> None:
+def test_calendar_create__adds_event_freebusy__and_calendar_resources() -> None:
     result = resolve_policy_preconditions(
         request_intent=_intent(),
         candidate=_candidate("CALENDAR_EVENT"),
@@ -70,7 +70,7 @@ def test_calendar_create_adds_event_freebusy_and_calendar_resources() -> None:
     }
 
 
-def test_out_of_scope_policy_reads_are_not_materialized_before_confirmation() -> None:
+def test_out_of_scope__policy_reads_are__not_materialized_before_confirmation() -> None:
     original = _candidate("TASK")
     result = resolve_policy_preconditions(
         request_intent=_intent(forbidden_sources=["TASK"]),

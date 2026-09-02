@@ -8,7 +8,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.evidence_reposit
 from google_work_agent.domain.evidence.model import Evidence, EvidenceOriginType
 
 
-def test_evidence_repository_bounded_run_and_action_reads() -> None:
+def test_evidence_repository__bounded_run__and_action_reads() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.executescript(

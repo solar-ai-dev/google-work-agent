@@ -28,7 +28,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.credentia
 )
 
 
-def test_gmail_list_enriches_current_page_thread_metadata(
+def test_gmail_list__enriches_current__page_thread_metadata(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, dict[str, str | list[str]] | None]] = []
@@ -105,7 +105,7 @@ def test_gmail_list_enriches_current_page_thread_metadata(
     ]
 
 
-def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_order(
+def test_gmail_metadata_hydration__uses_three_workers__and_preserves_provider_order(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     thread_ids = [f"thread-{index}" for index in range(20)]
@@ -145,7 +145,7 @@ def test_gmail_metadata_hydration_uses_three_workers_and_preserves_provider_orde
     ]
 
 
-def test_gmail_metadata_hydration_failure_fails_the_whole_page(
+def test_gmail_metadata__hydration_failure_fails__the_whole_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -174,7 +174,7 @@ def test_gmail_metadata_hydration_failure_fails_the_whole_page(
         )
 
 
-def test_gmail_list_does_not_use_thread_id_as_subject_fallback(
+def test_gmail_list_does__not_use_thread__id_as_subject_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -199,7 +199,7 @@ def test_gmail_list_does_not_use_thread_id_as_subject_fallback(
     assert item["payload"] == {}
 
 
-def test_gmail_count_traversal_skips_per_thread_metadata_hydration(
+def test_gmail_count__traversal_skips_per__thread_metadata_hydration(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, dict[str, str] | None]] = []
@@ -238,7 +238,7 @@ def test_gmail_count_traversal_skips_per_thread_metadata_hydration(
     assert cast(dict[str, object], cast(list[object], payload["items"])[0])["payload"] == {}
 
 
-def test_gmail_thread_detail_tool_contract_is_unchanged(
+def test_gmail_thread__detail_tool__contract_is_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -276,7 +276,7 @@ def test_gmail_thread_detail_tool_contract_is_unchanged(
     }
 
 
-def test_gmail_message_detail_fetches_full_format_and_includes_body(
+def test_gmail_message_detail__fetches_full_format__and_includes_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """GAP-F6: Agent Retrieval reads the message body through this tool, so it
@@ -330,7 +330,7 @@ def test_gmail_message_detail_fetches_full_format_and_includes_body(
     assert cast(dict[str, object], message["item"])["parent_id"] == "thread-1"
 
 
-def test_gmail_message_detail_omits_body_and_attachments_when_absent(
+def test_gmail_message_detail__omits_body_and__attachments_when_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -367,7 +367,7 @@ def test_gmail_message_detail_omits_body_and_attachments_when_absent(
     }
 
 
-def test_gmail_ui_detail_uses_latest_message_and_plain_body(
+def test_gmail_ui_detail__uses_latest_message__and_plain_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -427,7 +427,7 @@ def test_gmail_ui_detail_uses_latest_message_and_plain_body(
     }
 
 
-def test_gmail_ui_detail_converts_nested_html_when_plain_is_missing(
+def test_gmail_ui_detail__converts_nested_html__when_plain_is_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     html = (
@@ -463,7 +463,7 @@ def test_gmail_ui_detail_converts_nested_html_when_plain_is_missing(
     assert "bad" not in str(detail["body"])
 
 
-def test_gmail_ui_detail_allows_missing_or_malformed_body(
+def test_gmail_ui__detail_allows_missing__or_malformed_body(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     message = _gmail_message("message-1", "2000", None)
@@ -479,7 +479,7 @@ def test_gmail_ui_detail_allows_missing_or_malformed_body(
     assert "body" not in detail or detail["body"] is None
 
 
-def test_gmail_ui_detail_omits_rfc822_message_id_when_header_is_absent(
+def test_gmail_ui_detail__omits_rfc822_message_id__when_header_is_absent(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     message = _gmail_message("message-1", "2000", "Body")
@@ -526,7 +526,7 @@ def _gmail_b64(value: str) -> str:
     return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
 
 
-def test_tasks_and_calendar_details_map_to_canonical_snapshots(
+def test_tasks_and__calendar_details_map__to_canonical_snapshots(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     responses = [
@@ -586,7 +586,7 @@ def test_tasks_and_calendar_details_map_to_canonical_snapshots(
     assert event_payload["attendees"] == ["reviewer@example.com"]
 
 
-def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_dates(
+def test_calendar_event_list__expands_recurring_events_and__preserves_all_day_dates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
@@ -663,7 +663,7 @@ def test_calendar_event_list_expands_recurring_events_and_preserves_all_day_date
     assert result["next_page_token"] == "events-page-2"
 
 
-def test_event_snapshot_preserves_resource_id_as_the_untitled_event_fallback() -> None:
+def test_event_snapshot_preserves__resource_id_as__the_untitled_event_fallback() -> None:
     snapshot = server._event_snapshot(
         {
             "id": "untitled-event-1",
@@ -678,7 +678,7 @@ def test_event_snapshot_preserves_resource_id_as_the_untitled_event_fallback() -
     assert payload["title"] == "untitled-event-1"
 
 
-def test_read_tool_input_rejects_invalid_page_token(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_read_tool__input_rejects__invalid_page_token(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api", lambda *_args, **_kwargs: {})
 
     try:
@@ -693,7 +693,7 @@ def test_read_tool_input_rejects_invalid_page_token(monkeypatch: pytest.MonkeyPa
         raise AssertionError("invalid page token must be rejected")
 
 
-def test_freebusy_maps_explicit_range_to_google_request(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_freebusy_maps__explicit_range__to_google_request(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, object] = {}
 
     def google_api_post(
@@ -738,7 +738,7 @@ def test_freebusy_maps_explicit_range_to_google_request(monkeypatch: pytest.Monk
     assert intervals[0]["transparency"] == "busy"
 
 
-def test_freebusy_rejects_invalid_range_without_google_request(
+def test_freebusy_rejects__invalid_range__without_google_request(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(

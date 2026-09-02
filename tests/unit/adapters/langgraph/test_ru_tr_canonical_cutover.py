@@ -47,7 +47,7 @@ def _called_names(path: Path) -> set[str]:
     return names
 
 
-def test_request_understanding_has_three_runtime_nodes_for_four_operations() -> None:
+def test_request_understanding_has__three_runtime_nodes__for_four_operations() -> None:
     for operation in ("identify_goal", "detect_ambiguity", "finalize_intent"):
         path = RU / "nodes" / f"{operation}_node.py"
         assert path.is_file()
@@ -58,7 +58,7 @@ def test_request_understanding_has_three_runtime_nodes_for_four_operations() -> 
     assert not (RU / "nodes/validate_intent_node.py").exists()
 
 
-def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
+def test_tool_routing_has__five_operation_nodes__in_canonical_order() -> None:
     for operation in TR_OPERATIONS:
         path = TR / "nodes" / f"{operation}_node.py"
         assert path.is_file()
@@ -90,14 +90,14 @@ def test_tool_routing_has_five_operation_nodes_in_canonical_order() -> None:
     assert 'add_node("confirm"' not in graph_source
 
 
-def test_binding_precedes_selection_at_router_boundary() -> None:
+def test_binding_precedes__selection_at__router_boundary() -> None:
     route_source = _source(TR / "routing/route_after_determine_io_resources.py")
     assert 'Literal["finalize_route", "bind_registry_candidates"]' in route_source
     assert 'return "bind_registry_candidates"' in route_source
     assert 'return "select_tool_if_needed"' not in route_source
 
 
-def test_selection_consumes_previously_bound_candidate_set_only() -> None:
+def test_selection_consumes__previously_bound__candidate_set_only() -> None:
     selection_path = TR / "nodes/select_tool_if_needed_node.py"
     source = _source(selection_path)
     imports = _imports(selection_path)
@@ -110,7 +110,7 @@ def test_selection_consumes_previously_bound_candidate_set_only() -> None:
     assert ".eligible(" not in source
 
 
-def test_registry_discovery_authority_is_binding_only() -> None:
+def test_registry_discovery__authority_is__binding_only() -> None:
     binding_source = _source(TR_APP / "bind_registry_candidates.py")
     selection_source = _source(TR / "nodes/select_tool_if_needed_node.py")
     assert "registry_candidates_for_route" in binding_source
@@ -119,14 +119,14 @@ def test_registry_discovery_authority_is_binding_only() -> None:
     assert "tool_catalog" not in selection_source
 
 
-def test_preselected_or_selected_tool_cannot_bypass_bound_eligibility() -> None:
+def test_preselected_or__selected_tool_cannot__bypass_bound_eligibility() -> None:
     finalization_source = _source(TR_APP / "finalize_route.py")
     assert "selected_tool_id not in bound.eligible_tool_ids" in finalization_source
     assert "selected tool is outside the bound eligible set" in finalization_source
     assert "validate_route(plan, tool_catalog=tool_catalog)" in finalization_source
 
 
-def test_final_validation_runs_after_selection_and_finalization() -> None:
+def test_final_validation__runs_after__selection_and_finalization() -> None:
     graph_source = _source(TR / "graph.py")
     selection_edge = graph_source.index(
         'graph.add_conditional_edges(\n            "select_tool_if_needed"'
@@ -137,7 +137,7 @@ def test_final_validation_runs_after_selection_and_finalization() -> None:
     assert "validate_route(" in _source(TR / "nodes/validate_route_node.py")
 
 
-def test_downstream_tool_reselection_authority_is_absent_in_tool_routing() -> None:
+def test_downstream_tool_reselection__authority_is_absent__in_tool_routing() -> None:
     selection_path = TR / "nodes/select_tool_if_needed_node.py"
     for path in (TR / "nodes").glob("*_node.py"):
         if path == selection_path:
@@ -146,7 +146,7 @@ def test_downstream_tool_reselection_authority_is_absent_in_tool_routing() -> No
         assert "registry_candidates_for_route(" not in _source(path)
 
 
-def test_obsolete_broad_module_authorities_are_absent() -> None:
+def test_obsolete_broad__module_authorities__are_absent() -> None:
     for path in (
         SRC / "adapters/langgraph/subgraphs/request_understanding.py",
         SRC / "adapters/langgraph/subgraphs/tool_routing.py",
@@ -154,7 +154,7 @@ def test_obsolete_broad_module_authorities_are_absent() -> None:
         assert not path.exists()
 
 
-def test_nodes_have_no_forbidden_execution_dependencies() -> None:
+def test_nodes_have__no_forbidden__execution_dependencies() -> None:
     forbidden = (
         ".retrieval",
         ".work_analysis",
@@ -172,7 +172,7 @@ def test_nodes_have_no_forbidden_execution_dependencies() -> None:
                 assert not any(fragment in imported for fragment in forbidden), (path, imported)
 
 
-def test_no_agent_to_agent_imports() -> None:
+def test_no_agent__to_agent__imports() -> None:
     owners = {
         "request_understanding",
         "tool_routing",
@@ -190,7 +190,7 @@ def test_no_agent_to_agent_imports() -> None:
                 assert imported_owner not in owners - {owner_name}
 
 
-def test_tool_routing_has_no_downstream_or_provider_execution_calls() -> None:
+def test_tool_routing_has__no_downstream_or__provider_execution_calls() -> None:
     forbidden_calls = {
         "execute",
         "invoke_tool",
@@ -206,7 +206,7 @@ def test_tool_routing_has_no_downstream_or_provider_execution_calls() -> None:
         assert _called_names(path).isdisjoint(forbidden_calls)
 
 
-def test_projection_allowlists_are_owner_local() -> None:
+def test_projection_allowlists__are_owner__local() -> None:
     assert {path.stem for path in (RU / "projections").glob("*_projection.py")} == {
         "identify_goal_projection",
         "detect_ambiguity_projection",
@@ -221,7 +221,7 @@ def test_projection_allowlists_are_owner_local() -> None:
     }
 
 
-def test_node_patches_do_not_spread_main_state() -> None:
+def test_node_patches__do_not__spread_main_state() -> None:
     for owner in (RU, TR):
         for path in (owner / "nodes").glob("*_node.py"):
             source = _source(path)
@@ -229,7 +229,7 @@ def test_node_patches_do_not_spread_main_state() -> None:
             assert "dict(state)" not in source
 
 
-def test_canonical_application_operations_exist() -> None:
+def test_canonical_application__operations__exist() -> None:
     for operation in RU_OPERATIONS:
         assert (SRC / "application/agents/request_understanding" / f"{operation}.py").is_file()
     for operation in TR_OPERATIONS:

@@ -65,7 +65,7 @@ class _ProductBoundaryHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def test_client_uses_only_http_boundary_and_preserves_session_cookie() -> None:
+def test_client_uses_only__http_boundary_and__preserves_session_cookie() -> None:
     server = ThreadingHTTPServer(("127.0.0.1", 0), _ProductBoundaryHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

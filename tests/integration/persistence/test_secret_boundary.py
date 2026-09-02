@@ -37,7 +37,7 @@ def _seed_run(database_path: Path) -> None:
         connection.close()
 
 
-def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
+def test_production_trace_and__audit_boundary_blocks__random_nested_secrets(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "secret-boundary.db"
@@ -168,7 +168,7 @@ def test_production_trace_and_audit_boundary_blocks_random_nested_secrets(
         assert "code-verifier" not in provider["oauth"]
 
 
-def test_production_trace_boundary_drops_invalid_postcommit_json_fail_closed(
+def test_production_trace_boundary__drops_invalid_postcommit__json_fail_closed(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "secret-boundary-invalid.db"

@@ -17,7 +17,7 @@ def _calls(path: Path) -> set[str]:
     }
 
 
-def test_detect_ambiguity_node_uses_exact_operation_projection_and_router() -> None:
+def test_detect_ambiguity_node__uses_exact_operation__projection_and_router() -> None:
     node = OWNER / "nodes/detect_ambiguity_node.py"
     projection = OWNER / "projections/detect_ambiguity_projection.py"
     router = OWNER / "routing/route_after_detect_ambiguity.py"
@@ -27,7 +27,7 @@ def test_detect_ambiguity_node_uses_exact_operation_projection_and_router() -> N
     assert "route_after_detect_ambiguity" in router.read_text(encoding="utf-8")
 
 
-def test_detect_ambiguity_has_its_own_prompt_call_and_bounded_input() -> None:
+def test_detect_ambiguity_has__its_own_prompt__call_and_bounded_input() -> None:
     operation = SRC / "application/agents/request_understanding/detect_ambiguity.py"
     source = operation.read_text(encoding="utf-8")
 

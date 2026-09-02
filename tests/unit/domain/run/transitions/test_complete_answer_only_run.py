@@ -6,11 +6,11 @@ from google_work_agent.domain.run.transitions.complete_answer_only_run import (
 )
 
 
-def test_complete_answer_only_run_applies_canonical_transition() -> None:
+def test_complete_answer__only_run__applies_canonical_transition() -> None:
     assert transition_complete_answer_only_run(RunStatusV1.ANALYZING) is RunStatusV1.COMPLETED
 
 
-def test_complete_answer_only_run_rejects_unrelated_status() -> None:
+def test_complete_answer__only_run__rejects_unrelated_status() -> None:
     try:
         transition_complete_answer_only_run(RunStatusV1.FAILED)
     except RunTransitionRejected:
@@ -18,6 +18,6 @@ def test_complete_answer_only_run_rejects_unrelated_status() -> None:
     raise AssertionError("invalid transition was accepted")
 
 
-def test_complete_answer_only_run_rejects_child_authority() -> None:
+def test_complete_answer__only_run__rejects_child_authority() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_complete_answer_only_run(RunStatusV1.ANALYZING, has_plan=True)

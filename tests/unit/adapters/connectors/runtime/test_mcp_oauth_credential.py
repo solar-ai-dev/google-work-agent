@@ -40,7 +40,7 @@ class _Client:
         )
 
 
-def test_connection_status_preserves_opaque_provider_account_id() -> None:
+def test_connection_status__preserves_opaque__provider_account_id() -> None:
     registry = ConnectorRuntimeRegistry()
     registry.register("google_workspace", _RuntimeHandle())  # type: ignore[arg-type]
     adapter = McpOAuthCredentialAdapter(

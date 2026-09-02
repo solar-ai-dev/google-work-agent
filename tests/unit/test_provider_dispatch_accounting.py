@@ -152,7 +152,7 @@ def _repair_input() -> dict[str, object]:
     }
 
 
-def test_primary_success_counts_one_dispatch() -> None:
+def test_primary_success__counts_one__dispatch() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider()
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
@@ -164,7 +164,7 @@ def test_primary_success_counts_one_dispatch() -> None:
     assert budget["llm_calls_used"] == 1
 
 
-def test_failed_primary_dispatch_is_counted_before_timeout() -> None:
+def test_failed_primary__dispatch_is__counted_before_timeout() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider(fail_structured=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
@@ -179,7 +179,7 @@ def test_failed_primary_dispatch_is_counted_before_timeout() -> None:
     assert budget["llm_calls_used"] == 1
 
 
-def test_failed_primary_plus_successful_fallback_counts_two_dispatches() -> None:
+def test_failed_primary__plus_successful_fallback__counts_two_dispatches() -> None:
     budget = build_default_run_budget()
     primary = _FakeProvider(fail_structured=True)
     fallback = _FakeProvider()
@@ -196,7 +196,7 @@ def test_failed_primary_plus_successful_fallback_counts_two_dispatches() -> None
     assert budget["llm_calls_used"] == 2
 
 
-def test_schema_repair_success_counts_two_dispatches_with_current_failure_record() -> None:
+def test_schema_repair_success__counts_two_dispatches__with_current_failure_record() -> None:
     budget = build_default_run_budget()
     initial = _FakeProvider()
     repair = _FakeProvider()
@@ -228,7 +228,7 @@ def test_schema_repair_success_counts_two_dispatches_with_current_failure_record
     }
 
 
-def test_failed_schema_repair_dispatch_counts_two() -> None:
+def test_failed_schema__repair_dispatch__counts_two() -> None:
     budget = build_default_run_budget()
     initial = _FakeProvider()
     repair = _FakeProvider(fail_structured=True)
@@ -245,7 +245,7 @@ def test_failed_schema_repair_dispatch_counts_two() -> None:
     assert budget["llm_calls_used"] == 2
 
 
-def test_tool_call_success_counts_one_dispatch() -> None:
+def test_tool_call__success_counts__one_dispatch() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider()
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
@@ -257,7 +257,7 @@ def test_tool_call_success_counts_one_dispatch() -> None:
     assert budget["llm_calls_used"] == 1
 
 
-def test_failed_tool_call_dispatch_is_counted() -> None:
+def test_failed_tool__call_dispatch__is_counted() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider(fail_tool=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
@@ -272,7 +272,7 @@ def test_failed_tool_call_dispatch_is_counted() -> None:
     assert budget["llm_calls_used"] == 1
 
 
-def test_tool_call_repair_counts_each_actual_dispatch() -> None:
+def test_tool_call__repair_counts__each_actual_dispatch() -> None:
     budget = build_default_run_budget()
     initial = _FakeProvider()
     repair = _FakeProvider()
@@ -287,7 +287,7 @@ def test_tool_call_repair_counts_each_actual_dispatch() -> None:
     assert budget["llm_calls_used"] == 2
 
 
-def test_execution_scope_clears_budget_after_success_and_unrelated_probe_is_unaccounted() -> None:
+def test_execution_scope_clears__budget_after_success_and__unrelated_probe_is_unaccounted() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider()
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())
@@ -303,7 +303,7 @@ def test_execution_scope_clears_budget_after_success_and_unrelated_probe_is_unac
     assert budget["llm_calls_used"] == 1
 
 
-def test_budget_scope_preserves_enclosing_production_run_identity() -> None:
+def test_budget_scope__preserves_enclosing__production_run_identity() -> None:
     budget = build_default_run_budget()
 
     with provider_dispatch_execution_scope(run_id="run-production"):
@@ -314,7 +314,7 @@ def test_budget_scope_preserves_enclosing_production_run_identity() -> None:
     assert current_provider_dispatch_run_id() is None
 
 
-def test_execution_scope_clears_budget_after_escaping_provider_error() -> None:
+def test_execution_scope__clears_budget_after__escaping_provider_error() -> None:
     budget = build_default_run_budget()
     provider = _FakeProvider(fail_structured=True)
     guarded = PromptInputGuardedProvider(provider, _RecordingValidator())

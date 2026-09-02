@@ -256,7 +256,7 @@ def _token_factory(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
 
-def test_provider_page_token_is_replaced_by_server_local_handle() -> None:
+def test_provider_page_token__is_replaced_by__server_local_handle() -> None:
     raw = _ResourceServiceStub()
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-gmail-1", "local-gmail-2")))
@@ -283,7 +283,7 @@ def test_provider_page_token_is_replaced_by_server_local_handle() -> None:
     assert second.next_page_token is None
 
 
-def test_provider_token_cannot_be_replayed_as_a_local_continuation() -> None:
+def test_provider_token_cannot__be_replayed_as__a_local_continuation() -> None:
     raw = _ResourceServiceStub()
     service = OpaqueConnectorResourceAccess(raw)
 
@@ -298,7 +298,7 @@ def test_provider_token_cannot_be_replayed_as_a_local_continuation() -> None:
     assert raw.gmail_page_tokens == []
 
 
-def test_local_continuation_is_bound_to_its_exact_query_scope() -> None:
+def test_local_continuation_is__bound_to_its__exact_query_scope() -> None:
     raw = _ResourceServiceStub()
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-scope-1", "local-scope-2")))
@@ -319,7 +319,7 @@ def test_local_continuation_is_bound_to_its_exact_query_scope() -> None:
     assert raw.gmail_page_tokens == [None]
 
 
-def test_local_continuation_cannot_cross_resource_sources() -> None:
+def test_local_continuation__cannot_cross__resource_sources() -> None:
     raw = _ResourceServiceStub()
     store = LocalResourceContinuationStore(
         token_factory=_token_factory(iter(("local-source-1", "local-source-2")))
@@ -339,7 +339,7 @@ def test_local_continuation_cannot_cross_resource_sources() -> None:
     assert raw.task_page_tokens == []
 
 
-def test_count_paths_do_not_allocate_or_resolve_continuations() -> None:
+def test_count_paths__do_not_allocate__or_resolve_continuations() -> None:
     raw = _ResourceServiceStub()
     service = OpaqueConnectorResourceAccess(raw)
 
@@ -351,7 +351,7 @@ def test_count_paths_do_not_allocate_or_resolve_continuations() -> None:
     )
 
 
-def test_local_continuation_is_session_account_bound_and_expires() -> None:
+def test_local_continuation__is_session_account__bound_and_expires() -> None:
     now_ms = 100
     store = LocalResourceContinuationStore(
         token_factory=lambda: "local-bound",

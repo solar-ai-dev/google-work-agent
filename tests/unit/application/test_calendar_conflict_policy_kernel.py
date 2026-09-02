@@ -27,7 +27,9 @@ def interval(start: str, end: str) -> CalendarInterval:
         ("2026-08-12T10:00:00+09:00", "2026-08-12T11:00:00+09:00", False),
     ],
 )
-def test_half_open_overlap(other_start: str, other_end: str, expected: bool) -> None:
+def test_half_open__overlap__matches_expected_contract(
+    other_start: str, other_end: str, expected: bool
+) -> None:
     proposed = interval("2026-08-12T09:00:00+09:00", "2026-08-12T10:00:00+09:00")
     assert intervals_overlap(proposed, interval(other_start, other_end)) is expected
 
@@ -59,7 +61,7 @@ def test_half_open_overlap(other_start: str, other_end: str, expected: bool) -> 
         ({"status": "cancelled"}, CalendarConflictDecision.NO_CONFLICT, "NO_CONFLICT"),
     ],
 )
-def test_event_classification(
+def test_event_classification__for_calendar_conflict_policy_kernel__matches_expected_contract(
     fields: dict[str, str], decision: CalendarConflictDecision, reason: str
 ) -> None:
     proposed = interval("2026-08-12T09:00:00+09:00", "2026-08-12T10:00:00+09:00")
@@ -76,7 +78,7 @@ def test_event_classification(
     assert reason in result.reason_codes
 
 
-def test_freebusy_is_hard_and_does_not_invent_resource_id() -> None:
+def test_freebusy_is_hard__and_does_not__invent_resource_id() -> None:
     proposed = interval("2026-08-12T09:00:00+09:00", "2026-08-12T10:00:00+09:00")
     result = evaluate_calendar_conflict(
         proposed=proposed,
@@ -97,7 +99,7 @@ def test_freebusy_is_hard_and_does_not_invent_resource_id() -> None:
         ("2026-08-15T10:00:00+09:00", "2026-08-15T11:00:00+09:00"),
     ],
 )
-def test_outside_work_hours_is_warning(start: str, end: str) -> None:
+def test_outside_work__hours_is__warning(start: str, end: str) -> None:
     result = evaluate_calendar_conflict(
         proposed=interval(start, end),
         events=(),
@@ -108,7 +110,7 @@ def test_outside_work_hours_is_warning(start: str, end: str) -> None:
     assert result.reason_codes == ("OUTSIDE_WORK_HOURS",)
 
 
-def test_update_excludes_only_target_event() -> None:
+def test_update_excludes__only_target__event() -> None:
     proposed = interval("2026-08-12T09:00:00+09:00", "2026-08-12T10:00:00+09:00")
     events = tuple(
         CalendarEventCandidate(event_id=value, calendar_id="primary", interval=proposed)
@@ -124,7 +126,7 @@ def test_update_excludes_only_target_event() -> None:
     assert result.matched_resource_ids == ("other",)
 
 
-def test_invalid_or_naive_interval_is_rejected() -> None:
+def test_invalid_or__naive_interval__is_rejected() -> None:
     with pytest.raises(ValueError):
         CalendarInterval(datetime(2026, 8, 12, 9), datetime(2026, 8, 12, 10))
     with pytest.raises(ValueError):

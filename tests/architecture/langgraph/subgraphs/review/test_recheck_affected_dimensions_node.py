@@ -8,7 +8,7 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
 )
 
 
-def test_recheck_projection_and_router_are_exact() -> None:
+def test_recheck_projection__and_router__are_exact() -> None:
     state = {
         "affected_dimensions": ["review.inspect_goal_and_evidence"],
         "affected_action_ids": [],

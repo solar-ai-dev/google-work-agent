@@ -30,7 +30,7 @@ def _result(*, dimension: str = DIMENSION) -> dict[str, object]:
     }
 
 
-def test_inspect_goal_and_evidence_uses_only_its_minimum_projection() -> None:
+def test_inspect_goal_and__evidence_uses_only__its_minimum_projection() -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -56,7 +56,7 @@ def test_inspect_goal_and_evidence_uses_only_its_minimum_projection() -> None:
 
 
 @pytest.mark.parametrize("dimension", ["GOAL_EVIDENCE", "review.unknown"])
-def test_inspect_goal_and_evidence_rejects_noncanonical_dimension(dimension: str) -> None:
+def test_inspect_goal__and_evidence__rejects_noncanonical_dimension(dimension: str) -> None:
     with pytest.raises(ValueError, match="invalid dimension"):
         inspect_goal_and_evidence(
             request_intent={},
@@ -66,7 +66,7 @@ def test_inspect_goal_and_evidence_rejects_noncanonical_dimension(dimension: str
         )
 
 
-def test_inspect_goal_and_evidence_rejects_final_disposition_field() -> None:
+def test_inspect_goal__and_evidence_rejects__final_disposition_field() -> None:
     candidate = _result()
     candidate["status"] = "REVISE"
     with pytest.raises(ValueError, match="keys do not match"):

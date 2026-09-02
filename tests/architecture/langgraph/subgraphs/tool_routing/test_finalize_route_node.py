@@ -7,7 +7,7 @@ SRC = ROOT / "src/google_work_agent"
 OWNER = SRC / "adapters/langgraph/subgraphs/tool_routing"
 
 
-def test_finalize_route_uses_exact_projection_and_policy_operation() -> None:
+def test_finalize_route__uses_exact_projection__and_policy_operation() -> None:
     node = (OWNER / "nodes/finalize_route_node.py").read_text(encoding="utf-8")
     bind_node = (OWNER / "nodes/bind_registry_candidates_node.py").read_text(encoding="utf-8")
     operation = (SRC / "application/agents/tool_routing/finalize_route.py").read_text(

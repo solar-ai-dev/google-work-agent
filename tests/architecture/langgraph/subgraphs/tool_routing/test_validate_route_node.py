@@ -7,7 +7,7 @@ SRC = ROOT / "src/google_work_agent"
 OWNER = SRC / "adapters/langgraph/subgraphs/tool_routing"
 
 
-def test_validate_route_closes_exact_graph_state_and_legacy_negative_proof() -> None:
+def test_validate_route_closes__exact_graph_state__and_legacy_negative_proof() -> None:
     node = (OWNER / "nodes/validate_route_node.py").read_text(encoding="utf-8")
     graph = (OWNER / "graph.py").read_text(encoding="utf-8")
     state = (OWNER / "state.py").read_text(encoding="utf-8")
@@ -23,7 +23,7 @@ def test_validate_route_closes_exact_graph_state_and_legacy_negative_proof() -> 
     assert "application.orchestration.tool_route_semantic" not in production
 
 
-def test_tool_route_state_has_exact_canonical_local_fields() -> None:
+def test_tool_route__state_has_exact__canonical_local_fields() -> None:
     state = (OWNER / "state.py").read_text(encoding="utf-8")
     for field in (
         "request_intent",

@@ -71,7 +71,7 @@ def _decision(*, target: str, reason_code: str) -> SupervisorDecisionV1:
     }
 
 
-def test_tool_route_with_input_route_stays_retrieval() -> None:
+def test_tool_route__with_input__route_stays_retrieval() -> None:
     state = _state(
         analysis_requirement="NONE",
         output_mode="ANSWER",
@@ -85,7 +85,7 @@ def test_tool_route_with_input_route_stays_retrieval() -> None:
     assert canonicalize_optional_stage_decision(state, decision) == decision
 
 
-def test_answer_without_input_or_analysis_routes_directly_to_planning() -> None:
+def test_answer_without_input__or_analysis_routes__directly_to_planning() -> None:
     state = _state(analysis_requirement="NONE", output_mode="ANSWER", input_routes=[])
     decision = _decision(
         target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
@@ -100,7 +100,7 @@ def test_answer_without_input_or_analysis_routes_directly_to_planning() -> None:
     assert result["state_update"]["work_analysis_result"] is None
 
 
-def test_no_input_with_required_analysis_routes_to_work_analysis() -> None:
+def test_no_input_with__required_analysis_routes__to_work_analysis() -> None:
     state = _state(analysis_requirement="REQUIRED", output_mode="ANSWER", input_routes=[])
     decision = _decision(
         target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
@@ -113,7 +113,7 @@ def test_no_input_with_required_analysis_routes_to_work_analysis() -> None:
     assert result["next_phase"] == WorkflowPhase.WORK_ANALYSIS.value
 
 
-def test_action_without_input_does_not_invent_retrieval_skip() -> None:
+def test_action_without__input_does_not__invent_retrieval_skip() -> None:
     state = _state(analysis_requirement="NONE", output_mode="ACTION", input_routes=[])
     decision = _decision(
         target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
@@ -123,7 +123,7 @@ def test_action_without_input_does_not_invent_retrieval_skip() -> None:
     assert canonicalize_optional_stage_decision(state, decision) == decision
 
 
-def test_retrieval_answer_with_no_analysis_routes_to_planning() -> None:
+def test_retrieval_answer__with_no_analysis__routes_to_planning() -> None:
     state = _state(
         analysis_requirement="NONE",
         output_mode="ANSWER",
@@ -141,7 +141,7 @@ def test_retrieval_answer_with_no_analysis_routes_to_planning() -> None:
     assert result["state_update"]["work_analysis_result"] is None
 
 
-def test_retrieval_with_required_analysis_stays_work_analysis() -> None:
+def test_retrieval_with__required_analysis__stays_work_analysis() -> None:
     state = _state(
         analysis_requirement="REQUIRED",
         output_mode="ANSWER",
@@ -155,7 +155,7 @@ def test_retrieval_with_required_analysis_stays_work_analysis() -> None:
     assert canonicalize_optional_stage_decision(state, decision) == decision
 
 
-def test_invalid_analysis_requirement_fails_closed() -> None:
+def test_invalid_analysis__requirement_fails__closed() -> None:
     state = _state(analysis_requirement="UNKNOWN", output_mode="ANSWER", input_routes=[])
     decision = _decision(
         target=SupervisorTarget.CONTEXT_RETRIEVAL.value,

@@ -47,7 +47,7 @@ def _seed_plan(database_path: Path) -> None:
         connection.close()
 
 
-def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path) -> None:
+def test_action_and__resource_ref_use__explicit_connector_identity(tmp_path: Path) -> None:
     database_path = tmp_path / "connector-binding.db"
     _seed_plan(database_path)
 
@@ -112,7 +112,7 @@ def test_action_and_resource_ref_use_explicit_connector_identity(tmp_path: Path)
         connection.close()
 
 
-def test_unregistered_resource_connector_is_rejected_before_persistence(tmp_path: Path) -> None:
+def test_unregistered_resource__connector_is__rejected_before_persistence(tmp_path: Path) -> None:
     database_path = tmp_path / "unregistered-connector.db"
     _seed_plan(database_path)
     resource_ref = ResourceRefRecord(

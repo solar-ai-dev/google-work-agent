@@ -22,7 +22,7 @@ def _repository() -> SqliteMessageRepository:
     return SqliteMessageRepository(connection)
 
 
-def test_message_repository_appends_owned_roles_and_lists_keyset() -> None:
+def test_message_repository__appends_owned_roles__and_lists_keyset() -> None:
     repository = _repository()
     repository.append_user_message(MessageRecord("m-1", "c-1", "r-1", "USER", "q", 10))
     repository.append_terminal_assistant_message(
@@ -38,7 +38,7 @@ def test_message_repository_appends_owned_roles_and_lists_keyset() -> None:
     assert [item.id for item in messages if item.run_id == "r-1"][:1] == ["m-2"]
 
 
-def test_message_repository_rejects_cross_role_append() -> None:
+def test_message_repository__rejects_cross__role_append() -> None:
     repository = _repository()
     with pytest.raises(ValueError):
         repository.append_user_message(MessageRecord("m-1", "c-1", "r-1", "ASSISTANT", "a", 10))

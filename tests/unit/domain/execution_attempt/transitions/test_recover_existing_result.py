@@ -5,7 +5,7 @@ from google_work_agent.domain.execution_attempt.transitions.recover_existing_res
 )
 
 
-def test_recover_existing_result_requires_unknown_result_and_enters_verification() -> None:
+def test_recover_existing_result__requires_unknown_result__and_enters_verification() -> None:
     result = transition_recover_existing_result(
         ActionStatusV1.UNKNOWN_RESULT,
         action_version=1,

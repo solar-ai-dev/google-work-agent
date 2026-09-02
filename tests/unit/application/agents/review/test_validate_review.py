@@ -8,12 +8,12 @@ from google_work_agent.application.agents.review.aggregate_review_findings impor
 from google_work_agent.application.agents.review.validate_review import validate_review
 
 
-def test_validate_review_accepts_exact_pass_contract() -> None:
+def test_validate_review__accepts_exact__pass_contract() -> None:
     result = aggregate_review_findings([], artifact_id="review-1", revision=1)
     assert validate_review(result) == result
 
 
-def test_validate_review_rejects_cross_variant_payload() -> None:
+def test_validate_review__rejects_cross__variant_payload() -> None:
     result = aggregate_review_findings([], artifact_id="review-1", revision=1)
     invalid = {**result, "issues": []}
     with pytest.raises(ValueError, match="keys"):

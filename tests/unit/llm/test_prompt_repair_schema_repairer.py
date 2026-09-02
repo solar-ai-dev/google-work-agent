@@ -57,7 +57,7 @@ def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceA
     )
 
 
-def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
+def test_repair_dispatches_the__same_base_prompt__with_full_input_shape(
     tmp_path: Path,
 ) -> None:
     manifest_path = _active_manifest(tmp_path)
@@ -122,7 +122,7 @@ def test_repair_dispatches_the_same_base_prompt_with_full_input_shape(
     assert '"failure_reason_code":"OUTPUT_SCHEMA_INVALID"' in assembled
 
 
-def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
+def test_repair_resolves__the_exact__base_prompt_id(tmp_path: Path) -> None:
     manifest_path = _active_manifest(tmp_path)
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
@@ -155,7 +155,7 @@ def test_repair_resolves_the_exact_base_prompt_id(tmp_path: Path) -> None:
     assert transport.invocations[0]["prompt_id"] == "planning.compose_answer"
 
 
-def test_repair_fails_closed_when_sibling_prompt_is_still_draft(tmp_path: Path) -> None:
+def test_repair_fails_closed__when_sibling_prompt__is_still_draft(tmp_path: Path) -> None:
     """The DRAFT base source must remain unavailable to Product repair."""
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     deactivate_prompt_slot(manifest_path, "planning.compose_answer")
@@ -183,7 +183,7 @@ def test_repair_fails_closed_when_sibling_prompt_is_still_draft(tmp_path: Path) 
     assert transport.invocations == []
 
 
-def test_repair_fails_closed_when_base_slot_does_not_exist(tmp_path: Path) -> None:
+def test_repair_fails_closed__when_base_slot__does_not_exist(tmp_path: Path) -> None:
     manifest_path = default_prompt_manifest_path()
     transport = FakeAPIProviderTransport()
     repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)

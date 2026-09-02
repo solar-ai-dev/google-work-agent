@@ -9,7 +9,7 @@ from google_work_agent.ports.system.contracts.workflow_binding import (
 )
 
 
-def test_workflow_binding_has_exact_canonical_shape() -> None:
+def test_workflow_binding__has_exact__canonical_shape() -> None:
     assert get_args(GraphProfileIdV1.__value__) == (
         "SINGLE_BASELINE",
         "THREE_STAGE",

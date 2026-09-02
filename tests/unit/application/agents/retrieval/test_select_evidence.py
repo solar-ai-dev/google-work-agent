@@ -15,7 +15,7 @@ from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import R
 from google_work_agent.application.agents.retrieval.select_evidence import select_evidence
 
 
-def test_select_evidence_preserves_stable_exclusion_obligations() -> None:
+def test_select_evidence__preserves_stable__exclusion_obligations() -> None:
     runtime = FakeLLMRuntime(
         deque(
             [

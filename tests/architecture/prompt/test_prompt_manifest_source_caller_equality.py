@@ -50,7 +50,7 @@ def _manifest_slots() -> list[dict[str, object]]:
     return cast(list[dict[str, object]], payload["slots"])
 
 
-def test_canonical_prompt_manifest_source_and_caller_contract_sets_are_equal() -> None:
+def test_canonical_prompt_manifest__source_and_caller__contract_sets_are_equal() -> None:
     slots = _manifest_slots()
     manifest_ids = {cast(str, slot["prompt_slot_id"]) for slot in slots}
     prompt_ids = {cast(str, slot["prompt_id"]) for slot in slots}
@@ -62,7 +62,7 @@ def test_canonical_prompt_manifest_source_and_caller_contract_sets_are_equal() -
     assert runtime_callers == set(REQUIRED_PROMPT_RUNTIME_NODE_BY_SLOT.values())
 
 
-def test_broad_predecessor_sources_are_absent_from_canonical_runtime() -> None:
+def test_broad_predecessor__sources_are_absent__from_canonical_runtime() -> None:
     source_ids = {path.stem for path in (PROMPT_RUNTIME / "sources").glob("*.md")}
 
     assert "work_analysis.resolve_relations" not in source_ids
@@ -70,7 +70,7 @@ def test_broad_predecessor_sources_are_absent_from_canonical_runtime() -> None:
     assert "review.recheck" not in source_ids
 
 
-def test_all_22_deterministic_operations_are_product_prompt_free() -> None:
+def test_all_22__deterministic_operations_are__product_prompt_free() -> None:
     banned_names = {
         "PROMPT_ID",
         "PromptReference",
@@ -99,7 +99,7 @@ def test_all_22_deterministic_operations_are_product_prompt_free() -> None:
     assert deterministic_prompt_ids.isdisjoint(REQUIRED_PROMPT_SLOT_IDS)
 
 
-def test_prompt_registry_and_assembler_have_one_production_authority() -> None:
+def test_prompt_registry__and_assembler_have__one_production_authority() -> None:
     registry_classes: list[Path] = []
     assembler_functions: list[Path] = []
     for path in SOURCE_ROOT.rglob("*.py"):
@@ -118,7 +118,7 @@ def test_prompt_registry_and_assembler_have_one_production_authority() -> None:
     assert not (SOURCE_ROOT / "application/orchestration/prompt_input_contract.py").exists()
 
 
-def test_production_provider_dispatch_uses_the_canonical_prompt_assembler() -> None:
+def test_production_provider__dispatch_uses_the__canonical_prompt_assembler() -> None:
     composition = (SOURCE_ROOT / "api/composition.py").read_text(encoding="utf-8")
     gemini = (SOURCE_ROOT / "adapters/llm/gemini/structured_inference.py").read_text(
         encoding="utf-8"

@@ -31,14 +31,14 @@ from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import 
 from google_work_agent.api.schemas.settings.update_settings import PatchSettingsRequest
 
 
-def test_action_transport_contracts_live_in_operation_modules() -> None:
+def test_action_transport__contracts_live__in_operation_modules() -> None:
     assert ApproveActionRequestV2.__module__.endswith(".actions.approve_action")
     assert ModifyActionRequestV2.__module__.endswith(".actions.modify_action")
     assert RejectActionRequestV2.__module__.endswith(".actions.reject_action")
     assert PrepareRetryRequestV2.__module__.endswith(".actions.prepare_retry")
 
 
-def test_run_transport_contracts_live_in_operation_modules() -> None:
+def test_run_transport__contracts_live__in_operation_modules() -> None:
     assert StartRunRequest.__module__.endswith(".runs.start_run")
     assert ConfirmationResponseV1.__module__.endswith(".runs.confirm_run")
     assert ResumeRunRequestV2.__module__.endswith(".runs.resume_run")
@@ -49,7 +49,7 @@ def test_run_transport_contracts_live_in_operation_modules() -> None:
     assert RecoveryUiProjectionV1.__module__.endswith(".runs.recovery")
 
 
-def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
+def test_other_plural__resource_contracts_live__in_operation_modules() -> None:
     assert StageAttachmentRequest.__module__.endswith(".attachments.stage_attachment")
     assert CreateConversationRequestV1.__module__.endswith(".conversations.create_conversation")
     assert RunSseEventResponseV1.__module__.endswith(".runs.list_run_events")
@@ -60,7 +60,7 @@ def test_other_plural_resource_contracts_live_in_operation_modules() -> None:
     assert ReadyResponse.__module__.endswith(".health_checks.get_readiness")
 
 
-def test_runtime_detail_uses_exact_canonical_wire_vocabulary() -> None:
+def test_runtime_detail__uses_exact__canonical_wire_vocabulary() -> None:
     runtime_schema = import_module(
         "google_work_agent.api.schemas.runtime_summaries.get_runtime_summary"
     )
@@ -93,7 +93,7 @@ def test_runtime_detail_uses_exact_canonical_wire_vocabulary() -> None:
     assert not hasattr(runtime_schema, "RuntimeDetailResponse")
 
 
-def test_retired_broad_plural_resource_schema_modules_are_absent() -> None:
+def test_retired_broad__plural_resource_schema__modules_are_absent() -> None:
     api_root = Path(__file__).resolve().parents[3] / "src" / "google_work_agent" / "api" / "schemas"
     for filename in (
         "actions.py",

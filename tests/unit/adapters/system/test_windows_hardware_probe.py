@@ -8,7 +8,7 @@ from google_work_agent.adapters.system import windows_hardware_probe as probe_mo
 from google_work_agent.adapters.system.windows_hardware_probe import WindowsHardwareProbeAdapter
 
 
-def test_probe_has_no_constructor_fields_that_can_fabricate_hardware_eligibility() -> None:
+def test_probe_has_no__constructor_fields_that__can_fabricate_hardware_eligibility() -> None:
     parameters = inspect.signature(WindowsHardwareProbeAdapter).parameters
     assert {
         "ram_total_bytes",
@@ -21,7 +21,7 @@ def test_probe_has_no_constructor_fields_that_can_fabricate_hardware_eligibility
     }.isdisjoint(parameters)
 
 
-def test_observed_hardware_remains_fail_closed_without_release_gate(
+def test_observed_hardware__remains_fail_closed__without_release_gate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(probe_module.os, "cpu_count", lambda: 8)
@@ -38,7 +38,7 @@ def test_observed_hardware_remains_fail_closed_without_release_gate(
     assert profile.local_runtime_eligible is False
 
 
-def test_release_gate_receives_only_observed_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_release_gate__receives_only__observed_facts(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(probe_module.os, "cpu_count", lambda: 8)
     monkeypatch.setattr(probe_module, "_physical_memory_bytes", lambda: 16 * 1024**3)
     monkeypatch.setattr(probe_module, "_probe_gpu", lambda _timeout: ("gpu", 8 * 1024**3))

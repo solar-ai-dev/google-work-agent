@@ -92,7 +92,7 @@ class _ShutdownComponent:
         self.calls.append("invalidate_all")
 
 
-def test_runtime_mode_is_process_local_idempotent_and_conflict_safe() -> None:
+def test_runtime_mode_is__process_local_idempotent__and_conflict_safe() -> None:
     adapter = ProcessRuntimeModeAdapter("AUTO")
 
     assert adapter.set_requested_mode("LOCAL_GPU", "mode-op-1") == "LOCAL_GPU"
@@ -102,7 +102,7 @@ def test_runtime_mode_is_process_local_idempotent_and_conflict_safe() -> None:
         adapter.set_requested_mode("API_LLM", "mode-op-1")
 
 
-def test_retrieval_cache_returns_every_canonical_resolution_status() -> None:
+def test_retrieval_cache__returns_every__canonical_resolution_status() -> None:
     cache = InMemoryRunRetrievalCache()
     read_result = ConnectorReadResultV1(1, "gmail_search_threads", "req-1", {}, None, 1)
     found_entry = RunRetrievalCacheEntryV1(
@@ -124,7 +124,7 @@ def test_retrieval_cache_returns_every_canonical_resolution_status() -> None:
     assert resolve("handle-1", "run-1", "route-1", "query-hash-1").status == "MISSING"
 
 
-def test_component_circuit_opens_at_threshold_and_success_resets() -> None:
+def test_component_circuit__opens_at_threshold__and_success_resets() -> None:
     adapter = ProcessComponentCircuitStateAdapter(failure_threshold=2, open_duration_ms=500)
     key = ComponentCircuitKey(1, "CONNECTOR", "google_workspace", None)
 
@@ -139,7 +139,7 @@ def test_component_circuit_opens_at_threshold_and_success_resets() -> None:
     assert reset.consecutive_technical_failures == 0
 
 
-def test_sse_buffer_sanitizes_replays_expires_cursor_and_clears() -> None:
+def test_sse_buffer__sanitizes_replays_expires__cursor_and_clears() -> None:
     buffer = InMemorySseEventBuffer(service_instance_id="service-1", capacity_per_run=2)
     for index in range(3):
         buffer.append(
@@ -164,7 +164,7 @@ def test_sse_buffer_sanitizes_replays_expires_cursor_and_clears() -> None:
     assert buffer.list_after("run-1", None, 10).events == ()
 
 
-def test_diagnostics_bundle_is_sanitized_bounded_and_replayable(tmp_path: Path) -> None:
+def test_diagnostics_bundle__is_sanitized__bounded_and_replayable(tmp_path: Path) -> None:
     adapter = FilesystemDiagnosticsAdapter(
         collect_snapshot=lambda: {"status": "ok", "api_key": "secret"},
         diagnostics_dir=tmp_path,
@@ -181,7 +181,7 @@ def test_diagnostics_bundle_is_sanitized_bounded_and_replayable(tmp_path: Path) 
     assert adapter.reconcile_bundle("diagnostics-op-1").status == "COMPLETED"
 
 
-def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_path: Path) -> None:
+def test_backup_create_restore__and_reconciliation_are__operation_ref_safe(tmp_path: Path) -> None:
     database_path = tmp_path / "app.sqlite3"
     connection = connect_sqlite(database_path)
     try:
@@ -219,7 +219,7 @@ def test_backup_create_restore_and_reconciliation_are_operation_ref_safe(tmp_pat
         connection.close()
 
 
-def test_process_maintenance_gate_consumes_live_state_and_serializes_restore() -> None:
+def test_process_maintenance_gate__consumes_live_state__and_serializes_restore() -> None:
     active = False
     gate = ProcessMaintenanceGateAdapter(has_active_write=lambda: active)
 
@@ -232,7 +232,7 @@ def test_process_maintenance_gate_consumes_live_state_and_serializes_restore() -
     assert gate.snapshot().has_active_write is True
 
 
-def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path: Path) -> None:
+def test_shutdown_acceptance__replays_and__reconciles_without_reexecuting(tmp_path: Path) -> None:
     calls: list[str] = []
     component = _ShutdownComponent(calls)
     adapter = ProcessShutdownAdapter(
@@ -257,7 +257,7 @@ def test_shutdown_acceptance_replays_and_reconciles_without_reexecuting(tmp_path
     assert adapter.reconcile_shutdown("shutdown-op-1").status == "COMPLETED"
 
 
-def test_checkpoint_external_llm_scope_is_typed_and_revision_monotonic(tmp_path: Path) -> None:
+def test_checkpoint_external_llm__scope_is_typed__and_revision_monotonic(tmp_path: Path) -> None:
     database_path = tmp_path / "checkpoint.sqlite3"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection, now_ms=lambda: 1)

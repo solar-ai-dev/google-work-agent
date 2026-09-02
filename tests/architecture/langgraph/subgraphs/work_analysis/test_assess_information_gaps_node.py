@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_assess_information_gaps_has_exact_node_projection_and_router() -> None:
+def test_assess_information_gaps__has_exact_node__projection_and_router() -> None:
     owner = Path(__file__).resolve().parents[5] / (
         "src/google_work_agent/adapters/langgraph/subgraphs/work_analysis"
     )

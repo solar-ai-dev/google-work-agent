@@ -1,7 +1,7 @@
 from google_work_agent.application.agents.planning.assemble_plan import assemble_plan
 
 
-def test_assembly_consumes_previously_derived_dependencies() -> None:
+def test_assembly_consumes__previously_derived__dependencies() -> None:
     seeds = [
         {
             "action_id": "a1",

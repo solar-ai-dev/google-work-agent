@@ -2,7 +2,7 @@ import ast
 from pathlib import Path
 
 
-def test_query_attempt_v1_has_one_schema_authority() -> None:
+def test_query_attempt__v1_has__one_schema_authority() -> None:
     root = Path(__file__).resolve().parents[3]
     source_root = root / "src/google_work_agent"
     definitions: list[Path] = []

@@ -31,7 +31,7 @@ def _container_with_list_handler(handler: object) -> ApiContainer:
     )
 
 
-def test_api_container_preserves_exact_resource_handler_binding() -> None:
+def test_api_container__preserves_exact__resource_handler_binding() -> None:
     handler = object()
     container = _container_with_list_handler(handler)
 

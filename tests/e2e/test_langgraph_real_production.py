@@ -32,7 +32,7 @@ _API_HEADERS = {
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_answer_only_reaches_terminal_through_real_production_composition(
+def test_answer_only__reaches_terminal_through__real_production_composition(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -77,7 +77,7 @@ def test_answer_only_reaches_terminal_through_real_production_composition(
     ],
 )
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_google_reads_reach_terminal_through_actual_retrieval_and_mcp(
+def test_google_reads_reach__terminal_through_actual__retrieval_and_mcp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     scenario: str,
@@ -126,7 +126,7 @@ def test_google_reads_reach_terminal_through_actual_retrieval_and_mcp(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_approved_write_executes_claims_and_verifies_through_real_mcp(
+def test_approved_write_executes__claims_and_verifies__through_real_mcp(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -175,7 +175,7 @@ def test_approved_write_executes_claims_and_verifies_through_real_mcp(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_partial_approval_executes_only_the_approved_action(
+def test_partial_approval__executes_only__the_approved_action(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -214,7 +214,7 @@ def test_partial_approval_executes_only_the_approved_action(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_rejection_finishes_without_external_write(
+def test_rejection_finishes__without_external__write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -245,7 +245,7 @@ def test_rejection_finishes_without_external_write(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_cancel_preempts_waiting_approval_without_external_write(
+def test_cancel_preempts__waiting_approval__without_external_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -283,7 +283,7 @@ def test_cancel_preempts_waiting_approval_without_external_write(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_failed_not_sent_write_can_be_retried_with_fresh_approval(
+def test_failed_not_sent__write_can_be__retried_with_fresh_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -330,7 +330,7 @@ def test_failed_not_sent_write_can_be_retried_with_fresh_approval(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_unknown_result_recovers_without_blind_resend(
+def test_unknown_result__recovers_without__blind_resend(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -367,7 +367,7 @@ def test_unknown_result_recovers_without_blind_resend(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_verification_mismatch_requires_explicit_partial_resolution(
+def test_verification_mismatch__requires_explicit__partial_resolution(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -421,7 +421,7 @@ def test_verification_mismatch_requires_explicit_partial_resolution(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_reauth_restores_safe_retry_and_completes_after_fresh_approval(
+def test_reauth_restores_safe__retry_and_completes__after_fresh_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -481,7 +481,7 @@ def test_reauth_restores_safe_retry_and_completes_after_fresh_approval(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_recovery_recheck_resumes_verification_without_repeating_write(
+def test_recovery_recheck__resumes_verification__without_repeating_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -535,7 +535,7 @@ def test_recovery_recheck_resumes_verification_without_repeating_write(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_restart_recreates_production_composition_and_resumes_durable_interrupt(
+def test_restart_recreates__production_composition_and__resumes_durable_interrupt(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -607,7 +607,7 @@ def test_restart_recreates_production_composition_and_resumes_durable_interrupt(
 
 @pytest.mark.filterwarnings("ignore::pytest.PytestUnhandledThreadExceptionWarning")
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
+def test_retrieval_cache_loss__restarts_from_durable__checkpoint_before_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -666,7 +666,7 @@ def test_retrieval_cache_loss_restarts_from_durable_checkpoint_before_write(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_review_issue_uses_real_back_edge_before_approval(
+def test_review_issue__uses_real_back__edge_before_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,
@@ -709,7 +709,7 @@ def test_review_issue_uses_real_back_edge_before_approval(
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
-def test_context_adjustment_reenters_retrieval_and_requires_revised_approval(
+def test_context_adjustment__reenters_retrieval_and__requires_revised_approval(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     profile: GraphProfile,

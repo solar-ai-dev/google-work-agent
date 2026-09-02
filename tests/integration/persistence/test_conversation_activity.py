@@ -34,7 +34,7 @@ def _seeded_database(tmp_path: Path, *, conversation_updated_at_ms: int) -> Path
     return database_path
 
 
-def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: Path) -> None:
+def test_start_run__advances_the_conversations__last_activity_timestamp(tmp_path: Path) -> None:
     old_updated_at_ms = 1_000
     database_path = _seeded_database(tmp_path, conversation_updated_at_ms=old_updated_at_ms)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
@@ -68,7 +68,7 @@ def test_start_run_advances_the_conversations_last_activity_timestamp(tmp_path: 
     assert conversation.updated_at_ms == new_now_ms
 
 
-def test_conversation_touch_never_moves_the_timestamp_backward(tmp_path: Path) -> None:
+def test_conversation_touch__never_moves__the_timestamp_backward(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path, conversation_updated_at_ms=5_000)
     unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
 

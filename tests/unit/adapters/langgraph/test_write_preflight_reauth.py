@@ -58,7 +58,7 @@ class _Call:
         GoogleWorkspaceErrorCode.PERMISSION_DENIED,
     ],
 )
-def test_preflight_credential_loss_requires_reauth_before_claim(
+def test_preflight_credential__loss_requires__reauth_before_claim(
     code: GoogleWorkspaceErrorCode,
 ) -> None:
     calls: list[str] = []

@@ -5,7 +5,7 @@ ROOT = Path("src/google_work_agent")
 LAUNCHER_ROOT = Path("launcher")
 
 
-def test_background_executor_has_one_production_binding_in_composition_root() -> None:
+def test_background_executor_has__one_production_binding__in_composition_root() -> None:
     bindings: list[Path] = []
     for path in ROOT.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
@@ -15,7 +15,7 @@ def test_background_executor_has_one_production_binding_in_composition_root() ->
     assert bindings == [ROOT / "api" / "composition.py"]
 
 
-def test_production_composition_symbol_is_exact() -> None:
+def test_production_composition__symbol_is__exact() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     assert "def build_production_runtime(" in source
     assert "def build_production_container(" not in source
@@ -23,7 +23,7 @@ def test_production_composition_symbol_is_exact() -> None:
     assert "checkpoint, resume_target_registry" in source
 
 
-def test_full_delivery_container_has_one_production_construction_authority() -> None:
+def test_full_delivery__container_has_one__production_construction_authority() -> None:
     owners: list[Path] = []
     for path in ROOT.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -38,7 +38,7 @@ def test_full_delivery_container_has_one_production_construction_authority() -> 
     assert owners == [ROOT / "api" / "composition.py"]
 
 
-def test_launcher_only_supplies_environment_values_to_composition() -> None:
+def test_launcher_only__supplies_environment__values_to_composition() -> None:
     launcher = LAUNCHER_ROOT / "entrypoint.py"
     tree = ast.parse(launcher.read_text(encoding="utf-8"))
     forbidden_constructors: list[str] = []
@@ -61,7 +61,7 @@ def test_launcher_only_supplies_environment_values_to_composition() -> None:
     assert list((ROOT / "launcher").glob("*.py")) == []
 
 
-def test_fastapi_app_calls_the_only_public_production_builder() -> None:
+def test_fastapi_app__calls_the_only__public_production_builder() -> None:
     app_source = (ROOT / "api" / "app.py").read_text(encoding="utf-8")
     assert app_source.count("build_production_runtime(") == 1
     production_callers = [
@@ -73,7 +73,7 @@ def test_fastapi_app_calls_the_only_public_production_builder() -> None:
     assert production_callers == [ROOT / "api" / "app.py"]
 
 
-def test_legacy_launcher_composition_authority_is_absent() -> None:
+def test_legacy_launcher__composition_authority__is_absent() -> None:
     assert not (ROOT / "launcher" / "connector_composition.py").exists()
     offenders = [
         path
@@ -83,14 +83,14 @@ def test_legacy_launcher_composition_authority_is_absent() -> None:
     assert offenders == []
 
 
-def test_fastapi_app_assembly_has_one_authority() -> None:
+def test_fastapi_app__assembly_has__one_authority() -> None:
     owners = [
         path for path in ROOT.rglob("*.py") if "def create_app(" in path.read_text(encoding="utf-8")
     ]
     assert owners == [ROOT / "api" / "app.py"]
 
 
-def test_deferred_startup_task_is_tracked_and_not_workflow_execution_authority() -> None:
+def test_deferred_startup_task__is_tracked_and__not_workflow_execution_authority() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     create_task_sites = [
         path
@@ -102,7 +102,7 @@ def test_deferred_startup_task_is_tracked_and_not_workflow_execution_authority()
     assert "core = await asyncio.shield(worker)" in source
 
 
-def test_startup_and_shutdown_callbacks_preserve_required_order() -> None:
+def test_startup_and__shutdown_callbacks__preserve_required_order() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     startup = source.index("startup_callbacks=(")
     reconcile = source.index("_reconcile_inflight_executions,", startup)
@@ -117,7 +117,7 @@ def test_startup_and_shutdown_callbacks_preserve_required_order() -> None:
     assert shutdown < stop_runtime < close_graph < close_connectors
 
 
-def test_installed_core_dependencies_initialize_before_ready_in_canonical_order() -> None:
+def test_installed_core_dependencies__initialize_before_ready__in_canonical_order() -> None:
     source = (ROOT / "api" / "composition.py").read_text(encoding="utf-8")
     runtime = source[
         source.index("def build_production_runtime(") : source.index("\ndef _build_llm_runtime(")
@@ -131,7 +131,7 @@ def test_installed_core_dependencies_initialize_before_ready_in_canonical_order(
     assert migration < checkpoint < keyring < connector < llm
 
 
-def test_sqlite_checkpoint_adapter_is_the_only_production_sqlite_saver_owner() -> None:
+def test_sqlite_checkpoint_adapter__is_the_only__production_sqlite_saver_owner() -> None:
     owners: list[Path] = []
     import_line = "from langgraph.checkpoint.sqlite import SqliteSaver"
     for path in ROOT.rglob("*.py"):
@@ -141,14 +141,14 @@ def test_sqlite_checkpoint_adapter_is_the_only_production_sqlite_saver_owner() -
     assert owners == [ROOT / "adapters/system/sqlite_checkpoint.py"]
 
 
-def test_typed_checkpoint_projection_is_joined_to_native_checkpoint_truth() -> None:
+def test_typed_checkpoint_projection__is_joined_to__native_checkpoint_truth() -> None:
     source = (ROOT / "adapters/system/sqlite_checkpoint.py").read_text(encoding="utf-8")
     assert "REFERENCES checkpoints(" in source
     assert "JOIN checkpoints" in source
     assert "checkpoint_blob BLOB" not in source
 
 
-def test_application_never_reads_or_patches_opaque_checkpoint_blob() -> None:
+def test_application_never__reads_or_patches__opaque_checkpoint_blob() -> None:
     offenders = [
         path
         for path in (ROOT / "application").rglob("*.py")

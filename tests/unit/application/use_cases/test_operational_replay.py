@@ -15,7 +15,7 @@ from google_work_agent.ports.system.contracts.operational_command_replay import 
 )
 
 
-def test_operational_command_executes_once_and_replays_bounded_result(tmp_path: Path) -> None:
+def test_operational_command__executes_once_and__replays_bounded_result(tmp_path: Path) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path)
     execution_refs: list[str] = []
 
@@ -46,7 +46,7 @@ def test_operational_command_executes_once_and_replays_bounded_result(tmp_path: 
     assert execution_refs == [first.operation_ref]
 
 
-def test_operational_command_rejects_same_identity_with_different_input(tmp_path: Path) -> None:
+def test_operational_command__rejects_same_identity__with_different_input(tmp_path: Path) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path)
     execute_operational_command(
         replay_port=replay,
@@ -70,7 +70,7 @@ def test_operational_command_rejects_same_identity_with_different_input(tmp_path
         )
 
 
-def test_reserved_command_reconciles_before_any_retry(tmp_path: Path) -> None:
+def test_reserved_command__reconciles_before__any_retry(tmp_path: Path) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path)
     execute_calls: list[str] = []
 
@@ -106,7 +106,7 @@ def test_reserved_command_reconciles_before_any_retry(tmp_path: Path) -> None:
     assert execute_calls == []
 
 
-def test_uncertain_reconciliation_never_executes_again(tmp_path: Path) -> None:
+def test_uncertain_reconciliation__never_executes__again(tmp_path: Path) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path)
     with pytest.raises(RuntimeError, match="simulated crash"):
         execute_operational_command(

@@ -11,7 +11,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.command_receipt_
 from google_work_agent.domain.results import ResultCode
 
 
-def test_reserve_replay_and_immutable_result(tmp_path: Path) -> None:
+def test_reserve_replay__and_immutable__result(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "receipts.db")
     apply_migrations(connection, now_ms=lambda: 1)
     repository = SqliteCommandReceiptRepository(connection)
@@ -61,7 +61,7 @@ def test_reserve_replay_and_immutable_result(tmp_path: Path) -> None:
     assert replay.result_version == 2
 
 
-def test_durable_cancel_intent_requires_applied_transition_receipt() -> None:
+def test_durable_cancel__intent_requires__applied_transition_receipt() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(

@@ -13,7 +13,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 )
 
 
-def test_exclusion_obligation_is_checkpointed_before_retrieval_entry() -> None:
+def test_exclusion_obligation__is_checkpointed__before_retrieval_entry() -> None:
     writes = dict(
         _command_writes(
             native_resume_command(
@@ -28,7 +28,7 @@ def test_exclusion_obligation_is_checkpointed_before_retrieval_entry() -> None:
     assert writes["exclusion_obligation_segment_ids"] == ["segment-1"]
 
 
-def test_pending_user_need_is_checkpointed_before_retrieval_entry() -> None:
+def test_pending_user__need_is_checkpointed__before_retrieval_entry() -> None:
     writes = dict(
         _command_writes(
             native_resume_command(
@@ -55,7 +55,7 @@ def test_pending_user_need_is_checkpointed_before_retrieval_entry() -> None:
     assert writes["__modify_review_plan_id__"] is None
 
 
-def test_context_adjustment_charges_revision_and_additional_retrieval_budget() -> None:
+def test_context_adjustment__charges_revision_and__additional_retrieval_budget() -> None:
     budget = _authorize_context_adjustment_budget(
         {
             "retry_budget": build_default_run_budget(),

@@ -77,7 +77,7 @@ def _write_signature(root: Path, content: bytes) -> None:
     )
 
 
-def test_signed_manifest_chain_projects_only_authenticated_build_fields(tmp_path: Path) -> None:
+def test_signed_manifest__chain_projects_only__authenticated_build_fields(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
 
     installation = verify_installation(
@@ -98,7 +98,7 @@ def test_signed_manifest_chain_projects_only_authenticated_build_fields(tmp_path
     assert "client_secret" not in config.__dataclass_fields__
 
 
-def test_tampered_referenced_file_fails_closed(tmp_path: Path) -> None:
+def test_tampered_referenced__file_fails__closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     (tmp_path / "service" / "GoogleWorkAgentService.exe").write_bytes(b"tampered")
 
@@ -108,7 +108,7 @@ def test_tampered_referenced_file_fails_closed(tmp_path: Path) -> None:
     assert error.value.safe_code == "INSTALLATION_FILE_TAMPERED"
 
 
-def test_manifest_unknown_field_and_relative_install_root_fail_closed(tmp_path: Path) -> None:
+def test_manifest_unknown_field__and_relative_install__root_fail_closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     manifest_path = tmp_path / "release-manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -126,7 +126,7 @@ def test_manifest_unknown_field_and_relative_install_root_fail_closed(tmp_path: 
         verify_installation(Path("relative-install"), trusted_public_key_pem=public_key)
 
 
-def test_explicitly_missing_release_key_never_falls_back_to_unsigned_startup(
+def test_explicitly_missing_release__key_never_falls__back_to_unsigned_startup(
     tmp_path: Path,
 ) -> None:
     _write_signed_installation(tmp_path)
@@ -137,14 +137,14 @@ def test_explicitly_missing_release_key_never_falls_back_to_unsigned_startup(
     assert error.value.safe_code == "RELEASE_PUBLIC_KEY_UNAVAILABLE"
 
 
-def test_production_release_public_key_is_embedded_and_fingerprinted() -> None:
+def test_production_release__public_key_is__embedded_and_fingerprinted() -> None:
     assert isinstance(load_pem_public_key(EMBEDDED_RELEASE_PUBLIC_KEY_PEM), Ed25519PublicKey)
     assert hashlib.sha256(EMBEDDED_RELEASE_PUBLIC_KEY_PEM).hexdigest() == (
         EMBEDDED_RELEASE_PUBLIC_KEY_SHA256
     )
 
 
-def test_manifest_one_byte_mutation_fails_signature_verification(tmp_path: Path) -> None:
+def test_manifest_one__byte_mutation__fails_signature_verification(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     manifest_path = tmp_path / "release-manifest.json"
     content = bytearray(manifest_path.read_bytes())
@@ -155,7 +155,7 @@ def test_manifest_one_byte_mutation_fails_signature_verification(tmp_path: Path)
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
 
 
-def test_signature_one_byte_mutation_fails_closed(tmp_path: Path) -> None:
+def test_signature_one__byte_mutation__fails_closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     signature_path = tmp_path / "release-manifest.sig"
     signature = bytearray(base64.b64decode(signature_path.read_text(encoding="ascii")))
@@ -166,7 +166,7 @@ def test_signature_one_byte_mutation_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
 
 
-def test_wrong_public_key_fails_closed(tmp_path: Path) -> None:
+def test_wrong_public__key_fails__closed(tmp_path: Path) -> None:
     _write_signed_installation(tmp_path)
     wrong_public_key = Ed25519PrivateKey.generate().public_key().public_bytes(
         Encoding.PEM,
@@ -177,7 +177,7 @@ def test_wrong_public_key_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=wrong_public_key)
 
 
-def test_unsupported_public_key_algorithm_fails_closed(tmp_path: Path) -> None:
+def test_unsupported_public__key_algorithm__fails_closed(tmp_path: Path) -> None:
     _write_signed_installation(tmp_path)
     rsa_public_key = (
         generate_rsa_key(public_exponent=65537, key_size=2048)
@@ -192,7 +192,7 @@ def test_unsupported_public_key_algorithm_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=rsa_public_key)
 
 
-def test_missing_or_malformed_signature_fails_closed(tmp_path: Path) -> None:
+def test_missing_or__malformed_signature__fails_closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     signature_path = tmp_path / "release-manifest.sig"
     signature_path.unlink()
@@ -204,7 +204,7 @@ def test_missing_or_malformed_signature_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
 
 
-def test_signed_digest_mismatch_fails_closed(tmp_path: Path) -> None:
+def test_signed_digest__mismatch_fails__closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     manifest_path = tmp_path / "release-manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -217,7 +217,7 @@ def test_signed_digest_mismatch_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
 
 
-def test_signed_malformed_manifest_fails_closed(tmp_path: Path) -> None:
+def test_signed_malformed__manifest_fails__closed(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     content = b"{malformed"
     (tmp_path / "release-manifest.json").write_bytes(content)
@@ -227,7 +227,7 @@ def test_signed_malformed_manifest_fails_closed(tmp_path: Path) -> None:
         verify_installation(tmp_path.resolve(), trusted_public_key_pem=public_key)
 
 
-def test_test_only_key_cannot_authenticate_against_production_trust_root(
+def test_test_only_key__cannot_authenticate_against__production_trust_root(
     tmp_path: Path,
 ) -> None:
     _write_signed_installation(tmp_path)
@@ -236,7 +236,7 @@ def test_test_only_key_cannot_authenticate_against_production_trust_root(
         verify_installation(tmp_path.resolve())
 
 
-def test_unlisted_runtime_override_fails_before_code_execution(tmp_path: Path) -> None:
+def test_unlisted_runtime__override_fails__before_code_execution(tmp_path: Path) -> None:
     public_key = _write_signed_installation(tmp_path)
     override = tmp_path / "runtime" / "override-config.json"
     override.parent.mkdir()
@@ -253,7 +253,7 @@ def test_unlisted_runtime_override_fails_before_code_execution(tmp_path: Path) -
         )
 
 
-def test_invalid_authenticode_fails_closed_after_manifest_verification(
+def test_invalid_authenticode__fails_closed__after_manifest_verification(
     tmp_path: Path,
 ) -> None:
     public_key = _write_signed_installation(tmp_path)
@@ -269,7 +269,7 @@ def test_invalid_authenticode_fails_closed_after_manifest_verification(
         )
 
 
-def test_exact_installer_generated_uninstaller_pair_requires_code_signature(
+def test_exact_installer__generated_uninstaller_pair__requires_code_signature(
     tmp_path: Path,
 ) -> None:
     public_key = _write_signed_installation(tmp_path)

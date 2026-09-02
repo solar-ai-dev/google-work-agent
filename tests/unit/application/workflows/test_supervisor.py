@@ -52,7 +52,7 @@ from google_work_agent.application.use_cases.run.terminal_contract import (
 )
 
 
-def test_request_complete_routes_to_tool_route() -> None:
+def test_request_complete__routes_to__tool_route() -> None:
     state = _state()
 
     decision = route_supervisor(
@@ -76,7 +76,7 @@ def test_request_complete_routes_to_tool_route() -> None:
     assert decision["state_update"]["finalize_intent"] is None
 
 
-def test_tool_route_ready_enters_retrieval_for_initial_query_planning() -> None:
+def test_tool_route_ready__enters_retrieval_for__initial_query_planning() -> None:
     plan = _tool_route_plan()
     decision = route_supervisor(
         phase=WorkflowPhase.TOOL_ROUTING,
@@ -95,7 +95,7 @@ def test_tool_route_ready_enters_retrieval_for_initial_query_planning() -> None:
     assert decision["state_update"]["tool_route_plan"] == plan
 
 
-def test_unknown_tool_route_disposition_fails_closed_to_recovery() -> None:
+def test_unknown_tool__route_disposition_fails__closed_to_recovery() -> None:
     decision = route_supervisor(
         phase=WorkflowPhase.TOOL_ROUTING,
         state=_state(request_intent=_request_intent()),
@@ -112,7 +112,7 @@ def test_unknown_tool_route_disposition_fails_closed_to_recovery() -> None:
     assert decision["reason_code"] == "TOOL_ROUTE_CONTRACT_VIOLATION"
 
 
-def test_work_analysis_routing_is_owned_by_canonical_subgraph() -> None:
+def test_work_analysis__routing_is_owned__by_canonical_subgraph() -> None:
     state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
 
     with pytest.raises(ValueError, match="canonical eight-node subgraph"):
@@ -123,7 +123,7 @@ def test_work_analysis_routing_is_owned_by_canonical_subgraph() -> None:
         )
 
 
-def test_review_pass_with_plan_routes_to_domain_validation() -> None:
+def test_review_pass__with_plan_routes__to_domain_validation() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_plan_draft("PLAN_READY"),
@@ -141,7 +141,7 @@ def test_review_pass_with_plan_routes_to_domain_validation() -> None:
     assert decision["state_update"]["plan_review"] == result
 
 
-def test_domain_validation_require_approval_routes_to_waiting_approval() -> None:
+def test_domain_validation__require_approval_routes__to_waiting_approval() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
         planning_result=_plan_draft("PLAN_READY"),
@@ -164,7 +164,7 @@ def test_domain_validation_require_approval_routes_to_waiting_approval() -> None
     assert decision["state_update"]["finalize_intent"] is None
 
 
-def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
+def test_domain_validation__block_finalizes__with_blocked_intent() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.DOMAIN_VALIDATION,
         planning_result=_plan_draft("PLAN_READY"),
@@ -188,7 +188,7 @@ def test_domain_validation_block_finalizes_with_blocked_intent() -> None:
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
-def test_preflight_write_claim_routes_to_action_execution() -> None:
+def test_preflight_write__claim_routes__to_action_execution() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
         planning_result=_plan_draft("PLAN_READY"),
@@ -219,7 +219,7 @@ def test_preflight_write_claim_routes_to_action_execution() -> None:
     assert decision["state_update"]["finalize_intent"] is None
 
 
-def test_preflight_reauth_required_routes_to_reauth_boundary() -> None:
+def test_preflight_reauth__required_routes__to_reauth_boundary() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
         planning_result=_plan_draft("PLAN_READY"),
@@ -249,7 +249,7 @@ def test_preflight_reauth_required_routes_to_reauth_boundary() -> None:
     assert decision["state_update"]["finalize_intent"] is None
 
 
-def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
+def test_preflight_failure__blocks_even_with__approved_plan_id() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PREFLIGHT,
         planning_result=_plan_draft("PLAN_READY"),
@@ -281,7 +281,7 @@ def test_preflight_failure_blocks_even_with_approved_plan_id() -> None:
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
-def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> None:
+def test_review_pass_with__answer_creates_checkpoint__safe_finalize_intent() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_answer_draft("ANSWER_ONLY"),
@@ -304,7 +304,7 @@ def test_review_pass_with_answer_creates_checkpoint_safe_finalize_intent() -> No
     assert restored_intent["intent"] == FinalizeIntent.COMPLETED.value
 
 
-def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget() -> None:
+def test_review_revise_routes__answer_draft_to_revise__answer_with_shared_budget() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_answer_draft("ANSWER_ONLY"),
@@ -324,7 +324,7 @@ def test_review_revise_routes_answer_draft_to_revise_answer_with_shared_budget()
     assert decision["state_update"]["retry_budget"]["planning_revisions_used"] == 1
 
 
-def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
+def test_second_revise_with__the_same_failure__signature_is_blocked() -> None:
     """G3 approve_semantic_revision dedup: same target Planning node (here
     planning.revise_answer, since answer_draft is set) + the same normalized
     Review failure signature must not get a second revision attempt, even
@@ -368,7 +368,7 @@ def test_second_revise_with_the_same_failure_signature_is_blocked() -> None:
     assert first["state_update"]["retry_budget"]["planning_revisions_used"] == 1
 
 
-def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
+def test_semantic_revision__dedup_survives__a_resumed_run() -> None:
     """G3 resume persistence: a retry_budget restored from checkpoint with
     the signature already recorded (as if the Run had revised, resumed
     after an interrupt, and re-entered Review with the identical failure)
@@ -403,7 +403,7 @@ def test_semantic_revision_dedup_survives_a_resumed_run() -> None:
     )
 
 
-def test_review_revise_routes_plan_draft_to_revise_plan() -> None:
+def test_review_revise__routes_plan_draft__to_revise_plan() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_plan_draft("PLAN_READY"),
@@ -420,7 +420,7 @@ def test_review_revise_routes_plan_draft_to_revise_plan() -> None:
     assert decision["state_update"]["retry_budget"]["planning_revisions_used"] == 1
 
 
-def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -> None:
+def test_review_retrieve_more__budget_deny_blocks__instead_of_guessing_failure() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_answer_draft("ANSWER_ONLY"),
@@ -450,7 +450,7 @@ def test_review_retrieve_more_budget_deny_blocks_instead_of_guessing_failure() -
     assert decision["state_update"]["finalize_intent"]["intent"] == FinalizeIntent.BLOCKED.value
 
 
-def test_review_retrieve_more_with_frozen_route_becomes_retrieval_required() -> None:
+def test_review_retrieve_more__with_frozen_route__becomes_retrieval_required() -> None:
     """Q2-HANDOFF: Review RETRIEVE_MORE -> RetrievalRequiredV1 -> Retrieval,
     only when a frozen IN Route already exists to retry within."""
     plan = _tool_route_plan()
@@ -486,7 +486,7 @@ def test_review_retrieve_more_with_frozen_route_becomes_retrieval_required() -> 
     ]
 
 
-def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration() -> None:
+def test_review_retrieve_more__without_frozen_route__becomes_route_reconsideration() -> None:
     """Q2-HANDOFF: Review RETRIEVE_MORE with no frozen IN Route to retry within
     -> RouteReconsiderationRequiredV1 -> Tool Route, not RetrievalRequiredV1."""
     state = _state(
@@ -510,7 +510,7 @@ def test_review_retrieve_more_without_frozen_route_becomes_route_reconsideration
     assert decision["reason_code"] == "RETRIEVAL_INPUT_ROUTE_UNAVAILABLE"
 
 
-def test_review_route_reconsideration_routes_to_tool_route() -> None:
+def test_review_route__reconsideration_routes__to_tool_route() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_answer_draft("ANSWER_ONLY"),
@@ -530,7 +530,7 @@ def test_review_route_reconsideration_routes_to_tool_route() -> None:
     assert decision["state_update"]["plan_review"] == _review_result("ROUTE_RECONSIDERATION")
 
 
-def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_present() -> None:
+def test_additional_acquisition_budget__deny_preserves_partial__result_kind_when_present() -> None:
     state = _state(
         workflow_phase=WorkflowPhase.PLAN_REVIEW,
         planning_result=_answer_draft("ANSWER_ONLY"),
@@ -557,7 +557,7 @@ def test_additional_acquisition_budget_deny_preserves_partial_result_kind_when_p
     assert decision["state_update"]["finalize_intent"]["result_kind"] == "PARTIAL"
 
 
-def test_request_invalid_routes_to_blocked_finalize() -> None:
+def test_request_invalid__routes_to__blocked_finalize() -> None:
     state = _state(workflow_phase=WorkflowPhase.REQUEST_ANALYSIS)
 
     decision = route_supervisor(
@@ -585,7 +585,7 @@ def test_request_invalid_routes_to_blocked_finalize() -> None:
     assert decision["reason_code"] == "UNSUPPORTED_SCOPE"
 
 
-def test_recovery_phase_routes_to_recovery_boundary() -> None:
+def test_recovery_phase__routes_to__recovery_boundary() -> None:
     state = _state(workflow_phase=WorkflowPhase.RECOVERY)
 
     decision = route_supervisor(

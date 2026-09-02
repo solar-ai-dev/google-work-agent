@@ -17,7 +17,7 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
 from google_work_agent.ports.connector.connector_failure import ConnectorOperationFailure
 
 
-def test_staging_replays_same_explicit_command_without_duplicate_artifact(tmp_path: Path) -> None:
+def test_staging_replays__same_explicit_command__without_duplicate_artifact(tmp_path: Path) -> None:
     staging = FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging")
     handler = CreateStagedAttachmentHandler(
         staging=staging,
@@ -39,7 +39,7 @@ def test_staging_replays_same_explicit_command_without_duplicate_artifact(tmp_pa
     assert len(tuple((tmp_path / "staging").glob("*.bin"))) == 1
 
 
-def test_staging_normalizes_invalid_filename_without_filesystem_leak(tmp_path: Path) -> None:
+def test_staging_normalizes__invalid_filename__without_filesystem_leak(tmp_path: Path) -> None:
     handler = CreateStagedAttachmentHandler(
         staging=FilesystemAttachmentStagingAdapter(staging_dir=tmp_path / "staging"),
         replay=FilesystemOperationalCommandReplayAdapter(tmp_path / "replay"),

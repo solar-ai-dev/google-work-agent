@@ -13,7 +13,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 from google_work_agent.adapters.langgraph.subgraphs.planning.state import PlanningStateV2
 
 
-def test_assemble_is_one_runtime_node_for_assembly_and_validation() -> None:
+def test_assemble_is_one__runtime_node_for__assembly_and_validation() -> None:
     source = inspect.getsource(PlanningSubgraph.build)
     assert 'graph.add_node("assemble"' in source
     node_source = inspect.getsource(assemble_plan_node)

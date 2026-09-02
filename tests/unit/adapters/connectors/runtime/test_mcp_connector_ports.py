@@ -84,7 +84,7 @@ def _registry(client: _Client) -> ConnectorRuntimeRegistry:
     return registry
 
 
-def test_read_adapter_requires_signed_binding_and_projects_bounded_output() -> None:
+def test_read_adapter_requires__signed_binding_and__projects_bounded_output() -> None:
     client = _Client(MCPToolCallResultV1(1, "gmail_get_thread", "OK", {"request_id": "r1"}, None))
     binding = load_signed_tool_registry().bind_required(
         "google_workspace", "gmail_get_thread", "READ"
@@ -98,7 +98,7 @@ def test_read_adapter_requires_signed_binding_and_projects_bounded_output() -> N
     assert client.calls[0][1] == "gmail_get_thread"
 
 
-def test_read_adapter_accepts_only_an_explicit_internal_capability_binding() -> None:
+def test_read_adapter_accepts__only_an_explicit__internal_capability_binding() -> None:
     binding = google_workspace_internal_read_binding("search_by_recovery_fingerprint")
     client = _Client(
         MCPToolCallResultV1(
@@ -123,7 +123,7 @@ def test_read_adapter_accepts_only_an_explicit_internal_capability_binding() -> 
     assert client.calls[0][1] == "search_by_recovery_fingerprint"
 
 
-def test_write_adapter_forwards_application_signed_claim_unchanged() -> None:
+def test_write_adapter__forwards_application__signed_claim_unchanged() -> None:
     client = _Client(MCPToolCallResultV1(1, "gmail_send", "OK", {"request_id": "r1"}, None))
     binding = load_signed_tool_registry().bind_required("google_workspace", "gmail_send", "SEND")
 
@@ -143,7 +143,7 @@ def test_write_adapter_forwards_application_signed_claim_unchanged() -> None:
     assert client.sign_calls == 0
 
 
-def test_write_adapter_normalizes_raised_transport_certainty() -> None:
+def test_write_adapter__normalizes_raised__transport_certainty() -> None:
     class _FailingClient(_Client):
         def call_tool(
             self, connector_id: str, tool_id: str, arguments: Any, timeout_ms: int
@@ -175,7 +175,7 @@ def test_write_adapter_normalizes_raised_transport_certainty() -> None:
     assert result.provider_request_id == "request-1"
 
 
-def test_read_and_write_adapters_reject_cross_effect_binding() -> None:
+def test_read_and__write_adapters_reject__cross_effect_binding() -> None:
     client = _Client(MCPToolCallResultV1(1, "unused", "OK", {}, None))
     registry = _registry(client)
     signed = load_signed_tool_registry()

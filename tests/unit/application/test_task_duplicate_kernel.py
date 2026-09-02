@@ -21,7 +21,7 @@ from google_work_agent.application.use_cases.action.task_duplicate_policy import
         ("Send\n\t summary", "send summary"),
     ],
 )
-def test_normalize_task_title_contract(raw: str, expected: str) -> None:
+def test_normalize_task__title__contract(raw: str, expected: str) -> None:
     assert normalize_task_title(raw) == expected
 
 
@@ -91,7 +91,7 @@ def _candidate(
         ),
     ],
 )
-def test_task_duplicate_decision_matrix(
+def test_task_duplicate__decision__matrix(
     scheduled_date: str | None,
     candidates: tuple[TaskDuplicateCandidate, ...],
     decision: DuplicateDecision,

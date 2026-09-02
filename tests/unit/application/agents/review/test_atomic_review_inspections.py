@@ -24,7 +24,7 @@ from google_work_agent.application.agents.review.recheck_affected_dimensions imp
 from google_work_agent.application.agents.review.validate_review import validate_review
 
 
-def test_review_operation_inventory_is_6_of_6() -> None:
+def test_review_operation__inventory_is__six_of_six() -> None:
     assert all(
         callable(value)
         for value in (
@@ -38,7 +38,7 @@ def test_review_operation_inventory_is_6_of_6() -> None:
     )
 
 
-def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
+def test_recheck_genuinely__reinspects_only__affected_dimensions() -> None:
     prompt_calls: list[str] = []
 
     def invoke(prompt_id: str, _input: Mapping[str, object]) -> Mapping[str, object]:
@@ -82,7 +82,7 @@ def test_recheck_genuinely_reinspects_only_affected_dimensions() -> None:
     assert "review.inspect_goal_and_evidence" not in prompt_calls
 
 
-def test_three_review_inspection_authorities_remain_independent() -> None:
+def test_three_review__inspection_authorities__remain_independent() -> None:
     assert (
         len(
             {

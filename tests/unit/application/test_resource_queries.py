@@ -272,7 +272,7 @@ class _TaskGateway:
         )
 
 
-def test_gmail_list_projection_exposes_metadata_for_frontend() -> None:
+def test_gmail_list__projection_exposes__metadata_for_frontend() -> None:
     snapshot = _snapshot(
         payload={
             "sender_name": "Kim Daeri",
@@ -305,7 +305,7 @@ def test_gmail_list_projection_exposes_metadata_for_frontend() -> None:
     }
 
 
-def test_gmail_list_projection_forwards_lightweight_metadata_option() -> None:
+def test_gmail_list__projection_forwards__lightweight_metadata_option() -> None:
     gateway = _Gateway(_snapshot(payload={}))
     service = ConnectorResourceAccess(gateway=gateway)
 
@@ -319,7 +319,7 @@ def test_gmail_list_projection_forwards_lightweight_metadata_option() -> None:
     assert gateway.include_thread_metadata is False
 
 
-def test_gmail_list_projection_does_not_use_resource_id_as_title_fallback() -> None:
+def test_gmail_list_projection__does_not_use_resource__id_as_title_fallback() -> None:
     service = ConnectorResourceAccess(gateway=_Gateway(_snapshot(payload={})))
 
     item = service.list_gmail_threads(query="project", page_token="page-1", page_size=10).items[0]
@@ -330,7 +330,7 @@ def test_gmail_list_projection_does_not_use_resource_id_as_title_fallback() -> N
     assert item.metadata == {}
 
 
-def test_gmail_detail_projection_is_ui_only_and_preserves_thread_identity() -> None:
+def test_gmail_detail_projection__is_ui_only__and_preserves_thread_identity() -> None:
     service = ConnectorResourceAccess(
         gateway=_Gateway(
             _snapshot(
@@ -374,11 +374,13 @@ def test_gmail_detail_projection_is_ui_only_and_preserves_thread_identity() -> N
     assert detail.attachments[0].attachment_id == "attachment-1"
 
 
-def test_gmail_search_permalink_falls_back_to_all_mail_when_rfc822_message_id_is_missing() -> None:
+def test_gmail_search_permalink_falls__back_to_all_mail_when__rfc822_message_id_is_missing() -> (
+    None
+):
     assert _gmail_search_permalink(None) == "https://mail.google.com/mail/u/0/#all"
 
 
-def test_tasks_sidebar_uses_configured_default_task_list_for_actual_tasks() -> None:
+def test_tasks_sidebar_uses__configured_default_task__list_for_actual_tasks() -> None:
     gateway = _TaskGateway()
     service = ConnectorResourceAccess(
         gateway=gateway,
@@ -407,7 +409,7 @@ def test_tasks_sidebar_uses_configured_default_task_list_for_actual_tasks() -> N
     }
 
 
-def test_task_projection_keeps_provider_calendar_date_without_timezone_conversion() -> None:
+def test_task_projection_keeps__provider_calendar_date__without_timezone_conversion() -> None:
     snapshot = ResourceSnapshot(
         fixture_snapshot_id="task-completed",
         resource_type=ResourceType.TASK,
@@ -437,7 +439,7 @@ def test_task_projection_keeps_provider_calendar_date_without_timezone_conversio
     }
 
 
-def test_task_projection_preserves_a_provider_title() -> None:
+def test_task_projection__preserves_a__provider_title() -> None:
     gateway = _TaskGateway(
         task_payload={
             "title": "GWA-DEADLINE-ONLY-TEST",
@@ -456,7 +458,7 @@ def test_task_projection_preserves_a_provider_title() -> None:
     assert item.metadata == {"task_status": "incomplete", "scheduled_date": "2026-08-12"}
 
 
-def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() -> None:
+def test_tasks_sidebar_resolves__first_actual_task__list_before_listing_tasks() -> None:
     gateway = _TaskGateway()
     service = ConnectorResourceAccess(gateway=gateway, default_tasklist_id_provider=lambda: None)
 
@@ -477,7 +479,7 @@ def test_tasks_sidebar_resolves_first_actual_task_list_before_listing_tasks() ->
     assert page.items[0].resource_type == "task"
 
 
-def test_calendar_sidebar_queries_upcoming_events_from_configured_default_calendar() -> None:
+def test_calendar_sidebar_queries__upcoming_events_from__configured_default_calendar() -> None:
     gateway = _CalendarGateway()
     service = ConnectorResourceAccess(
         gateway=gateway,
@@ -511,7 +513,7 @@ def test_calendar_sidebar_queries_upcoming_events_from_configured_default_calend
     }
 
 
-def test_calendar_sidebar_uses_primary_when_default_calendar_is_not_configured() -> None:
+def test_calendar_sidebar_uses__primary_when_default__calendar_is_not_configured() -> None:
     gateway = _CalendarGateway()
     service = ConnectorResourceAccess(
         gateway=gateway,
@@ -532,7 +534,7 @@ def test_calendar_sidebar_uses_primary_when_default_calendar_is_not_configured()
     assert gateway.arguments["time_min"] == "2026-08-10T01:00:00Z"
 
 
-def test_calendar_ui_projection_hides_snapshot_id_title_fallback() -> None:
+def test_calendar_ui__projection_hides_snapshot__id_title_fallback() -> None:
     gateway = _CalendarGateway(event_title="event-1")
     service = ConnectorResourceAccess(
         gateway=gateway,
@@ -551,7 +553,7 @@ def test_calendar_ui_projection_hides_snapshot_id_title_fallback() -> None:
     assert page.items[0].title == ""
 
 
-def test_exact_counts_traverse_all_pages_with_source_scopes() -> None:
+def test_exact_counts__traverse_all_pages__with_source_scopes() -> None:
     snapshot = _snapshot(payload={})
 
     class Gateway:
@@ -621,7 +623,7 @@ def test_exact_counts_traverse_all_pages_with_source_scopes() -> None:
     ]
 
 
-def test_gmail_count_traverses_all_provider_pages() -> None:
+def test_gmail_count__traverses_all__provider_pages() -> None:
     snapshot = _snapshot(payload={"snippet": "메일"})
 
     class Gateway:
@@ -663,7 +665,7 @@ def test_gmail_count_traverses_all_provider_pages() -> None:
     ]
 
 
-def test_count_does_not_return_partial_total_when_a_later_page_fails() -> None:
+def test_count_does_not__return_partial_total_when__a_later_page_fails() -> None:
     snapshot = _snapshot(payload={"snippet": "메일"})
 
     class Gateway:
@@ -701,7 +703,7 @@ def _task(index: int, due: str | None) -> ResourceSnapshot:
     )
 
 
-def test_tasks_completed_scope_forwards_all_provider_visibility_flags() -> None:
+def test_tasks_completed__scope_forwards_all__provider_visibility_flags() -> None:
     task = ResourceSnapshot(
         fixture_snapshot_id="done-1",
         resource_type=ResourceType.TASK,
@@ -732,7 +734,7 @@ def test_tasks_completed_scope_forwards_all_provider_visibility_flags() -> None:
     ]
 
 
-def test_tasks_browse_keeps_provider_order_and_does_not_traverse_past_first_batch() -> None:
+def test_tasks_browse_keeps_provider__order_and_does_not__traverse_past_first_batch() -> None:
     tasks = tuple(
         _task(index, f"2026-08-{(100 - index) % 28 + 1:02d}T00:00:00Z") for index in range(100)
     )
@@ -756,7 +758,7 @@ def test_tasks_browse_keeps_provider_order_and_does_not_traverse_past_first_batc
     ]
 
 
-def test_tasks_browse_returns_terminal_41_items_without_snapshot_cursor() -> None:
+def test_tasks_browse_returns__terminal_41_items__without_snapshot_cursor() -> None:
     tasks = tuple(_task(index, None) for index in range(41))
     gateway = _PagedTaskGateway({None: ResourcePage(tasks, None)})
 
@@ -770,7 +772,7 @@ def test_tasks_browse_returns_terminal_41_items_without_snapshot_cursor() -> Non
 
 
 @pytest.mark.parametrize("item_count", [0, 1, 20, 21, 41, 100])
-def test_tasks_browse_keeps_terminal_provider_batch_sizes(item_count: int) -> None:
+def test_tasks_browse__keeps_terminal__provider_batch_sizes(item_count: int) -> None:
     tasks = tuple(_task(index, None) for index in range(item_count))
     gateway = _PagedTaskGateway({None: ResourcePage(tasks, None)})
 
@@ -783,7 +785,7 @@ def test_tasks_browse_keeps_terminal_provider_batch_sizes(item_count: int) -> No
     assert gateway.calls[0]["page_size"] == 100
 
 
-def test_tasks_browse_uses_provider_next_page_token_for_later_batch() -> None:
+def test_tasks_browse_uses__provider_next_page__token_for_later_batch() -> None:
     first = tuple(_task(index, None) for index in range(100))
     second = tuple(_task(index, None) for index in range(100, 141))
     gateway = _PagedTaskGateway({None: ResourcePage(first, "p2"), "p2": ResourcePage(second, None)})

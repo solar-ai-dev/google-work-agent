@@ -5,7 +5,7 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing import (
 )
 
 
-def test_assess_sufficiency_has_exact_node_projection_and_bounded_router() -> None:
+def test_assess_sufficiency_has__exact_node_projection__and_bounded_router() -> None:
     owner = (
         Path(__file__).resolve().parents[5]
         / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval"
@@ -18,7 +18,7 @@ def test_assess_sufficiency_has_exact_node_projection_and_bounded_router() -> No
     assert 'return "finalize"' in router
 
 
-def test_assess_sufficiency_router_preserves_frozen_route_and_three_round_bound() -> None:
+def test_assess_sufficiency_router__preserves_frozen_route__and_three_round_bound() -> None:
     query_attempts = [{"round_no": 0}, {"round_no": 1}]
     state = {
         "sufficiency": {"status": "NEEDS_MORE_DATA"},

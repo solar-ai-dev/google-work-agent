@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.action.policy import (
 from google_work_agent.domain.action.model import PolicyViolationError
 
 
-def test_evidence_policy_requires_at_least_one_evidence() -> None:
+def test_evidence_policy__requires_at__least_one_evidence() -> None:
     with pytest.raises(PolicyViolationError, match="EVIDENCE_REQUIRED"):
         validate_evidence_policy(
             EvidencePolicyInput(
@@ -21,7 +21,7 @@ def test_evidence_policy_requires_at_least_one_evidence() -> None:
         )
 
 
-def test_evidence_policy_allows_existing_resource_update_with_two_evidences() -> None:
+def test_evidence_policy_allows__existing_resource_update__with_two_evidences() -> None:
     validate_evidence_policy(
         EvidencePolicyInput(
             evidence_count=2,
@@ -31,7 +31,7 @@ def test_evidence_policy_allows_existing_resource_update_with_two_evidences() ->
     )
 
 
-def test_evidence_policy_does_not_treat_duplicate_evidence_as_independent() -> None:
+def test_evidence_policy_does__not_treat_duplicate__evidence_as_independent() -> None:
     with pytest.raises(
         PolicyViolationError, match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED"
     ):
@@ -44,7 +44,7 @@ def test_evidence_policy_does_not_treat_duplicate_evidence_as_independent() -> N
         )
 
 
-def test_evidence_policy_allows_existing_resource_update_with_user_selected_target() -> None:
+def test_evidence_policy_allows__existing_resource_update__with_user_selected_target() -> None:
     validate_evidence_policy(
         EvidencePolicyInput(
             evidence_count=1,
@@ -54,7 +54,7 @@ def test_evidence_policy_allows_existing_resource_update_with_user_selected_targ
     )
 
 
-def test_evidence_policy_blocks_under_evidenced_existing_resource_update() -> None:
+def test_evidence_policy__blocks_under_evidenced__existing_resource_update() -> None:
     with pytest.raises(
         PolicyViolationError, match="EXISTING_RESOURCE_AUTHORITY_CONFIRMATION_REQUIRED"
     ):
@@ -66,7 +66,7 @@ def test_evidence_policy_blocks_under_evidenced_existing_resource_update() -> No
         )
 
 
-def test_approval_integrity_accepts_matching_fresh_snapshot() -> None:
+def test_approval_integrity__accepts_matching__fresh_snapshot() -> None:
     validate_approval_integrity(
         ApprovalIntegrityInput(
             approval_arguments_hash="a" * 64,
@@ -96,7 +96,7 @@ def test_approval_integrity_accepts_matching_fresh_snapshot() -> None:
         ({"now_ms": 101}, "expired"),
     ],
 )
-def test_approval_integrity_rejects_mismatch_and_expiry(
+def test_approval_integrity__rejects_mismatch__and_expiry(
     overrides: dict[str, str | int],
     message: str,
 ) -> None:

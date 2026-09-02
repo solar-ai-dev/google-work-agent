@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.action import (
 )
 
 
-def test_canonical_handlers_do_not_delegate_to_legacy_semantic_services() -> None:
+def test_canonical_handlers_do__not_delegate_to__legacy_semantic_services() -> None:
     sources = {
         "approve": inspect.getsource(approve_action),
         "modify": inspect.getsource(modify_action),
@@ -28,7 +28,7 @@ def test_canonical_handlers_do_not_delegate_to_legacy_semantic_services() -> Non
     assert "prepare_retry_service" not in sources["retry"]
 
 
-def test_canonical_handlers_own_persistence_boundaries() -> None:
+def test_canonical_handlers__own_persistence__boundaries() -> None:
     assert "command_receipts" in inspect.getsource(approve_action)
     assert "transition_approve_action" in inspect.getsource(approve_action)
     assert "update_action_record" in inspect.getsource(approve_action)
@@ -43,7 +43,7 @@ def test_canonical_handlers_own_persistence_boundaries() -> None:
     assert "update_action_record" in inspect.getsource(prepare_write_retry)
 
 
-def test_approve_source_authority_is_server_side_persisted_resource_ref_chain() -> None:
+def test_approve_source_authority__is_server_side__persisted_resource_ref_chain() -> None:
     source = inspect.getsource(approve_action)
     assert "action.target_resource_ref_id" in source
     assert "unit_of_work.resource_refs.get" in source

@@ -94,7 +94,7 @@ def _reject_google_calls(*_args: object, **_kwargs: object) -> dict[str, object]
 # --------------------------------------------------------------------------
 
 
-def test_gmail_create_draft_dispatches_with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gmail_create__draft_dispatches__with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str, dict[str, object] | None]] = []
 
     def google_api_call(
@@ -145,7 +145,7 @@ def test_gmail_create_draft_dispatches_with_valid_claim(monkeypatch: pytest.Monk
     assert "raw" in message
 
 
-def test_gmail_update_draft_dispatches_with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gmail_update__draft_dispatches__with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
 
     def google_api_call(
@@ -178,7 +178,7 @@ def test_gmail_update_draft_dispatches_with_valid_claim(monkeypatch: pytest.Monk
     assert calls == ["PUT"]
 
 
-def test_gmail_send_dispatches_with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gmail_send__dispatches_with__valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
 
     def google_api_post(
@@ -214,7 +214,7 @@ def test_gmail_send_dispatches_with_valid_claim(monkeypatch: pytest.MonkeyPatch)
     assert calls[0][1] == {"id": "draft-1"}
 
 
-def test_gmail_get_draft_reads_without_a_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_gmail_get__draft_reads__without_a_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     def google_api(
         _state: server.GoogleWorkspaceCredentialProvider,
         url: str,
@@ -242,7 +242,7 @@ def test_gmail_get_draft_reads_without_a_claim(monkeypatch: pytest.MonkeyPatch) 
 # --------------------------------------------------------------------------
 
 
-def test_missing_claim_context_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_missing_claim__context_is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -256,7 +256,7 @@ def test_missing_claim_context_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_malformed_claim_context_missing_field_is_rejected(
+def test_malformed_claim__context_missing__field_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -278,7 +278,7 @@ def test_malformed_claim_context_missing_field_is_rejected(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_invalid_signature_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_signature__is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -298,7 +298,7 @@ def test_invalid_signature_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_expired_claim_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_expired_claim__is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -321,7 +321,7 @@ def test_expired_claim_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_ttl_exceeding_maximum_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ttl_exceeding__maximum_is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -343,7 +343,7 @@ def test_ttl_exceeding_maximum_is_rejected(monkeypatch: pytest.MonkeyPatch) -> N
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_wrong_service_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wrong_service__instance_is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -365,7 +365,7 @@ def test_wrong_service_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> 
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_wrong_mcp_process_instance_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wrong_mcp__process_instance__is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -387,7 +387,7 @@ def test_wrong_mcp_process_instance_is_rejected(monkeypatch: pytest.MonkeyPatch)
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_wrong_tool_binding_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_wrong_tool__binding_is__rejected(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
     state = _state()
     payload: dict[str, object] = {"to": ["a@example.com"], "subject": "Hi", "body": "Body"}
@@ -406,7 +406,7 @@ def test_wrong_tool_binding_is_rejected(monkeypatch: pytest.MonkeyPatch) -> None
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_wrong_execution_arguments_hash_is_rejected(
+def test_wrong_execution__arguments_hash__is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -430,7 +430,7 @@ def test_wrong_execution_arguments_hash_is_rejected(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_nonce_reuse_is_rejected_and_google_is_called_at_most_once(
+def test_nonce_reuse_is__rejected_and_google_is__called_at_most_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -473,7 +473,7 @@ def test_nonce_reuse_is_rejected_and_google_is_called_at_most_once(
     assert len(calls) == 1
 
 
-def test_tool_not_available_without_claim_infrastructure(
+def test_tool_not__available_without__claim_infrastructure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -517,7 +517,7 @@ def test_tool_not_available_without_claim_infrastructure(
 # --------------------------------------------------------------------------
 
 
-def test_tasks_create_task_dispatches_with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tasks_create__task_dispatches__with_valid_claim(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str, dict[str, object] | None]] = []
 
     def google_api_call(
@@ -555,7 +555,7 @@ def test_tasks_create_task_dispatches_with_valid_claim(monkeypatch: pytest.Monke
     assert calls[0][2] == {"title": "Follow up", "notes": "Call customer"}
 
 
-def test_tasks_update_task_supports_completion(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_tasks_update__task_supports__completion(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, dict[str, object] | None]] = []
 
     def google_api_call(
@@ -594,7 +594,7 @@ def test_tasks_update_task_supports_completion(monkeypatch: pytest.MonkeyPatch) 
     assert calls == [("PATCH", {"status": "completed"})]
 
 
-def test_tasks_create_task_claim_rejection_dispatches_zero_calls(
+def test_tasks_create__task_claim_rejection__dispatches_zero_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -623,7 +623,7 @@ def test_tasks_create_task_claim_rejection_dispatches_zero_calls(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_tasks_update_task_missing_claim_dispatches_zero_calls(
+def test_tasks_update__task_missing_claim__dispatches_zero_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -649,7 +649,7 @@ def test_tasks_update_task_missing_claim_dispatches_zero_calls(
 # --------------------------------------------------------------------------
 
 
-def test_calendar_create_event_dispatches_with_valid_claim(
+def test_calendar_create__event_dispatches__with_valid_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, str, dict[str, object] | None]] = []
@@ -701,7 +701,7 @@ def test_calendar_create_event_dispatches_with_valid_claim(
     assert body["attendees"] == [{"email": "a@example.com"}, {"email": "b@example.com"}]
 
 
-def test_calendar_update_event_supports_attendee_change(
+def test_calendar_update__event_supports__attendee_change(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[dict[str, object] | None] = []
@@ -742,7 +742,7 @@ def test_calendar_update_event_supports_attendee_change(
     assert calls == [{"attendees": [{"email": "c@example.com"}]}]
 
 
-def test_calendar_delete_event_dispatches_with_valid_claim(
+def test_calendar_delete__event_dispatches__with_valid_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -779,7 +779,7 @@ def test_calendar_delete_event_dispatches_with_valid_claim(
     assert calls == ["DELETE"]
 
 
-def test_tasks_delete_task_dispatches_with_valid_claim(
+def test_tasks_delete__task_dispatches__with_valid_claim(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -820,7 +820,7 @@ def test_tasks_delete_task_dispatches_with_valid_claim(
     assert calls == ["DELETE"]
 
 
-def test_tasks_delete_task_nonce_reuse_dispatches_at_most_once(
+def test_tasks_delete_task__nonce_reuse_dispatches__at_most_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []
@@ -871,7 +871,7 @@ def test_tasks_delete_task_nonce_reuse_dispatches_at_most_once(
     assert len(calls) == 1
 
 
-def test_tasks_delete_task_claim_rejection_dispatches_zero_calls(
+def test_tasks_delete__task_claim_rejection__dispatches_zero_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -897,7 +897,7 @@ def test_tasks_delete_task_claim_rejection_dispatches_zero_calls(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_calendar_create_event_claim_rejection_dispatches_zero_calls(
+def test_calendar_create__event_claim_rejection__dispatches_zero_calls(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(server, "_google_api_call", _reject_google_calls)
@@ -924,7 +924,7 @@ def test_calendar_create_event_claim_rejection_dispatches_zero_calls(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_calendar_delete_event_nonce_reuse_dispatches_at_most_once(
+def test_calendar_delete_event__nonce_reuse_dispatches__at_most_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[str] = []

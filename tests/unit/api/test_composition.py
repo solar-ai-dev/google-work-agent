@@ -54,7 +54,7 @@ class _StubRedrive:
         return self._results.pop(0)
 
 
-def test_stops_immediately_when_first_pass_is_not_full() -> None:
+def test_stops_immediately__when_first_pass__is_not_full() -> None:
     redrive = _StubRedrive(
         [
             RedriveWorkflowHandoffsResult(
@@ -74,7 +74,7 @@ def test_stops_immediately_when_first_pass_is_not_full() -> None:
     assert redrive.calls == [10]
 
 
-def test_continues_across_full_batches_while_progress_is_made() -> None:
+def test_continues_across__full_batches_while__progress_is_made() -> None:
     redrive = _StubRedrive(
         [
             RedriveWorkflowHandoffsResult(2, 2, 0, 2, 3, True),
@@ -89,7 +89,7 @@ def test_continues_across_full_batches_while_progress_is_made() -> None:
     assert redrive.calls == [2, 2, 2]
 
 
-def test_raises_rather_than_looping_forever_on_permanently_stuck_full_batches() -> None:
+def test_raises_rather_than__looping_forever_on__permanently_stuck_full_batches() -> None:
     """A batch that never shrinks below the limit (e.g. permanently fail-closed
     BLOCKED_BINDING rows) must not spin forever -- it terminates via the
     max_passes circuit breaker instead of hanging."""
@@ -101,7 +101,7 @@ def test_raises_rather_than_looping_forever_on_permanently_stuck_full_batches() 
     assert redrive.calls == [2, 2, 2]
 
 
-def test_real_drain_processes_every_row_across_multiple_bounded_passes(
+def test_real_drain_processes__every_row_across__multiple_bounded_passes(
     tmp_path: Path,
 ) -> None:
     """Candidate rows exceed the configured batch limit: prove every batch stays

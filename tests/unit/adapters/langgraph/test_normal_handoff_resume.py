@@ -47,7 +47,7 @@ class _Graph:
         self.updates.append((value, as_node))
 
 
-def test_normal_handoff_consumes_its_durably_materialized_target_once() -> None:
+def test_normal_handoff__consumes_its_durably__materialized_target_once() -> None:
     graph = _Graph()
     coordinator = _coordinator(graph)
 
@@ -67,7 +67,7 @@ def test_normal_handoff_consumes_its_durably_materialized_target_once() -> None:
     assert graph.calls[0] is None
 
 
-def test_cache_restart_replaces_stale_pending_retrieval_task() -> None:
+def test_cache_restart__replaces_stale__pending_retrieval_task() -> None:
     graph = _Graph()
     coordinator = _coordinator(graph)
 
@@ -103,7 +103,7 @@ def test_cache_restart_replaces_stale_pending_retrieval_task() -> None:
     assert graph.calls == [None]
 
 
-def test_cancel_replaces_a_preempted_user_interrupt() -> None:
+def test_cancel_replaces__a_preempted__user_interrupt() -> None:
     graph = _Graph()
     coordinator = _coordinator(graph)
 

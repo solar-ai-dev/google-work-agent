@@ -50,7 +50,7 @@ class _AcceptedThenCrash:
         return False
 
 
-def test_persisted_admission_survives_acceptance_crash_and_settles_before_owner_io(
+def test_persisted_admission_survives__acceptance_crash_and__settles_before_owner_io(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)

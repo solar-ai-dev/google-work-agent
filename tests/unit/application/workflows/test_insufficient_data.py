@@ -76,14 +76,14 @@ def _context(
         ),
     ],
 )
-def test_canonical_insufficient_data_precedence(
+def test_canonical_insufficient__data__precedence(
     context: InsufficientDataContext,
     expected: InsufficientDataDisposition,
 ) -> None:
     assert decide_insufficient_data(context) is expected
 
 
-def test_write_gap_can_only_request_user_confirmation_when_user_can_resolve() -> None:
+def test_write_gap_can__only_request_user_confirmation__when_user_can_resolve() -> None:
     context = InsufficientDataContext(
         issues=(),
         budget_remaining=0,
@@ -96,7 +96,7 @@ def test_write_gap_can_only_request_user_confirmation_when_user_can_resolve() ->
     assert decide_insufficient_data(context) is InsufficientDataDisposition.NEEDS_CONFIRMATION
 
 
-def test_single_three_and_six_profiles_share_the_same_guard_semantics() -> None:
+def test_single_three_and__six_profiles_share__the_same_guard_semantics() -> None:
     context = _context(source=ResolutionSource.POLICY)
 
     decisions = {

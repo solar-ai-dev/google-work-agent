@@ -53,7 +53,7 @@ def _tokens(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
 
-def test_calendar_list_continuation_is_local_and_principal_bound() -> None:
+def test_calendar_list__continuation_is_local__and_principal_bound() -> None:
     read = _CalendarListRead()
     handler = ListCalendarsHandler(
         connector_read=read,

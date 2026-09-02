@@ -10,7 +10,7 @@ from google_work_agent.ports.system.api_access_port import (
 )
 
 
-def test_local_bind_policy_requires_exact_ipv4_loopback() -> None:
+def test_local_bind__policy_requires__exact_ipv4_loopback() -> None:
     LocalBindPolicy(host="127.0.0.1", port=8765).validate()
 
     for host in ("localhost", "0.0.0.0", "192.168.0.10", "::1"):
@@ -21,7 +21,7 @@ def test_local_bind_policy_requires_exact_ipv4_loopback() -> None:
         raise AssertionError(f"{host} should be rejected")
 
 
-def test_bootstrap_grant_is_one_time_and_ttl_bound() -> None:
+def test_bootstrap_grant__is_one_time__and_ttl_bound() -> None:
     store = InMemoryBootstrapGrantStore(ttl_ms=10)
     store.provision(secret="secret-1", service_instance_id="svc-1", now_ms=100)
 
@@ -38,7 +38,7 @@ def test_bootstrap_grant_is_one_time_and_ttl_bound() -> None:
     assert expired.detail_code == "BOOTSTRAP_EXPIRED"
 
 
-def test_local_session_manager_binds_service_instance() -> None:
+def test_local_session__manager_binds__service_instance() -> None:
     manager = InMemoryLocalSessionManager()
     token = manager.issue(service_instance_id="svc-1", now_ms=100)
 
@@ -47,7 +47,7 @@ def test_local_session_manager_binds_service_instance() -> None:
     assert manager.resolve(token=None, service_instance_id="svc-1", now_ms=100) is None
 
 
-def test_local_session_manager_rejects_expired_and_revoked_sessions() -> None:
+def test_local_session__manager_rejects_expired__and_revoked_sessions() -> None:
     manager = InMemoryLocalSessionManager(ttl_ms=10)
     expired = manager.issue(service_instance_id="svc-1", now_ms=100)
     assert manager.resolve(token=expired, service_instance_id="svc-1", now_ms=111) is None
@@ -57,7 +57,7 @@ def test_local_session_manager_rejects_expired_and_revoked_sessions() -> None:
     assert manager.resolve(token=revoked, service_instance_id="svc-1", now_ms=201) is None
 
 
-def test_bootstrap_failure_limit_expires_the_active_grant() -> None:
+def test_bootstrap_failure__limit_expires__the_active_grant() -> None:
     store = InMemoryBootstrapGrantStore()
     store.provision(secret="valid", service_instance_id="svc-1", now_ms=100)
 
@@ -73,7 +73,7 @@ def test_bootstrap_failure_limit_expires_the_active_grant() -> None:
     assert locked.detail_code == "BOOTSTRAP_EXPIRED"
 
 
-def test_bootstrap_consume_is_atomic_under_concurrency() -> None:
+def test_bootstrap_consume__is_atomic__under_concurrency() -> None:
     store = InMemoryBootstrapGrantStore()
     store.provision(secret="valid", service_instance_id="svc-1", now_ms=100)
 
@@ -93,7 +93,7 @@ def test_bootstrap_consume_is_atomic_under_concurrency() -> None:
     assert {result.detail_code for result in results if not result.allowed} == {"BOOTSTRAP_REUSED"}
 
 
-def test_local_api_access_guard_enforces_origin_fetch_metadata_and_session() -> None:
+def test_local_api_access__guard_enforces_origin__fetch_metadata_and_session() -> None:
     manager = InMemoryLocalSessionManager()
     session_token = manager.issue(service_instance_id="svc-1", now_ms=100)
     guard = LocalApiAccessGuard(
@@ -160,7 +160,7 @@ def test_local_api_access_guard_enforces_origin_fetch_metadata_and_session() -> 
     assert allowed.allowed is True
 
 
-def test_attachment_staging_is_the_only_multipart_mutation_exception() -> None:
+def test_attachment_staging__is_the_only__multipart_mutation_exception() -> None:
     manager = InMemoryLocalSessionManager()
     session_token = manager.issue(service_instance_id="svc-1", now_ms=100)
     guard = LocalApiAccessGuard(

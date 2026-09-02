@@ -8,7 +8,7 @@ from google_work_agent.application.use_cases.resource.issue_selection_handle imp
 )
 
 
-def test_issues_opaque_authenticated_handle_without_exposing_plain_identity() -> None:
+def test_issues_opaque__authenticated_handle_without__exposing_plain_identity() -> None:
     issuer = IssueSelectionHandle(
         signing_secret=b"s" * 32,
         service_instance_id="service-1",
@@ -23,7 +23,7 @@ def test_issues_opaque_authenticated_handle_without_exposing_plain_identity() ->
     assert "account-1" not in handle
 
 
-def test_rejects_non_digest_session_binding() -> None:
+def test_rejects_non__digest_session__binding() -> None:
     issuer = IssueSelectionHandle(
         signing_secret=b"s" * 32,
         service_instance_id="service-1",

@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path("src/google_work_agent")
 
 
-def test_workflow_handoff_sql_mutation_is_owned_only_by_canonical_repository() -> None:
+def test_workflow_handoff_sql__mutation_is_owned__only_by_canonical_repository() -> None:
     allowed = {
         ROOT / "adapters/persistence/sqlite/repositories/workflow_handoff_repository.py",
         ROOT / "adapters/persistence/migrations/0001_current_schema.sql",
@@ -18,18 +18,18 @@ def test_workflow_handoff_sql_mutation_is_owned_only_by_canonical_repository() -
     assert offenders == []
 
 
-def test_application_scheduler_never_imports_concrete_execution_adapter() -> None:
+def test_application_scheduler__never_imports__concrete_execution_adapter() -> None:
     source = (ROOT / "application/use_cases/run/schedule_run_execution.py").read_text(
         encoding="utf-8"
     )
     assert "adapters." not in source
 
 
-def test_local_coordinator_has_no_start_or_open_run_recovery_authority() -> None:
+def test_local_coordinator_has__no_start_or__open_run_recovery_authority() -> None:
     assert not (ROOT / "application/coordinator.py").exists()
 
 
-def test_launcher_never_reduces_admission_to_coordinator_start() -> None:
+def test_launcher_never__reduces_admission__to_coordinator_start() -> None:
     source = (ROOT / "api/composition.py").read_text(encoding="utf-8")
 
     assert "coordinator.enqueue_start" not in source
@@ -37,7 +37,7 @@ def test_launcher_never_reduces_admission_to_coordinator_start() -> None:
     assert "checkpoint.execution_scope(" in source
 
 
-def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
+def test_workflow_binding__has_one_contract__and_sql_owner() -> None:
     contract = ROOT / "ports/system/contracts/workflow_binding.py"
     sql_owners = {
         ROOT / "adapters/system/sqlite_checkpoint.py",
@@ -59,7 +59,7 @@ def test_workflow_binding_has_one_contract_and_sql_owner() -> None:
     assert offenders == []
 
 
-def test_start_run_binding_uses_narrow_transaction_writer_and_separate_checkpoint() -> None:
+def test_start_run_binding__uses_narrow_transaction__writer_and_separate_checkpoint() -> None:
     start_run = (ROOT / "application/use_cases/run/start_run.py").read_text(encoding="utf-8")
     unit_of_work = (ROOT / "adapters/persistence/sqlite/unit_of_work.py").read_text(
         encoding="utf-8"
@@ -74,7 +74,7 @@ def test_start_run_binding_uses_narrow_transaction_writer_and_separate_checkpoin
     assert "checkpoint = SqliteCheckpointAdapter(" in composition
 
 
-def test_retry_and_stale_preflight_use_durable_review_handoff_authority() -> None:
+def test_retry_and_stale__preflight_use_durable__review_handoff_authority() -> None:
     retry = (ROOT / "application/use_cases/action/prepare_write_retry.py").read_text(
         encoding="utf-8"
     )

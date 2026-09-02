@@ -60,13 +60,13 @@ def _isolate_provider_dispatch_budget() -> Iterator[None]:
         yield
 
 
-def test_ensure_allows_calls_under_the_normal_cap() -> None:
+def test_ensure_allows__calls_under__the_normal_cap() -> None:
     state = _state(llm_calls_used=NORMAL_MAX_LLM_CALLS - 1)
 
     ensure_llm_call_budget(state)  # must not raise
 
 
-def test_ensure_blocks_the_call_that_would_exceed_the_normal_cap() -> None:
+def test_ensure_blocks_the__call_that_would__exceed_the_normal_cap() -> None:
     state = _state(llm_calls_used=NORMAL_MAX_LLM_CALLS)
 
     with pytest.raises(LLMInvocationError) as excinfo:
@@ -74,7 +74,7 @@ def test_ensure_blocks_the_call_that_would_exceed_the_normal_cap() -> None:
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_ensure_blocks_the_call_that_would_exceed_the_revision_heavy_cap() -> None:
+def test_ensure_blocks_the__call_that_would_exceed__the_revision_heavy_cap() -> None:
     state = _state(
         llm_calls_used=REVISION_HEAVY_MAX_LLM_CALLS,
         profile=BudgetProfile.REVISION_HEAVY.value,
@@ -85,7 +85,7 @@ def test_ensure_blocks_the_call_that_would_exceed_the_revision_heavy_cap() -> No
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_ensure_blocks_the_call_that_would_exceed_the_retrieval_heavy_cap() -> None:
+def test_ensure_blocks_the__call_that_would_exceed__the_retrieval_heavy_cap() -> None:
     state = _state(
         llm_calls_used=RETRIEVAL_HEAVY_MAX_LLM_CALLS,
         profile=BudgetProfile.RETRIEVAL_HEAVY.value,
@@ -96,7 +96,7 @@ def test_ensure_blocks_the_call_that_would_exceed_the_retrieval_heavy_cap() -> N
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_ensure_blocks_at_the_absolute_cap_regardless_of_profile() -> None:
+def test_ensure_blocks_at__the_absolute_cap__regardless_of_profile() -> None:
     # RETRIEVAL_HEAVY's own cap (14) is already below ABSOLUTE (16); this
     # state is only reachable by chained consumption across profiles, but it
     # proves the ABSOLUTE ceiling itself -- not just the profile ceiling --
@@ -111,7 +111,7 @@ def test_ensure_blocks_at_the_absolute_cap_regardless_of_profile() -> None:
     assert excinfo.value.code is LLMErrorCode.LLM_CALL_BUDGET_EXHAUSTED
 
 
-def test_consume_merges_usage_counted_at_real_dispatches() -> None:
+def test_consume_merges__usage_counted__at_real_dispatches() -> None:
     state = _state(llm_calls_used=3)
 
     ensure_llm_call_budget(state, provider_calls_requested=2)
@@ -124,7 +124,7 @@ def test_consume_merges_usage_counted_at_real_dispatches() -> None:
     assert state["retry_budget"]["llm_calls_used"] == 5  # type: ignore[index]
 
 
-def test_budget_state_is_carried_entirely_by_the_caller_not_by_any_runtime_instance() -> None:
+def test_budget_state_is_carried__entirely_by_the_caller__not_by_any_runtime_instance() -> None:
     """G3 resume/restart persistence: nothing about these helpers depends on
     process-local state. A plain dict simulating a checkpoint round-trip
     (a brand new Python object, no shared reference to the original state)

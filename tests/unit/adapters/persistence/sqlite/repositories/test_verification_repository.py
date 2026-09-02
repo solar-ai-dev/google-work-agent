@@ -6,7 +6,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.verification_rep
 from google_work_agent.domain.verification.model import Verification, VerificationStatus
 
 
-def test_verification_repository_latest_attempt_and_action_reads() -> None:
+def test_verification_repository__latest_attempt__and_action_reads() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.executescript(

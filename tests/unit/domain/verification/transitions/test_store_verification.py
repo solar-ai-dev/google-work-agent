@@ -7,7 +7,7 @@ from google_work_agent.domain.verification.transitions.store_verification import
 )
 
 
-def test_store_verification_mismatch_is_a_terminal_fact() -> None:
+def test_store_verification__mismatch_is__a_terminal_fact() -> None:
     result = transition_store_verification(
         ActionStatusV1.EXECUTED,
         current_version=4,
@@ -19,7 +19,7 @@ def test_store_verification_mismatch_is_a_terminal_fact() -> None:
     assert result.next_allowed_commands == ()
 
 
-def test_store_verification_verified_is_a_terminal_fact() -> None:
+def test_store_verification__verified_is__a_terminal_fact() -> None:
     result = transition_store_verification(
         ActionStatusV1.EXECUTED,
         current_version=4,
@@ -31,7 +31,7 @@ def test_store_verification_verified_is_a_terminal_fact() -> None:
 
 
 @pytest.mark.parametrize("observation", ["NOT_FOUND", "ERROR"])
-def test_observation_failure_cannot_be_coerced_to_durable_mismatch(
+def test_observation_failure__cannot_be_coerced__to_durable_mismatch(
     observation: str,
 ) -> None:
     with pytest.raises(ValueError, match="durable verification status"):

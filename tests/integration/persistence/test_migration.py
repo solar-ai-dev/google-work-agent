@@ -122,7 +122,7 @@ CURRENT_TABLES = {
 }
 
 
-def test_runtime_and_documentation_expose_identical_forward_migrations() -> None:
+def test_runtime_and__documentation_expose__identical_forward_migrations() -> None:
     runtime = RUNTIME_MIGRATION.read_bytes().replace(b"\r\n", b"\n")
     documented = DOCUMENTATION_MIGRATION.read_bytes().replace(b"\r\n", b"\n")
 
@@ -138,7 +138,7 @@ def test_runtime_and_documentation_expose_identical_forward_migrations() -> None
     assert migrations[0].checksum == calculate_migration_checksum(runtime)
 
 
-def test_fresh_database_has_exact_current_tables_and_safety_objects(tmp_path: Path) -> None:
+def test_fresh_database_has__exact_current_tables__and_safety_objects(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "fresh.db")
     try:
         results = apply_migrations(connection, now_ms=lambda: 123)
@@ -179,7 +179,7 @@ def test_fresh_database_has_exact_current_tables_and_safety_objects(tmp_path: Pa
         connection.close()
 
 
-def test_crlf_and_lf_share_one_logical_checksum(tmp_path: Path) -> None:
+def test_crlf_and__lf_share__one_logical_checksum(tmp_path: Path) -> None:
     migration_dir = tmp_path / "migrations"
     migration_dir.mkdir()
     raw = RUNTIME_MIGRATION.read_bytes().replace(b"\r\n", b"\n")
@@ -193,7 +193,7 @@ def test_crlf_and_lf_share_one_logical_checksum(tmp_path: Path) -> None:
         connection.close()
 
 
-def test_applied_checksum_and_name_drift_fail_closed(tmp_path: Path) -> None:
+def test_applied_checksum__and_name__drift_fail_closed(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "drift.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)
@@ -218,7 +218,7 @@ def test_applied_checksum_and_name_drift_fail_closed(tmp_path: Path) -> None:
         (("0001_empty.sql",), "empty migration"),
     ],
 )
-def test_invalid_migration_sources_are_rejected(
+def test_invalid_migration__sources_are__rejected(
     tmp_path: Path,
     filenames: tuple[str, ...],
     message: str,
@@ -234,7 +234,7 @@ def test_invalid_migration_sources_are_rejected(
         discover_migrations(migration_dir)
 
 
-def test_failed_followup_migration_rolls_back_without_partial_schema(tmp_path: Path) -> None:
+def test_failed_followup__migration_rolls_back__without_partial_schema(tmp_path: Path) -> None:
     migration_dir = tmp_path / "migrations"
     migration_dir.mkdir()
     copyfile(RUNTIME_MIGRATION, migration_dir / RUNTIME_MIGRATION.name)
@@ -262,7 +262,7 @@ def test_failed_followup_migration_rolls_back_without_partial_schema(tmp_path: P
         connection.close()
 
 
-def test_exact_legacy_v18_receipts_are_adopted_without_rewriting_history(
+def test_exact_legacy_v18__receipts_are_adopted__without_rewriting_history(
     tmp_path: Path,
 ) -> None:
     connection = connect_sqlite(tmp_path / "legacy-v18.db")
@@ -302,7 +302,7 @@ def test_exact_legacy_v18_receipts_are_adopted_without_rewriting_history(
         connection.close()
 
 
-def test_legacy_v18_checksum_drift_remains_fail_closed(tmp_path: Path) -> None:
+def test_legacy_v18__checksum_drift__remains_fail_closed(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "legacy-drift.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)

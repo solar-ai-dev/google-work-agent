@@ -30,7 +30,7 @@ def _result() -> dict[str, object]:
     }
 
 
-def test_inspect_action_scope_and_route_reads_frozen_route_without_mutating_it() -> None:
+def test_inspect_action_scope__and_route_reads_frozen__route_without_mutating_it() -> None:
     route = {"output_plan": {"output_routes": [{"route_id": "route-1"}]}}
     original = {"output_plan": {"output_routes": [{"route_id": "route-1"}]}}
     calls: list[dict[str, object]] = []
@@ -58,7 +58,7 @@ def test_inspect_action_scope_and_route_reads_frozen_route_without_mutating_it()
     assert route == original
 
 
-def test_inspect_action_scope_and_route_rejects_free_form_finding_shape() -> None:
+def test_inspect_action_scope__and_route_rejects__free_form_finding_shape() -> None:
     candidate = _result()
     candidate["findings"] = [{"dimension": DIMENSION, "code": "x"}]
     with pytest.raises(ValueError, match="finding keys"):

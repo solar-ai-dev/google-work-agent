@@ -13,7 +13,7 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
 DIMENSION = "review.inspect_constraints_and_policy_summary"
 
 
-def test_constraints_node_projects_bounded_summary_and_routes_to_aggregate() -> None:
+def test_constraints_node_projects__bounded_summary_and__routes_to_aggregate() -> None:
     state = {
         "request_intent": {"constraints": []},
         "planning_result": {"schema_version": 2, "answer": "draft"},

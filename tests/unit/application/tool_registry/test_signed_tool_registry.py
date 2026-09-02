@@ -10,7 +10,7 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 )
 
 
-def test_signed_registry_loads_exact_google_workspace_tool_set() -> None:
+def test_signed_registry__loads_exact_google__workspace_tool_set() -> None:
     registry = load_signed_tool_registry()
 
     assert len(registry.entries) == 21
@@ -20,7 +20,7 @@ def test_signed_registry_loads_exact_google_workspace_tool_set() -> None:
     )
 
 
-def test_signed_registry_binds_effect_and_entry_hash() -> None:
+def test_signed_registry__binds_effect__and_entry_hash() -> None:
     registry = load_signed_tool_registry()
 
     binding = registry.bind_required("google_workspace", "gmail_send", "SEND")
@@ -32,7 +32,7 @@ def test_signed_registry_binds_effect_and_entry_hash() -> None:
         registry.bind_required("google_workspace", "gmail_send", "READ")
 
 
-def test_signed_registry_loader_rejects_manifest_drift(tmp_path: Path) -> None:
+def test_signed_registry__loader_rejects__manifest_drift(tmp_path: Path) -> None:
     source = load_signed_tool_registry.__globals__["_IMPLEMENTATION_MANIFEST"]
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["unexpected"] = True

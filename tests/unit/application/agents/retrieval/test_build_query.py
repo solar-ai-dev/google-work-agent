@@ -10,7 +10,7 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 
 
-def test_build_query_preserves_exact_frozen_resource_type() -> None:
+def test_build_query__preserves_exact__frozen_resource_type() -> None:
     route = cast(
         InputToolRouteV1,
         {

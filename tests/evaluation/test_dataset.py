@@ -10,7 +10,7 @@ ROOT = Path(__file__).parents[2]
 DATASETS = ROOT / "evaluation" / "datasets"
 
 
-def test_dataset_inventory_preserves_cases_gold_and_fixture_coverage() -> None:
+def test_dataset_inventory__preserves_cases_gold__and_fixture_coverage() -> None:
     canonical = load_jsonl(DATASETS / "e2e" / "canonical_cases_v7.jsonl")
     episodes = load_jsonl(DATASETS / "e2e" / "product_episodes_v1.jsonl")
     node_items = load_jsonl(DATASETS / "agent" / "node_evaluation_items_v1.jsonl")
@@ -71,7 +71,7 @@ def test_dataset_inventory_preserves_cases_gold_and_fixture_coverage() -> None:
     assert episode_ids == gold_ids
 
 
-def test_all_json_and_jsonl_assets_parse_strictly() -> None:
+def test_all_json__and_jsonl__assets_parse_strictly() -> None:
     for path in DATASETS.rglob("*.jsonl"):
         load_jsonl(path)
     for path in DATASETS.rglob("*.json"):
@@ -79,7 +79,7 @@ def test_all_json_and_jsonl_assets_parse_strictly() -> None:
         assert isinstance(value, dict | list)
 
 
-def test_loader_rejects_duplicate_keys_and_duplicate_ids(tmp_path: Path) -> None:
+def test_loader_rejects__duplicate_keys__and_duplicate_ids(tmp_path: Path) -> None:
     duplicate_key = tmp_path / "duplicate-key.jsonl"
     duplicate_key.write_text('{"case_id":"A","case_id":"B"}\n', encoding="utf-8")
     with pytest.raises(DatasetError, match="duplicate JSON key"):
@@ -91,7 +91,7 @@ def test_loader_rejects_duplicate_keys_and_duplicate_ids(tmp_path: Path) -> None
         load_jsonl(duplicate_id)
 
 
-def test_load_case_resolves_exactly_one_canonical_case() -> None:
+def test_load_case__resolves_exactly__one_canonical_case() -> None:
     assert load_case("CASE-CORE-001")["case_id"] == "CASE-CORE-001"
     with pytest.raises(DatasetError, match="found 0"):
         load_case("CASE-NOT-PRESENT")

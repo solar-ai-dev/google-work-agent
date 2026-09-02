@@ -9,7 +9,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
 )
 
 
-def test_finalize_is_one_prompt_free_assemble_validate_node() -> None:
+def test_finalize_is__one_prompt_free__assemble_validate_node() -> None:
     owner = Path(__file__).resolve().parents[5] / (
         "src/google_work_agent/adapters/langgraph/subgraphs/work_analysis"
     )
@@ -22,7 +22,7 @@ def test_finalize_is_one_prompt_free_assemble_validate_node() -> None:
     assert not (owner / "routing/route_after_validate_work_analysis.py").exists()
 
 
-def test_finalize_uses_the_canonical_closed_router() -> None:
+def test_finalize_uses__the_canonical__closed_router() -> None:
     owner = Path(__file__).resolve().parents[5] / (
         "src/google_work_agent/adapters/langgraph/subgraphs/work_analysis"
     )
@@ -44,7 +44,7 @@ def test_finalize_uses_the_canonical_closed_router() -> None:
     )
 
 
-def test_work_analysis_graph_and_state_are_exact() -> None:
+def test_work_analysis__graph_and__state_are_exact() -> None:
     owner = Path(__file__).resolve().parents[5] / (
         "src/google_work_agent/adapters/langgraph/subgraphs/work_analysis"
     )

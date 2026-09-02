@@ -37,7 +37,7 @@ class _Runtime:
         self.closed = True
 
 
-def test_registry_rejects_duplicate_authority_and_closes_each_runtime() -> None:
+def test_registry_rejects__duplicate_authority_and__closes_each_runtime() -> None:
     registry = ConnectorRuntimeRegistry()
     runtime = _Runtime()
     registry.register("google_workspace", runtime)

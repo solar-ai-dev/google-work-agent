@@ -14,7 +14,7 @@ from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 VERSION = "1"
 
 
-def test_server_request_hash_is_canonical_and_semantic() -> None:
+def test_server_request__hash_is__canonical_and_semantic() -> None:
     left = calculate_server_request_hash(
         operation="CancelRunRequestV2",
         payload={"command_id": "cmd-1", "expected_version": 3},
@@ -71,7 +71,7 @@ def test_server_request_hash_is_canonical_and_semantic() -> None:
         ),
     ],
 )
-def test_versioned_mutation_schemas_accept_only_client_authority_fields(
+def test_versioned_mutation__schemas_accept_only__client_authority_fields(
     schema: type[BaseModel],
     payload: dict[str, object],
 ) -> None:
@@ -93,7 +93,7 @@ def test_versioned_mutation_schemas_accept_only_client_authority_fields(
             schema.model_validate({**payload, forbidden: "browser-value"})
 
 
-def test_approve_accepts_only_duplicate_acknowledgement_not_duplicate_facts() -> None:
+def test_approve_accepts__only_duplicate_acknowledgement__not_duplicate_facts() -> None:
     payload = {
         "command_id": "approve-duplicate",
         "expected_version": 1,
@@ -113,7 +113,7 @@ def test_approve_accepts_only_duplicate_acknowledgement_not_duplicate_facts() ->
         )
 
 
-def test_confirmation_response_is_typed_and_mutually_exclusive() -> None:
+def test_confirmation_response__is_typed__and_mutually_exclusive() -> None:
     response = ConfirmationResponseV1.model_validate(
         {
             "command_id": "confirm-1",
@@ -136,7 +136,7 @@ def test_confirmation_response_is_typed_and_mutually_exclusive() -> None:
         )
 
 
-def test_resume_rejects_arbitrary_payload_and_confirmation_kind() -> None:
+def test_resume_rejects__arbitrary_payload__and_confirmation_kind() -> None:
     base = {
         "command_id": "resume-1",
         "expected_version": 2,
@@ -151,7 +151,7 @@ def test_resume_rejects_arbitrary_payload_and_confirmation_kind() -> None:
         ResumeRunRequestV2.model_validate({**base, "resume_kind": "CONFIRMATION"})
 
 
-def test_recovery_schema_uses_shared_target_and_closed_resolution_vocabulary() -> None:
+def test_recovery_schema_uses__shared_target_and__closed_resolution_vocabulary() -> None:
     base = {
         "command_id": "recovery-1",
         "expected_version": 4,

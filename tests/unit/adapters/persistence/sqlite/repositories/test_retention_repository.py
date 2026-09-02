@@ -75,7 +75,7 @@ def _seed_retention_database(database_path: Path) -> None:
         connection.close()
 
 
-def test_retention_is_bounded_child_first_and_preserves_open_run_replay(
+def test_retention_is_bounded__child_first_and__preserves_open_run_replay(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "retention.db"

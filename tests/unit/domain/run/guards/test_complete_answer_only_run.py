@@ -6,7 +6,7 @@ from google_work_agent.domain.run.guards.complete_answer_only_run import (
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 
 
-def test_answer_only_completion_requires_no_persisted_work_facts() -> None:
+def test_answer_only__completion_requires_no__persisted_work_facts() -> None:
     guard_complete_answer_only_run(
         RunStatusV1.ANALYZING,
         has_plan=False,

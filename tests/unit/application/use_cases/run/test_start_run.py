@@ -50,7 +50,7 @@ def _command() -> StartRunCommand:
         replace(_command(), entry_mode="RESOURCE_SELECTED"),
     ),
 )
-def test_start_run_rejects_noncanonical_input_before_any_durable_write(
+def test_start_run_rejects__noncanonical_input_before__any_durable_write(
     tmp_path: Path, command: StartRunCommand
 ) -> None:
     database_path = _database(tmp_path)
@@ -71,7 +71,7 @@ def test_start_run_rejects_noncanonical_input_before_any_durable_write(
             assert connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
 
 
-def test_start_run_freezes_current_settings_into_durable_run_budget(tmp_path: Path) -> None:
+def test_start_run_freezes__current_settings_into__durable_run_budget(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     handler = StartRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path),

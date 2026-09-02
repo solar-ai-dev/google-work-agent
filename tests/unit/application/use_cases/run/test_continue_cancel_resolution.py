@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.run.continue_cancel_resolution impo
 from google_work_agent.domain.run.model import RunStatusV1
 
 
-def test_expired_action_is_settled_before_finalize_cancel() -> None:
+def test_expired_action__is_settled__before_finalize_cancel() -> None:
     calls: list[tuple[str, int]] = []
 
     class _Uow:

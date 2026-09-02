@@ -34,7 +34,7 @@ def _seed(
     }
 
 
-def test_planning_operation_inventory_is_9_of_9() -> None:
+def test_planning_operation__inventory_is__nine_of_nine() -> None:
     assert all(
         callable(value)
         for value in (
@@ -51,7 +51,7 @@ def test_planning_operation_inventory_is_9_of_9() -> None:
     )
 
 
-def test_assemble_plan_has_no_caller_dependency_authority() -> None:
+def test_assemble_plan__has_no__caller_dependency_authority() -> None:
     assert "dependency_candidates" in inspect.signature(assemble_plan).parameters
     seeds = [
         _seed(
@@ -72,14 +72,14 @@ def test_assemble_plan_has_no_caller_dependency_authority() -> None:
     assert plan["actions"][1]["depends_on_action_ids"] == ["a1"]
 
 
-def test_build_dependencies_is_deterministic_sole_dependency_authority() -> None:
+def test_build_dependencies__is_deterministic__sole_dependency_authority() -> None:
     source = inspect.getsource(assemble_plan)
     assert "build_dependencies(seeds)" not in source
     assert "compose_dependencies" not in source
     assert "generate_dependencies" not in source
 
 
-def test_compose_arguments_has_no_legacy_writer_path() -> None:
+def test_compose_arguments__has_no__legacy_writer_path() -> None:
     assert "writer" not in inspect.signature(compose_arguments_per_output_route).parameters
     module = __import__(
         "google_work_agent.application.agents.planning.compose_arguments_per_output_route",
@@ -88,7 +88,7 @@ def test_compose_arguments_has_no_legacy_writer_path() -> None:
     assert "LegacyWriter" not in inspect.getsource(module)
 
 
-def test_compose_arguments_has_exact_bound_schema_parameter() -> None:
+def test_compose_arguments__has_exact__bound_schema_parameter() -> None:
     parameters = inspect.signature(compose_arguments_per_output_route).parameters
     assert "bound_tool_schemas" in parameters
     assert "user_request" not in parameters

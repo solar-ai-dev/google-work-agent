@@ -61,7 +61,7 @@ def _loaded_prompt_ids(path: Path) -> set[str]:
     return loaded
 
 
-def test_tool_routing_product_prompt_callers_use_only_canonical_slots() -> None:
+def test_tool_routing_product__prompt_callers_use__only_canonical_slots() -> None:
     loaded = set()
     production_constants = set()
     for path in SOURCE_ROOT.rglob("*.py"):
@@ -77,7 +77,7 @@ def test_tool_routing_product_prompt_callers_use_only_canonical_slots() -> None:
     )
 
 
-def test_tool_routing_prompt_inputs_match_current_runtime_contract() -> None:
+def test_tool_routing__prompt_inputs_match__current_runtime_contract() -> None:
     contract = load_prompt_input_contract()
     determine = contract.entry("tool_routing.determine_io_resources")
     select = contract.entry("tool_routing.select_tool_if_needed")
@@ -94,7 +94,7 @@ def test_tool_routing_prompt_inputs_match_current_runtime_contract() -> None:
     assert select.optional_root_fields == ("confirmation_response",)
 
 
-def test_tool_routing_graph_has_no_separate_revision_prompt_authority() -> None:
+def test_tool_routing_graph__has_no_separate__revision_prompt_authority() -> None:
     source = TOOL_ROUTING_GRAPH.read_text(encoding="utf-8")
     owner_source = "\n".join(
         path.read_text(encoding="utf-8") for path in TOOL_ROUTING_OWNER.rglob("*.py")
@@ -106,7 +106,7 @@ def test_tool_routing_graph_has_no_separate_revision_prompt_authority() -> None:
     assert ".revise" not in owner_source
 
 
-def test_profile_composition_has_no_product_prompt_authority() -> None:
+def test_profile_composition__has_no__product_prompt_authority() -> None:
     profile_source = "\n".join(
         path.read_text(encoding="utf-8") for path in (SINGLE_PROFILE, THREE_STAGE_PROFILE)
     )

@@ -5,7 +5,7 @@ from google_work_agent.adapters.persistence.sqlite.connected_account_store impor
 )
 
 
-def test_connected_account_store_reuses_email_identity_and_reactivates() -> None:
+def test_connected_account__store_reuses_email__identity_and_reactivates() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(

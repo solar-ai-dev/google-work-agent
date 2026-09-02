@@ -35,7 +35,7 @@ from google_work_agent.application.use_cases.attachment.create_staged_attachment
 )
 
 
-def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path) -> None:
+def test_development_container__serves_health_and__closes_mcp_child(tmp_path: Path) -> None:
     runtime_root = tmp_path / "runtime"
     container = build_container(
         runtime_root=runtime_root,
@@ -80,7 +80,7 @@ def test_development_container_serves_health_and_closes_mcp_child(tmp_path: Path
     assert container.readiness_aggregator.evaluate().state.value == "NOT_READY"
 
 
-def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path) -> None:
+def test_development_service__serves_loopback__health_over_uvicorn(tmp_path: Path) -> None:
     port = _allocate_loopback_port()
     container = build_container(
         port=port,
@@ -110,7 +110,7 @@ def test_development_service_serves_loopback_health_over_uvicorn(tmp_path: Path)
 
 
 @pytest.mark.parametrize("graph_profile", tuple(GraphProfile))
-def test_development_container_selects_each_canonical_graph_profile(
+def test_development_container__selects_each__canonical_graph_profile(
     tmp_path: Path,
     graph_profile: GraphProfile,
 ) -> None:

@@ -34,7 +34,7 @@ def _valid_output() -> dict[str, object]:
     }
 
 
-def test_task_create_produces_semantic_candidate_without_tool_identity() -> None:
+def test_task_create__produces_semantic_candidate__without_tool_identity() -> None:
     catalog = load_signed_tool_registry()
     intent: RequestIntentV2 = {
         "schema_version": 2,
@@ -91,7 +91,7 @@ def test_task_create_produces_semantic_candidate_without_tool_identity() -> None
     }
 
 
-def test_semantic_revision_reuses_base_slot_and_bounded_failure_envelope() -> None:
+def test_semantic_revision_reuses__base_slot_and__bounded_failure_envelope() -> None:
     catalog = load_signed_tool_registry()
     intent: RequestIntentV2 = {
         "schema_version": 2,

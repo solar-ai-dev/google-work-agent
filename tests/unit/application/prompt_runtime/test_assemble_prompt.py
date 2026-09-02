@@ -35,7 +35,7 @@ def _projection() -> dict[str, object]:
     }
 
 
-def test_assemble_prompt_uses_registered_source_and_allowlisted_projection(
+def test_assemble_prompt__uses_registered_source__and_allowlisted_projection(
     tmp_path: Path,
 ) -> None:
     registry = _active_registry(tmp_path)
@@ -47,7 +47,7 @@ def test_assemble_prompt_uses_registered_source_and_allowlisted_projection(
     assert '"user_request":"summarize"' in assembled
 
 
-def test_assemble_prompt_rejects_forbidden_previous_run_and_evaluation_fields(
+def test_assemble_prompt_rejects__forbidden_previous_run__and_evaluation_fields(
     tmp_path: Path,
 ) -> None:
     registry = _active_registry(tmp_path)
@@ -62,7 +62,7 @@ def test_assemble_prompt_rejects_forbidden_previous_run_and_evaluation_fields(
             )
 
 
-def test_assemble_prompt_rejects_raw_provider_continuation_and_mcp_arguments(
+def test_assemble_prompt_rejects__raw_provider_continuation__and_mcp_arguments(
     tmp_path: Path,
 ) -> None:
     registry = _active_registry(tmp_path)
@@ -77,7 +77,7 @@ def test_assemble_prompt_rejects_raw_provider_continuation_and_mcp_arguments(
             )
 
 
-def test_assemble_prompt_adds_bounded_failure_instruction(tmp_path: Path) -> None:
+def test_assemble_prompt__adds_bounded__failure_instruction(tmp_path: Path) -> None:
     registry = _active_registry(tmp_path)
     prompt_ref = registry.lookup_by_id("planning.compose_answer")
     failure = build_failure_record_v1(
@@ -98,7 +98,7 @@ def test_assemble_prompt_adds_bounded_failure_instruction(tmp_path: Path) -> Non
     assert "experiment_disposition" not in assembled
 
 
-def test_evaluation_scope_and_product_scope_use_the_same_active_base_source() -> None:
+def test_evaluation_scope_and__product_scope_use_the__same_active_base_source() -> None:
     registry = PromptRegistry()
     prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
 
@@ -114,7 +114,7 @@ def test_evaluation_scope_and_product_scope_use_the_same_active_base_source() ->
     assert product_assembled == evaluation_assembled
 
 
-def test_unknown_activation_scope_fails_closed() -> None:
+def test_unknown_activation__scope_fails__closed() -> None:
     registry = PromptRegistry()
     prompt_ref = registry.lookup_for_evaluation("planning.compose_answer")
 
@@ -127,7 +127,7 @@ def test_unknown_activation_scope_fails_closed() -> None:
         )
 
 
-def test_repair_envelope_reuses_base_source_and_binds_candidate(tmp_path: Path) -> None:
+def test_repair_envelope__reuses_base_source__and_binds_candidate(tmp_path: Path) -> None:
     registry = _active_registry(tmp_path)
     prompt_ref = registry.lookup_by_id("planning.compose_answer")
     failure = build_failure_record_v1(

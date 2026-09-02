@@ -7,7 +7,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.audit_event_repo
 from google_work_agent.domain.audit_event.model import AuditEvent
 
 
-def test_audit_event_repository_sanitizes_lists_and_purges() -> None:
+def test_audit_event__repository_sanitizes__lists_and_purges() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(

@@ -15,7 +15,7 @@ from google_work_agent.adapters.langgraph.main.nodes.verification_node import ve
 from google_work_agent.adapters.langgraph.main.state import GraphState
 
 
-def test_action_execution_projects_only_changed_control_fields() -> None:
+def test_action_execution__projects_only__changed_control_fields() -> None:
     state = cast(
         GraphState,
         {"run_id": "run-1", "approved_plan_id": "plan-1", "__target__": "action"},
@@ -33,7 +33,7 @@ def test_action_execution_projects_only_changed_control_fields() -> None:
     assert dict(patch) == {"__target__": "verification", "workflow_phase": "VERIFICATION"}
 
 
-def test_verification_technical_failure_is_not_coerced_to_a_semantic_result() -> None:
+def test_verification_technical_failure__is_not_coerced__to_a_semantic_result() -> None:
     def fail(_state: object) -> dict[str, object]:
         raise TimeoutError("verification transport failed")
 
@@ -41,7 +41,7 @@ def test_verification_technical_failure_is_not_coerced_to_a_semantic_result() ->
         verification_node({"run_id": "run-1"}, verify_durable_effects=fail)
 
 
-def test_recovery_projects_verification_without_invoking_a_write_seam() -> None:
+def test_recovery_projects__verification_without_invoking__a_write_seam() -> None:
     calls: list[str] = []
 
     def recover(state: GraphState) -> GraphState:
@@ -60,7 +60,7 @@ def test_recovery_projects_verification_without_invoking_a_write_seam() -> None:
     assert dict(patch) == {"__target__": "verification", "workflow_phase": "VERIFICATION"}
 
 
-def test_cancel_resolution_requires_run_identity_and_runs_one_durable_step() -> None:
+def test_cancel_resolution_requires__run_identity_and__runs_one_durable_step() -> None:
     calls: list[str] = []
     with pytest.raises(ValueError, match="run_id"):
         cancel_resolution_node({}, continue_cancel_resolution=lambda _run_id: {})

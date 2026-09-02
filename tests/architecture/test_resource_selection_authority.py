@@ -3,7 +3,7 @@ from pathlib import Path
 ROOT = Path("src/google_work_agent")
 
 
-def test_selection_handle_authentication_is_owned_only_by_canonical_operations() -> None:
+def test_selection_handle_authentication__is_owned_only__by_canonical_operations() -> None:
     offenders = []
     authorities = {
         ROOT / "application/use_cases/resource/issue_selection_handle.py",
@@ -17,7 +17,7 @@ def test_selection_handle_authentication_is_owned_only_by_canonical_operations()
     assert offenders == []
 
 
-def test_resource_ref_application_operations_do_not_import_concrete_adapters() -> None:
+def test_resource_ref_application__operations_do_not__import_concrete_adapters() -> None:
     paths = (
         ROOT / "application/use_cases/resource_ref/resolve_resource_ref.py",
         ROOT / "application/use_cases/resource_ref/persist_resource_ref.py",
@@ -25,7 +25,7 @@ def test_resource_ref_application_operations_do_not_import_concrete_adapters() -
     assert all("adapters." not in path.read_text(encoding="utf-8") for path in paths)
 
 
-def test_start_run_wire_accepts_only_opaque_selection_handles() -> None:
+def test_start_run__wire_accepts_only__opaque_selection_handles() -> None:
     schema = (ROOT / "api/schemas/runs/start_run.py").read_text(encoding="utf-8")
     route = (ROOT / "api/routes/runs.py").read_text(encoding="utf-8")
 
@@ -36,7 +36,7 @@ def test_start_run_wire_accepts_only_opaque_selection_handles() -> None:
     assert "SelectedResourceRef(**" not in route
 
 
-def test_start_run_has_no_raw_resource_wire_compatibility_path() -> None:
+def test_start_run_has__no_raw_resource__wire_compatibility_path() -> None:
     frontend_submit = Path("frontend/src/features/run/request_composer.tsx").read_text(
         encoding="utf-8"
     )

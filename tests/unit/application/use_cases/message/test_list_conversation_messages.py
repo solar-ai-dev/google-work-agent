@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.message.list_conversation_messages 
 )
 
 
-def test_list_conversation_messages_returns_timeline_order(tmp_path: Path) -> None:
+def test_list_conversation__messages_returns__timeline_order(tmp_path: Path) -> None:
     database_path = tmp_path / "messages.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)

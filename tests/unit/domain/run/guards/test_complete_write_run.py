@@ -21,7 +21,7 @@ def _guard(**changes: object) -> None:
     guard_complete_write_run(RunStatusV1.VERIFYING, **values)  # type: ignore[arg-type]
 
 
-def test_complete_write_run_accepts_only_exact_closed_write_facts() -> None:
+def test_complete_write_run__accepts_only_exact__closed_write_facts() -> None:
     _guard()
     for status in (
         ActionStatusV1.FAILED,

@@ -21,7 +21,7 @@ def _guard(**changes: object) -> None:
     guard_finalize_cancel(RunStatusV1.CANCEL_REQUESTED, **values)  # type: ignore[arg-type]
 
 
-def test_finalize_cancel_requires_settled_children_and_durable_intent() -> None:
+def test_finalize_cancel__requires_settled_children__and_durable_intent() -> None:
     _guard()
     for change in (
         {"cancel_intent_active": False},

@@ -88,7 +88,7 @@ def _reject_google_calls(*_args: object, **_kwargs: object) -> dict[str, object]
 # --------------------------------------------------------------------------
 
 
-def test_gmail_get_attachment_returns_bytes_and_hash(
+def test_gmail_get__attachment_returns__bytes_and_hash(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     raw = b"file content bytes"
@@ -113,7 +113,7 @@ def test_gmail_get_attachment_returns_bytes_and_hash(
     assert server._b64url_decode(cast(str, result["data_base64url"])) == raw
 
 
-def test_gmail_get_attachment_rejects_oversized_payload(
+def test_gmail_get__attachment_rejects__oversized_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     oversized = b"x" * (server.MAX_ATTACHMENT_READ_BYTES + 1)
@@ -135,7 +135,7 @@ def test_gmail_get_attachment_rejects_oversized_payload(
     assert exc_info.value.safe_code == "ATTACHMENT_TOO_LARGE"
 
 
-def test_gmail_get_attachment_never_leaves_the_read_tool_boundary(
+def test_gmail_get_attachment__never_leaves_the__read_tool_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The attachment READ tool itself performs no claim/persistence/trace side
@@ -169,7 +169,7 @@ def staging(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> FilesystemAttach
     return FilesystemAttachmentStagingAdapter(staging_dir=staging_dir)
 
 
-def test_gmail_create_draft_embeds_a_verified_staged_attachment(
+def test_gmail_create__draft_embeds_a__verified_staged_attachment(
     monkeypatch: pytest.MonkeyPatch,
     staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
@@ -218,7 +218,7 @@ def test_gmail_create_draft_embeds_a_verified_staged_attachment(
     assert b"application/pdf" in raw_bytes
 
 
-def test_gmail_create_draft_rejects_missing_staged_attachment(
+def test_gmail_create__draft_rejects__missing_staged_attachment(
     monkeypatch: pytest.MonkeyPatch,
     staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
@@ -254,7 +254,7 @@ def test_gmail_create_draft_rejects_missing_staged_attachment(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
+def test_gmail_create__draft_rejects_hash__mismatched_staged_attachment(
     monkeypatch: pytest.MonkeyPatch,
     staging: FilesystemAttachmentStagingAdapter,
 ) -> None:
@@ -296,7 +296,7 @@ def test_gmail_create_draft_rejects_hash_mismatched_staged_attachment(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_gmail_create_draft_rejects_expired_staged_attachment(
+def test_gmail_create__draft_rejects__expired_staged_attachment(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     clock = {"now": 1_000_000}
@@ -336,7 +336,7 @@ def test_gmail_create_draft_rejects_expired_staged_attachment(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
+def test_gmail_create_draft__without_staging_env__rejects_attachment_use(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(server.ATTACHMENT_STAGING_DIR_ENV, raising=False)
@@ -371,7 +371,7 @@ def test_gmail_create_draft_without_staging_env_rejects_attachment_use(
     assert exc_info.value.delivery_certainty is DeliveryCertainty.NOT_SENT
 
 
-def test_gmail_create_draft_without_attachments_key_never_touches_staging(
+def test_gmail_create_draft__without_attachments_key__never_touches_staging(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv(server.ATTACHMENT_STAGING_DIR_ENV, raising=False)

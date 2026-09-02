@@ -4,7 +4,7 @@ from google_work_agent.adapters.langgraph.write_reconciliation import (
 )
 
 
-def test_action_approval_conflict_routes_to_existing_waiting_approval() -> None:
+def test_action_approval__conflict_routes_to__existing_waiting_approval() -> None:
     decision = reconcile_write_conflict(
         aggregate=ReconcileAggregate.ACTION,
         current_status="MODIFIED",
@@ -15,7 +15,7 @@ def test_action_approval_conflict_routes_to_existing_waiting_approval() -> None:
     assert decision.outcome == "WAITING_APPROVAL"
 
 
-def test_action_unknown_result_routes_to_existing_recovery() -> None:
+def test_action_unknown__result_routes__to_existing_recovery() -> None:
     decision = reconcile_write_conflict(
         aggregate=ReconcileAggregate.ACTION,
         current_status="UNKNOWN_RESULT",
@@ -26,7 +26,7 @@ def test_action_unknown_result_routes_to_existing_recovery() -> None:
     assert decision.outcome == "RECOVERY_REQUIRED"
 
 
-def test_run_recovery_required_routes_to_existing_recovery() -> None:
+def test_run_recovery__required_routes__to_existing_recovery() -> None:
     decision = reconcile_write_conflict(
         aggregate=ReconcileAggregate.RUN,
         current_status="RECOVERY_REQUIRED",
@@ -37,7 +37,7 @@ def test_run_recovery_required_routes_to_existing_recovery() -> None:
     assert decision.outcome == "RECOVERY_REQUIRED"
 
 
-def test_reauth_and_cancel_are_real_suspend_branches() -> None:
+def test_reauth_and__cancel_are__real_suspend_branches() -> None:
     reauth = reconcile_write_conflict(
         aggregate=ReconcileAggregate.RUN,
         current_status="REAUTH_REQUIRED",
@@ -53,7 +53,7 @@ def test_reauth_and_cancel_are_real_suspend_branches() -> None:
     assert (cancel.target, cancel.outcome) == ("end", "SUSPEND_CANCEL_REQUESTED")
 
 
-def test_already_terminal_action_reenters_executor_without_new_domain_mutation() -> None:
+def test_already_terminal_action__reenters_executor_without__new_domain_mutation() -> None:
     decision = reconcile_write_conflict(
         aggregate=ReconcileAggregate.ACTION,
         current_status="VERIFIED",

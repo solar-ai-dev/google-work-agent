@@ -15,7 +15,7 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
 from google_work_agent.domain.recovery.model import RecoveryResolution
 
 
-def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path) -> None:
+def test_recheck_from__recovery_required__transitions_to_verifying(tmp_path: Path) -> None:
     database_path = _database(
         tmp_path,
         run_status="VERIFYING",
@@ -42,7 +42,7 @@ def test_recheck_from_recovery_required_transitions_to_verifying(tmp_path: Path)
         ).fetchone()[0] == "EXECUTED"
 
 
-def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> None:
+def test_replay_with__same_request_hash__returns_cached_result(tmp_path: Path) -> None:
     database_path = _database(
         tmp_path,
         run_status="VERIFYING",
@@ -63,7 +63,7 @@ def test_replay_with_same_request_hash_returns_cached_result(tmp_path: Path) -> 
     assert _count(database_path, "command_receipts") == 1
 
 
-def test_cancel_without_durable_intent_fails_closed_via_domain_guard(tmp_path: Path) -> None:
+def test_cancel_without_durable__intent_fails_closed__via_domain_guard(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -78,7 +78,7 @@ def test_cancel_without_durable_intent_fails_closed_via_domain_guard(tmp_path: P
     assert _count(database_path, "command_receipts") == 1
 
 
-def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_guard(
+def test_resolution_from_non__recovery_required_status_fails__closed_via_domain_guard(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path, run_status="ANALYZING")
@@ -95,7 +95,7 @@ def test_resolution_from_non_recovery_required_status_fails_closed_via_domain_gu
     assert _count(database_path, "command_receipts") == 1
 
 
-def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+def test_version_conflict_does__not_mutate_child__plan_or_context(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -129,7 +129,7 @@ def test_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) 
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
-def test_context_version_conflict_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+def test_context_version_conflict__does_not_mutate__child_plan_or_context(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -167,7 +167,7 @@ def test_context_version_conflict_does_not_mutate_child_plan_or_context(tmp_path
         )
 
 
-def test_external_request_materializes_exact_current_context_binding(tmp_path: Path) -> None:
+def test_external_request__materializes_exact__current_context_binding(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
 
@@ -185,7 +185,7 @@ def test_external_request_materializes_exact_current_context_binding(tmp_path: P
     assert command.target_action_id == "action-1"
 
 
-def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_path: Path) -> None:
+def test_requested_target_mismatch__does_not_mutate__child_plan_or_context(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     handler = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),
@@ -217,7 +217,7 @@ def test_requested_target_mismatch_does_not_mutate_child_plan_or_context(tmp_pat
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
-def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: Path) -> None:
+def test_fail_settles_plan__clears_context_and__writes_terminal_message(tmp_path: Path) -> None:
     database_path = _database(
         tmp_path,
         run_status="VERIFYING",
@@ -271,7 +271,7 @@ def test_fail_settles_plan_clears_context_and_writes_terminal_message(tmp_path: 
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
 
 
-def test_fail_without_durable_irrecoverable_proof_is_rejected(tmp_path: Path) -> None:
+def test_fail_without__durable_irrecoverable__proof_is_rejected(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
 
     result = ResolveRecoveryHandler(
@@ -288,7 +288,7 @@ def test_fail_without_durable_irrecoverable_proof_is_rejected(tmp_path: Path) ->
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
-def test_fail_rejects_executed_action_awaiting_verification(tmp_path: Path) -> None:
+def test_fail_rejects__executed_action__awaiting_verification(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     with connect_sqlite(database_path) as connection:
         connection.execute(
@@ -320,7 +320,7 @@ def test_fail_rejects_executed_action_awaiting_verification(tmp_path: Path) -> N
         assert connection.execute("SELECT COUNT(*) FROM recovery_contexts;").fetchone()[0] == 1
 
 
-def test_accept_partial_writes_required_completion_audit(tmp_path: Path) -> None:
+def test_accept_partial__writes_required__completion_audit(tmp_path: Path) -> None:
     database_path = _database(tmp_path, run_status="RECOVERY_REQUIRED")
     result = ResolveRecoveryHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10),

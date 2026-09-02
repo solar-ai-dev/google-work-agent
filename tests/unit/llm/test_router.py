@@ -34,7 +34,7 @@ def _hardware(status: HardwareCapabilityStatus) -> HardwareCapability:
     )
 
 
-def test_api_only_forces_api_runtime() -> None:
+def test_api_only__forces_api__runtime() -> None:
     decision = _router().decide(
         RouteDecisionInput(
             build_profile="API_ONLY",
@@ -51,7 +51,7 @@ def test_api_only_forces_api_runtime() -> None:
     assert decision.fallback_allowed is False
 
 
-def test_api_only_blocks_local_gpu_request() -> None:
+def test_api_only__blocks_local__gpu_request() -> None:
     decision = _router().decide(
         RouteDecisionInput(
             build_profile="API_ONLY",
@@ -68,7 +68,7 @@ def test_api_only_blocks_local_gpu_request() -> None:
     assert decision.safe_reason_code == "API_ONLY_MODE_BLOCKED"
 
 
-def test_auto_allows_one_api_fallback_when_local_is_unavailable_and_consent_exists() -> None:
+def test_auto_allows_one_api__fallback_when_local_is__unavailable_and_consent_exists() -> None:
     decision = _router().decide(
         RouteDecisionInput(
             build_profile="LOCAL_CAPABLE",
@@ -89,7 +89,7 @@ def test_auto_allows_one_api_fallback_when_local_is_unavailable_and_consent_exis
     assert decision.fallback_target is ActualRuntime.API_LLM
 
 
-def test_local_gpu_never_allows_api_fallback() -> None:
+def test_local_gpu__never_allows__api_fallback() -> None:
     decision = _router().decide(
         RouteDecisionInput(
             build_profile="LOCAL_CAPABLE",

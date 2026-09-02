@@ -57,7 +57,7 @@ def _state() -> GraphState:
     )
 
 
-def test_current_plan_joins_frozen_route_and_builds_expected() -> None:
+def test_current_plan__joins_frozen_route__and_builds_expected() -> None:
     action = _action()
 
     assert connector_ids_from_frozen_routes(state=_state(), plan=_plan()) == {
@@ -69,7 +69,7 @@ def test_current_plan_joins_frozen_route_and_builds_expected() -> None:
 
 
 @pytest.mark.parametrize("field", ["route_id", "tool_id", "effect"])
-def test_current_plan_fails_closed_on_frozen_route_drift(field: str) -> None:
+def test_current_plan__fails_closed_on__frozen_route_drift(field: str) -> None:
     plan = _plan()
     plan["actions"][0][field] = "drift"  # type: ignore[literal-required]
 

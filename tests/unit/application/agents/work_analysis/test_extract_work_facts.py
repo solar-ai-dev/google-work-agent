@@ -7,7 +7,7 @@ from google_work_agent.ports.llm.structured_inference_contracts import PromptRef
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, prompt_ref
 
 
-def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
+def test_extract_work_facts__uses_exact_contract__and_bounded_evidence() -> None:
     output = {
         "fact_candidates": [
             {
@@ -35,7 +35,7 @@ def test_extract_work_facts_uses_exact_contract_and_bounded_evidence() -> None:
     )
 
 
-def test_extract_work_facts_rejects_old_or_stale_schema() -> None:
+def test_extract_work__facts_rejects_old__or_stale_schema() -> None:
     runtime = WorkAnalysisRuntimeFake(
         {
             "fact_candidates": [

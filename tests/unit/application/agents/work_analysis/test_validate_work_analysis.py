@@ -33,11 +33,11 @@ def _result() -> dict[str, object]:
     }
 
 
-def test_validate_work_analysis_accepts_exact_v2_contract() -> None:
+def test_validate_work__analysis_accepts__exact_v2_contract() -> None:
     assert validate_work_analysis(_result(), allowed_evidence_refs={"ev-1"}) == _result()
 
 
-def test_validate_work_analysis_rejects_legacy_risk_and_extra_field() -> None:
+def test_validate_work_analysis__rejects_legacy_risk__and_extra_field() -> None:
     value = _result()
     value["risks"] = [
         {

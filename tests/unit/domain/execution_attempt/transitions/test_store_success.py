@@ -5,7 +5,7 @@ from google_work_agent.domain.execution_attempt.transitions.store_success import
 )
 
 
-def test_store_success_requires_executing_and_moves_to_executed() -> None:
+def test_store_success__requires_executing_and__moves_to_executed() -> None:
     result = transition_store_success(
         ActionStatusV1.EXECUTING,
         action_version=3,

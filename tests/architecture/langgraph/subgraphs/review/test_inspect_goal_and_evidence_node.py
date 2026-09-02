@@ -38,7 +38,7 @@ from google_work_agent.ports.llm.structured_inference_port import (
 DIMENSION = "review.inspect_goal_and_evidence"
 
 
-def test_goal_node_projection_and_answer_router_are_exact() -> None:
+def test_goal_node__projection_and_answer__router_are_exact() -> None:
     state = {
         "request_intent": {},
         "planning_result": {"schema_version": 2, "answer": "draft"},
@@ -64,7 +64,7 @@ def test_goal_node_projection_and_answer_router_are_exact() -> None:
     )
 
 
-def test_non_active_goal_prompt_fails_before_structured_inference(tmp_path: Path) -> None:
+def test_non_active__goal_prompt_fails__before_structured_inference(tmp_path: Path) -> None:
     class FailingRuntime:
         calls = 0
 
@@ -95,7 +95,7 @@ def test_non_active_goal_prompt_fails_before_structured_inference(tmp_path: Path
     assert runtime.calls == 0
 
 
-def test_production_inspection_has_no_broad_plan_review_semantic_caller() -> None:
+def test_production_inspection_has__no_broad_plan__review_semantic_caller() -> None:
     source = inspect.getsource(ReviewSubgraph)
     assert "inspect_goal_and_evidence_node" in source
     assert "inspect_action_scope_and_route_node" in source
@@ -104,7 +104,7 @@ def test_production_inspection_has_no_broad_plan_review_semantic_caller() -> Non
     assert "RuntimeActiveReviewSubgraph" not in source
 
 
-def test_review_graph_uses_exact_atomic_runtime_node_ids() -> None:
+def test_review_graph__uses_exact_atomic__runtime_node_ids() -> None:
     graph = ReviewSubgraph(
         dependencies=ReviewRuntimeDependencies(
             invoke=lambda _prompt_id, _input: {
@@ -124,7 +124,7 @@ def test_review_graph_uses_exact_atomic_runtime_node_ids() -> None:
     assert "inspect_constraints_and_policy_summary" not in nodes
 
 
-def test_six_role_runtime_calls_all_applicable_exact_inspectors_read_only() -> None:
+def test_six_role_runtime__calls_all_applicable__exact_inspectors_read_only() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: object) -> dict[str, object]:

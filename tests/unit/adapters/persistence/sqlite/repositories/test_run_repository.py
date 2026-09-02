@@ -6,7 +6,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.run_repository i
 from google_work_agent.domain.run.model import RunCreate, RunStatusV1
 
 
-def test_run_repository_exact_query_create_and_cas_surface() -> None:
+def test_run_repository__exact_query_create__and_cas_surface() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(

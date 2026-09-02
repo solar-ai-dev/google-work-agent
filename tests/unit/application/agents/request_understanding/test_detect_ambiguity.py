@@ -79,7 +79,7 @@ def test_detect_ambiguity__canonical_call__owns_independent_ambiguity() -> None:
     }
 
 
-def test_detect_ambiguity_rejects_metadata_without_confirmation() -> None:
+def test_detect_ambiguity__rejects_metadata__without_confirmation() -> None:
     with pytest.raises(ValueError, match="non-confirmation ambiguity metadata must be empty"):
         _validate_ambiguity(
             {

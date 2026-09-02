@@ -12,7 +12,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 )
 
 
-def test_exact_objective_node_projection_router_are_wired() -> None:
+def test_exact_objective__node_projection__router_are_wired() -> None:
     source = inspect.getsource(PlanningSubgraph.build)
     assert '"draft_action_objective_per_output_route"' in source
     assert callable(node_module.draft_action_objective_per_output_route_node)

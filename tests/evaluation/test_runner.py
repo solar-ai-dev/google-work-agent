@@ -36,7 +36,7 @@ class _ProductApiStub:
         }
 
 
-def test_runner_load_invoke_grade_serialize_chain(tmp_path: Path) -> None:
+def test_runner_load__invoke_grade__serialize_chain(tmp_path: Path) -> None:
     dataset = tmp_path / "cases.jsonl"
     case = {
         "case_id": "CASE-1",

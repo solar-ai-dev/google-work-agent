@@ -16,7 +16,7 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     OllamaRuntimeProbe,
     RuntimePolicy,
 )
-from google_work_agent.ports.system.contracts.runtime import AppSettings
+from google_work_agent.ports.system.contracts.application_settings import AppSettings
 
 
 @dataclass

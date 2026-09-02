@@ -7,7 +7,7 @@ from google_work_agent.application.use_cases.verification.write_verification_pro
 )
 
 
-def test_task_create_expected_maps_scheduled_date_to_provider_due() -> None:
+def test_task_create_expected__maps_scheduled_date__to_provider_due() -> None:
     expected = build_expected_verification_projection(
         tool_name="tasks_create_task",
         arguments={
@@ -29,7 +29,7 @@ def test_task_create_expected_maps_scheduled_date_to_provider_due() -> None:
     }
 
 
-def test_expected_never_contains_provider_generated_identity() -> None:
+def test_expected_never__contains_provider__generated_identity() -> None:
     for tool_name, arguments in (
         (
             "gmail_create_draft",
@@ -59,14 +59,14 @@ def test_expected_never_contains_provider_generated_identity() -> None:
         assert "version" not in expected
 
 
-def test_gmail_send_expected_matches_fresh_sent_message_lookup_surface() -> None:
+def test_gmail_send_expected__matches_fresh_sent__message_lookup_surface() -> None:
     assert build_expected_verification_projection(
         tool_name="gmail_send",
         arguments={"draft_id": "draft-1"},
     ) == {"resource_type": "gmail_message"}
 
 
-def test_gmail_draft_actual_normalizes_recipient_list_to_metadata_header() -> None:
+def test_gmail_draft_actual__normalizes_recipient_list__to_metadata_header() -> None:
     actual = normalize_actual_verification_projection(
         tool_name="gmail_create_draft",
         actual={"payload": {"to": ["a@example.com", "b@example.com"]}},
@@ -75,7 +75,7 @@ def test_gmail_draft_actual_normalizes_recipient_list_to_metadata_header() -> No
     assert actual == {"payload": {"to": "a@example.com, b@example.com"}}
 
 
-def test_calendar_expected_omits_fields_current_verification_snapshot_cannot_observe() -> None:
+def test_calendar_expected_omits__fields_current_verification__snapshot_cannot_observe() -> None:
     expected = build_expected_verification_projection(
         tool_name="calendar_create_event",
         arguments={
@@ -99,14 +99,14 @@ def test_calendar_expected_omits_fields_current_verification_snapshot_cannot_obs
     }
 
 
-def test_delete_expected_is_absence_only() -> None:
+def test_delete_expected__is_absence__only() -> None:
     assert build_expected_verification_projection(
         tool_name="tasks_delete_task",
         arguments={"task_list_id": "list-1", "task_id": "task-1"},
     ) == {"absent": True}
 
 
-def test_subset_compare_ignores_extra_provider_metadata() -> None:
+def test_subset_compare__ignores_extra__provider_metadata() -> None:
     expected = {"payload": {"title": "Prepare report"}}
     actual = {
         "resource_type": "task",
@@ -121,7 +121,7 @@ def test_subset_compare_ignores_extra_provider_metadata() -> None:
     assert calculate_verification_subset_diff(expected, actual) == []
 
 
-def test_subset_compare_still_detects_expected_business_field_mismatch() -> None:
+def test_subset_compare__still_detects_expected__business_field_mismatch() -> None:
     diff = calculate_verification_subset_diff(
         {"payload": {"title": "Prepare report"}},
         {"payload": {"title": "Different title"}},
@@ -136,7 +136,7 @@ def test_subset_compare_still_detects_expected_business_field_mismatch() -> None
     ]
 
 
-def test_task_due_actual_is_normalized_to_product_date() -> None:
+def test_task_due__actual_is_normalized__to_product_date() -> None:
     actual = normalize_actual_verification_projection(
         tool_name="tasks_create_task",
         actual={
@@ -153,7 +153,7 @@ def test_task_due_actual_is_normalized_to_product_date() -> None:
     }
 
 
-def test_task_create_actual_strips_only_server_generated_recovery_marker() -> None:
+def test_task_create_actual__strips_only_server__generated_recovery_marker() -> None:
     actual = normalize_actual_verification_projection(
         tool_name="tasks_create_task",
         actual={

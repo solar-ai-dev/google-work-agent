@@ -8,7 +8,7 @@ from google_work_agent.ports.system.operational_command_replay_port import (
 )
 
 
-def test_operational_replay_is_separate_from_domain_receipts_and_replays_result(
+def test_operational_replay_is__separate_from_domain__receipts_and_replays_result(
     tmp_path: Path,
 ) -> None:
     adapter = FilesystemOperationalCommandReplayAdapter(tmp_path / "operations")
@@ -24,7 +24,7 @@ def test_operational_replay_is_separate_from_domain_receipts_and_replays_result(
     assert replayed.bounded_result == {"size_bytes": 1}
 
 
-def test_operational_replay_rejects_same_command_id_with_different_hash(tmp_path: Path) -> None:
+def test_operational_replay_rejects__same_command_id__with_different_hash(tmp_path: Path) -> None:
     adapter = FilesystemOperationalCommandReplayAdapter(tmp_path / "operations")
     adapter.reserve_or_replay(OperationalCommandContextV1("cmd-1", "backup.create", "1" * 64))
 
@@ -35,7 +35,7 @@ def test_operational_replay_rejects_same_command_id_with_different_hash(tmp_path
     assert conflict.decision == "CONFLICT"
 
 
-def test_operational_replay_recovers_reserved_and_uncertain_operations(tmp_path: Path) -> None:
+def test_operational_replay__recovers_reserved__and_uncertain_operations(tmp_path: Path) -> None:
     adapter = FilesystemOperationalCommandReplayAdapter(tmp_path / "operations")
     context = OperationalCommandContextV1("cmd-1", "backup.create", "1" * 64)
 

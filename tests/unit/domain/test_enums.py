@@ -12,7 +12,7 @@ from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.domain.verification.model import VerificationStatus
 
 
-def test_run_status_values_match_sql() -> None:
+def test_run_status__values_match__sql() -> None:
     assert tuple(status.value for status in RunStatusV1) == (
         "CREATED",
         "ANALYZING",
@@ -32,7 +32,7 @@ def test_run_status_values_match_sql() -> None:
     )
 
 
-def test_action_status_values_match_sql() -> None:
+def test_action_status__values_match__sql() -> None:
     assert tuple(status.value for status in ActionStatusV1) == (
         "PROPOSED",
         "MODIFIED",
@@ -51,7 +51,7 @@ def test_action_status_values_match_sql() -> None:
     )
 
 
-def test_other_enum_values_match_contract() -> None:
+def test_other_enum__values_match__contract() -> None:
     assert tuple(status.value for status in ApprovalStatusV1) == (
         "ACTIVE",
         "EXPIRED",
@@ -101,11 +101,11 @@ def test_other_enum_values_match_contract() -> None:
     )
 
 
-def test_effect_type_includes_send_and_delete() -> None:
+def test_effect_type__includes_send__and_delete() -> None:
     assert {"SEND", "DELETE"} <= {effect.value for effect in EffectType}
 
 
-def test_status_values_are_unique() -> None:
+def test_status_values__are__unique() -> None:
     for enum_type in (RunStatusV1, ActionStatusV1):
         values = [status.value for status in enum_type]
         assert len(values) == len(set(values))

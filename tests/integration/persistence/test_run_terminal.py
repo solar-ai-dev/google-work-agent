@@ -136,7 +136,7 @@ def _insert_active_approval(database_path: Path) -> None:
         ),
     ),
 )
-def test_run_terminal_services_persist_transition_receipt_and_events(
+def test_run_terminal__services_persist_transition__receipt_and_events(
     run_terminal_database: Path,
     service_factory: TerminalServiceFactory,
     command: TerminalCommand,
@@ -200,7 +200,7 @@ def test_run_terminal_services_persist_transition_receipt_and_events(
         connection.close()
 
 
-def test_block_run_revokes_active_approval_before_terminal_transition(
+def test_block_run__revokes_active_approval__before_terminal_transition(
     run_terminal_database: Path,
 ) -> None:
     _set_run_status(run_terminal_database, status="WAITING_APPROVAL")
@@ -246,7 +246,7 @@ def test_block_run_revokes_active_approval_before_terminal_transition(
         connection.close()
 
 
-def test_block_run_version_conflict_does_not_revoke_active_approval(
+def test_block_run_version__conflict_does_not__revoke_active_approval(
     run_terminal_database: Path,
 ) -> None:
     _set_run_status(run_terminal_database, status="WAITING_APPROVAL")
@@ -299,7 +299,7 @@ def test_block_run_version_conflict_does_not_revoke_active_approval(
         ),
     ),
 )
-def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash(
+def test_run_terminal_services_return__stored_result_for_same__command_id_and_hash(
     run_terminal_database: Path,
     service_factory: TerminalServiceFactory,
     command: TerminalCommand,
@@ -334,7 +334,7 @@ def test_run_terminal_services_return_stored_result_for_same_command_id_and_hash
         ),
     ),
 )
-def test_run_terminal_services_reject_stale_version_and_record_receipt(
+def test_run_terminal_services__reject_stale_version__and_record_receipt(
     run_terminal_database: Path,
     service_factory: TerminalServiceFactory,
     command: TerminalCommand,

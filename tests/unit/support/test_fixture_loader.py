@@ -3,21 +3,21 @@ from pathlib import Path
 
 from tests.support.fixtures import FixtureLoaderError, ProductFixtureSnapshotLoader
 
-FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "google"
 
 
-def test_fixture_loader_loads_snapshot_deterministically() -> None:
+def test_fixture_loader__loads_snapshot__deterministically() -> None:
     loader = ProductFixtureSnapshotLoader(FIXTURE_ROOT)
 
-    first = loader.load_snapshot("manifest.json")
-    second = loader.load_snapshot("manifest.json")
+    first = loader.load_snapshot("workspace/product_fixture_v1.json")
+    second = loader.load_snapshot("workspace/product_fixture_v1.json")
 
     assert first == second
     assert first.manifest.snapshot_id == "product-fixture-v1"
     assert len(first.resources) >= 10
 
 
-def test_fixture_loader_blocks_duplicate_resource_ids(tmp_path: Path) -> None:
+def test_fixture_loader__blocks_duplicate__resource_ids(tmp_path: Path) -> None:
     root = tmp_path / "fixtures"
     root.mkdir()
     (root / "a.json").write_text(
@@ -68,7 +68,7 @@ def test_fixture_loader_blocks_duplicate_resource_ids(tmp_path: Path) -> None:
         raise AssertionError("expected duplicate resource id failure")
 
 
-def test_fixture_loader_blocks_broken_relations(tmp_path: Path) -> None:
+def test_fixture_loader__blocks_broken__relations(tmp_path: Path) -> None:
     root = tmp_path / "fixtures"
     root.mkdir()
     (root / "only.json").write_text(
@@ -105,7 +105,7 @@ def test_fixture_loader_blocks_broken_relations(tmp_path: Path) -> None:
         raise AssertionError("expected broken relation failure")
 
 
-def test_fixture_loader_blocks_path_traversal(tmp_path: Path) -> None:
+def test_fixture_loader__blocks_path__traversal(tmp_path: Path) -> None:
     root = tmp_path / "fixtures"
     root.mkdir()
     (root / "only.json").write_text(
@@ -142,7 +142,7 @@ def test_fixture_loader_blocks_path_traversal(tmp_path: Path) -> None:
         raise AssertionError("expected path traversal failure")
 
 
-def test_fixture_loader_blocks_invalid_json_and_unsupported_type(tmp_path: Path) -> None:
+def test_fixture_loader__blocks_invalid_json__and_unsupported_type(tmp_path: Path) -> None:
     root = tmp_path / "fixtures"
     root.mkdir()
     (root / "bad.json").write_text("{", encoding="utf-8")

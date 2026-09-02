@@ -53,7 +53,7 @@ def _tokens(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
 
-def test_task_list_continuation_is_local_and_principal_bound() -> None:
+def test_task_list__continuation_is_local__and_principal_bound() -> None:
     read = _TaskListRead()
     store = LocalResourceContinuationStore(token_factory=_tokens(iter(("local-task-lists",))))
     handler = ListTaskListsHandler(

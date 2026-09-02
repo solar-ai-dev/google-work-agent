@@ -155,7 +155,7 @@ from google_work_agent.api.composition import NON_PERSISTENCE_P0_BINDINGS
         ),
     ],
 )
-def test_canonical_non_persistence_port_adapter_pair_is_importable(
+def test_canonical_non__persistence_port_adapter__pair_is_importable(
     port_module: str,
     port_symbol: str,
     adapter_module: str,
@@ -176,13 +176,13 @@ def test_canonical_non_persistence_port_adapter_pair_is_importable(
     assert adapter_symbol not in adapter_aliases
 
 
-def test_non_persistence_p0_bindings_are_closed_and_unique() -> None:
+def test_non_persistence__p0_bindings_are__closed_and_unique() -> None:
     assert len(NON_PERSISTENCE_P0_BINDINGS) == 24
     assert len({port for port, _adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
     assert len({adapter for _port, adapter in NON_PERSISTENCE_P0_BINDINGS}) == 24
 
 
-def test_each_non_persistence_adapter_implements_its_port_surface() -> None:
+def test_each_non__persistence_adapter_implements__its_port_surface() -> None:
     for port, adapter in NON_PERSISTENCE_P0_BINDINGS:
         port_methods = {
             name
@@ -197,7 +197,7 @@ def test_each_non_persistence_adapter_implements_its_port_surface() -> None:
         assert port_methods <= adapter_methods, (port.__name__, adapter.__name__)
 
 
-def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols() -> None:
+def test_llm_boundary_contracts__have_no_application__or_adapter_shadow_protocols() -> None:
     prompt_guard = _source("application/prompt_runtime/dispatch_guarded_prompt.py")
     adapter_router = _source("adapters/llm/runtime/structured_inference_router.py")
 
@@ -242,7 +242,7 @@ def test_llm_boundary_contracts_have_no_application_or_adapter_shadow_protocols(
         ),
     ],
 )
-def test_migrated_concrete_adapter_is_its_own_canonical_implementation(
+def test_migrated_concrete__adapter_is_its__own_canonical_implementation(
     canonical_path: str, canonical_symbol: str, legacy_symbol: str | None
 ) -> None:
     source = _source(canonical_path)
@@ -263,7 +263,7 @@ def test_migrated_concrete_adapter_is_its_own_canonical_implementation(
         "DefaultHardwareProbe",
     ],
 )
-def test_legacy_concrete_authority_is_absent_from_production_source(legacy_symbol: str) -> None:
+def test_legacy_concrete__authority_is_absent__from_production_source(legacy_symbol: str) -> None:
     production_sources = (Path("src") / "google_work_agent").rglob("*.py")
     assert all(legacy_symbol not in path.read_text(encoding="utf-8") for path in production_sources)
 
@@ -280,7 +280,7 @@ def test_legacy_concrete_authority_is_absent_from_production_source(legacy_symbo
         ("google_work_agent.adapters.runtime", "GracefulShutdownCoordinator"),
     ],
 )
-def test_legacy_concrete_import_and_construction_are_absent_from_production(
+def test_legacy_concrete_import__and_construction_are__absent_from_production(
     legacy_module: str, legacy_symbol: str
 ) -> None:
     for source_path in _production_source_paths():
@@ -300,7 +300,7 @@ def test_legacy_concrete_import_and_construction_are_absent_from_production(
         assert legacy_symbol not in constructed_symbols, source_path
 
 
-def test_production_callers_import_the_canonical_concrete_owners() -> None:
+def test_production_callers__import_the__canonical_concrete_owners() -> None:
     composition = _source("api/composition.py")
     connector = _source("adapters/connectors/google/workspace/composition.py")
     assert "adapters.connectors.runtime.mcp_oauth_credential import (" in connector
@@ -317,7 +317,7 @@ def test_production_callers_import_the_canonical_concrete_owners() -> None:
     )
 
 
-def test_structured_inference_router_is_the_only_runtime_selection_authority() -> None:
+def test_structured_inference_router__is_the_only__runtime_selection_authority() -> None:
     router_source = _source("adapters/llm/runtime/structured_inference_router.py")
     launcher = (Path("launcher") / "entrypoint.py").read_text(encoding="utf-8")
     llm_exports = _source("adapters/llm/__init__.py")
@@ -337,7 +337,7 @@ def test_structured_inference_router_is_the_only_runtime_selection_authority() -
     assert not (Path("src") / "google_work_agent" / "adapters/llm/router.py").exists()
 
 
-def test_structured_inference_has_one_canonical_production_binding() -> None:
+def test_structured_inference__has_one__canonical_production_binding() -> None:
     from google_work_agent.adapters.llm.runtime.structured_inference_router import (
         StructuredInferenceRuntimeRouter,
     )

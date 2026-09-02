@@ -8,7 +8,7 @@ from google_work_agent.ports.system.contracts.operational_command_replay import 
 )
 
 
-def test_operational_command_replay_is_deterministic_and_conflict_safe(tmp_path: Path) -> None:
+def test_operational_command__replay_is_deterministic__and_conflict_safe(tmp_path: Path) -> None:
     adapter = FilesystemOperationalCommandReplayAdapter(tmp_path)
     context = OperationalCommandContextV1("command-1", "SETTINGS_UPDATE", "a" * 64)
 

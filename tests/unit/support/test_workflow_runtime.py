@@ -8,7 +8,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 from tests.support.fakes import FakeWorkflowRuntime, WorkflowFailure
 
 
-def test_fake_workflow_runtime_records_calls_and_returns_queued_results() -> None:
+def test_fake_workflow_runtime__records_calls_and__returns_queued_results() -> None:
     runtime = FakeWorkflowRuntime()
     runtime.queue_result(
         WorkflowInvocationResult(
@@ -40,7 +40,7 @@ def test_fake_workflow_runtime_records_calls_and_returns_queued_results() -> Non
     assert runtime.call_log[0].operation == "start"
 
 
-def test_fake_workflow_runtime_enforces_run_binding_and_failure_queue() -> None:
+def test_fake_workflow_runtime__enforces_run_binding__and_failure_queue() -> None:
     runtime = FakeWorkflowRuntime()
     runtime.queue_failure(WorkflowFailure(message="boom"))
 

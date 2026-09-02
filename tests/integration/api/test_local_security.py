@@ -157,7 +157,7 @@ def _build_client(
     return TestClient(create_app(container), base_url=f"http://{bind_host}:{bind_port}")
 
 
-def test_bootstrap_sets_cookie_and_runtime_requires_session() -> None:
+def test_bootstrap_sets__cookie_and__runtime_requires_session() -> None:
     headers = {
         "Origin": "http://127.0.0.1:8765",
         "Sec-Fetch-Site": "same-origin",
@@ -187,7 +187,7 @@ def test_bootstrap_sets_cookie_and_runtime_requires_session() -> None:
     assert authorized.status_code == 200
 
 
-def test_incompatible_session_blocks_mutation_and_sse() -> None:
+def test_incompatible_session__blocks_mutation__and_sse() -> None:
     headers = {
         "Origin": "http://127.0.0.1:8765",
         "Sec-Fetch-Site": "same-origin",
@@ -222,7 +222,7 @@ def test_incompatible_session_blocks_mutation_and_sse() -> None:
     assert mutation.json()["detail_code"] == "API_CONTRACT_INCOMPATIBLE"
 
 
-def test_bootstrap_grant_is_bound_to_the_current_service_instance() -> None:
+def test_bootstrap_grant_is__bound_to_the__current_service_instance() -> None:
     headers = {
         "Origin": "http://127.0.0.1:8765",
         "Sec-Fetch-Site": "same-origin",
@@ -244,7 +244,7 @@ def test_bootstrap_grant_is_bound_to_the_current_service_instance() -> None:
     assert response.json()["detail_code"] == "BOOTSTRAP_INSTANCE_MISMATCH"
 
 
-def test_bootstrap_rejection_and_unknown_api_path_do_not_echo_canaries() -> None:
+def test_bootstrap_rejection_and__unknown_api_path__do_not_echo_canaries() -> None:
     headers = {
         "Origin": "http://127.0.0.1:8765",
         "Sec-Fetch-Site": "same-origin",
@@ -269,7 +269,7 @@ def test_bootstrap_rejection_and_unknown_api_path_do_not_echo_canaries() -> None
     assert "CANARY_BOOTSTRAP_SECRET" not in unknown.text
 
 
-def test_ready_route_fails_closed_when_launcher_probe_is_missing() -> None:
+def test_ready_route_fails__closed_when_launcher__probe_is_missing() -> None:
     with _build_client(with_probe=False) as client:
         response = client.get("/health/ready")
 

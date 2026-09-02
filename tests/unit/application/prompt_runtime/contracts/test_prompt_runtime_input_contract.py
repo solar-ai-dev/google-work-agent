@@ -26,13 +26,13 @@ def _contract() -> PromptRuntimeInputContractV1:
     )
 
 
-def test_prompt_runtime_input_contract_accepts_only_declared_projection() -> None:
+def test_prompt_runtime__input_contract_accepts__only_declared_projection() -> None:
     _contract().validate_projection(
         "planning.compose_answer", {"answer_outline": {}, "work_analysis": None}
     )
 
 
-def test_prompt_runtime_input_contract_rejects_missing_and_unknown_fields() -> None:
+def test_prompt_runtime_input__contract_rejects_missing__and_unknown_fields() -> None:
     with pytest.raises(PromptRuntimeInputContractError, match="missing required"):
         _contract().validate_projection("planning.compose_answer", {})
     with pytest.raises(PromptRuntimeInputContractError, match="unknown Product Prompt"):
@@ -41,7 +41,7 @@ def test_prompt_runtime_input_contract_rejects_missing_and_unknown_fields() -> N
         )
 
 
-def test_prompt_runtime_input_contract_rejects_forbidden_nested_fields() -> None:
+def test_prompt_runtime__input_contract_rejects__forbidden_nested_fields() -> None:
     with pytest.raises(PromptRuntimeInputContractError, match="conversation_history"):
         _contract().validate_projection(
             "planning.compose_answer",
@@ -49,7 +49,7 @@ def test_prompt_runtime_input_contract_rejects_forbidden_nested_fields() -> None
         )
 
 
-def test_prompt_runtime_input_contract_rejects_duplicate_slot() -> None:
+def test_prompt_runtime__input_contract__rejects_duplicate_slot() -> None:
     entry = _contract().entries[0]
     with pytest.raises(PromptRuntimeInputContractError, match="duplicate"):
         PromptRuntimeInputContractV1(

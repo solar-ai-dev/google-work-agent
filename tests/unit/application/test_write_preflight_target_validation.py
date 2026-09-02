@@ -54,7 +54,7 @@ def _ref(
     )
 
 
-def test_update_target_requires_persisted_reference() -> None:
+def test_update_target__requires_persisted__reference() -> None:
     with pytest.raises(PolicyViolationError, match="persisted target reference"):
         validate_preflight_target(
             snapshot=_snapshot(),
@@ -66,7 +66,7 @@ def test_update_target_requires_persisted_reference() -> None:
         )
 
 
-def test_update_target_requires_persisted_version() -> None:
+def test_update_target__requires_persisted__version() -> None:
     with pytest.raises(PolicyViolationError, match="persisted target version"):
         validate_preflight_target(
             snapshot=_snapshot(),
@@ -78,7 +78,7 @@ def test_update_target_requires_persisted_version() -> None:
         )
 
 
-def test_update_target_rejects_version_drift() -> None:
+def test_update_target__rejects_version__drift() -> None:
     with pytest.raises(PolicyViolationError, match="version mismatch"):
         validate_preflight_target(
             snapshot=_snapshot(version="v3"),
@@ -90,7 +90,7 @@ def test_update_target_rejects_version_drift() -> None:
         )
 
 
-def test_update_target_rejects_identity_drift() -> None:
+def test_update_target__rejects_identity__drift() -> None:
     with pytest.raises(PolicyViolationError, match="identity mismatch"):
         validate_preflight_target(
             snapshot=_snapshot(resource_id="task-2"),
@@ -102,7 +102,7 @@ def test_update_target_rejects_identity_drift() -> None:
         )
 
 
-def test_update_target_rejects_parent_drift() -> None:
+def test_update_target__rejects_parent__drift() -> None:
     with pytest.raises(PolicyViolationError, match="parent mismatch"):
         validate_preflight_target(
             snapshot=_snapshot(parent_id="list-2"),
@@ -114,7 +114,7 @@ def test_update_target_rejects_parent_drift() -> None:
         )
 
 
-def test_update_target_accepts_same_identity_and_version() -> None:
+def test_update_target__accepts_same__identity_and_version() -> None:
     validate_preflight_target(
         snapshot=_snapshot(),
         target_ref=_ref(),

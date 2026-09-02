@@ -4,7 +4,7 @@ from release.profiles.local_capable import build_local_capable_profile
 from release.profiles import DeploymentProfile
 
 
-def test_local_capable_extends_common_profile_only_with_local_allowlist() -> None:
+def test_local_capable_extends__common_profile_only__with_local_allowlist() -> None:
     profile = build_local_capable_profile()
 
     assert profile.deployment_profile is DeploymentProfile.LOCAL_CAPABLE
@@ -13,7 +13,7 @@ def test_local_capable_extends_common_profile_only_with_local_allowlist() -> Non
     assert all("ollama" not in path.lower() for path in profile.required_files)
 
 
-def test_local_capable_fails_closed_without_model_manifest() -> None:
+def test_local_capable__fails_closed__without_model_manifest() -> None:
     profile = build_local_capable_profile()
     paths = profile.required_files + (
         "runtime/python312.dll",

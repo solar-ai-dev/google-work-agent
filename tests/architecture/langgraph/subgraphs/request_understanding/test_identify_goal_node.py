@@ -17,7 +17,7 @@ def _calls(path: Path) -> set[str]:
     }
 
 
-def test_identify_goal_node_uses_exact_operation_projection_and_router() -> None:
+def test_identify_goal_node__uses_exact_operation__projection_and_router() -> None:
     node = OWNER / "nodes/identify_goal_node.py"
     projection = OWNER / "projections/identify_goal_projection.py"
     router = OWNER / "routing/route_after_identify_goal.py"
@@ -27,7 +27,7 @@ def test_identify_goal_node_uses_exact_operation_projection_and_router() -> None
     assert "route_after_identify_goal" in router.read_text(encoding="utf-8")
 
 
-def test_identify_goal_prompt_boundary_is_current_run_only() -> None:
+def test_identify_goal__prompt_boundary_is__current_run_only() -> None:
     operation = SRC / "application/agents/request_understanding/identify_goal.py"
     source = operation.read_text(encoding="utf-8")
 
@@ -39,7 +39,7 @@ def test_identify_goal_prompt_boundary_is_current_run_only() -> None:
         assert forbidden not in source
 
 
-def test_identify_goal_projection_consumes_canonical_run_input() -> None:
+def test_identify_goal__projection_consumes__canonical_run_input() -> None:
     projection = OWNER / "projections/identify_goal_projection.py"
     source = projection.read_text(encoding="utf-8")
 
@@ -47,7 +47,7 @@ def test_identify_goal_projection_consumes_canonical_run_input() -> None:
     assert "request_from_state" not in source
 
 
-def test_identify_goal_owns_goal_only_and_does_not_prevalidate_final_intent() -> None:
+def test_identify_goal_owns__goal_only_and_does__not_prevalidate_final_intent() -> None:
     operation = SRC / "application/agents/request_understanding/identify_goal.py"
     source = operation.read_text(encoding="utf-8")
 
@@ -56,7 +56,7 @@ def test_identify_goal_owns_goal_only_and_does_not_prevalidate_final_intent() ->
     assert '"ambiguity"' not in source
 
 
-def test_request_understanding_broad_production_authority_is_absent() -> None:
+def test_request_understanding__broad_production__authority_is_absent() -> None:
     assert not (SRC / "application/orchestration/request_understanding.py").exists()
     production = "\n".join(path.read_text(encoding="utf-8") for path in SRC.rglob("*.py"))
     assert "RequestUnderstandingAgent" not in production

@@ -73,7 +73,7 @@ def _build_config() -> SignedBuildConfigV1:
     )
 
 
-def test_service_start_uses_verified_executable_and_stdin_only_for_secret(
+def test_service_start_uses__verified_executable_and__stdin_only_for_secret(
     tmp_path: Path,
 ) -> None:
     executable = tmp_path / "install" / "service" / "GoogleWorkAgentService.exe"
@@ -154,7 +154,7 @@ class _Response:
         return self.content
 
 
-def test_readiness_requires_matching_live_and_all_ready_checks() -> None:
+def test_readiness_requires__matching_live_and__all_ready_checks() -> None:
     process = _Process()
     service = StartedService(process=process, executable_path=Path("service.exe"))
     live_payload: dict[str, object] = {
@@ -184,7 +184,7 @@ def test_readiness_requires_matching_live_and_all_ready_checks() -> None:
     assert result.state == "READY"
 
 
-def test_readiness_stops_immediately_when_child_exits() -> None:
+def test_readiness_stops__immediately_when__child_exits() -> None:
     process = _Process()
     process._return_code = 3
     service = StartedService(process=process, executable_path=Path("service.exe"))
@@ -207,7 +207,7 @@ class _Browser:
         self.urls.append(url)
 
 
-def test_browser_bootstrap_is_fragment_only_and_existing_open_is_bare() -> None:
+def test_browser_bootstrap_is__fragment_only_and__existing_open_is_bare() -> None:
     browser = _Browser()
     bootstrap_url = open_product_ui(
         browser,
@@ -272,7 +272,7 @@ class _Listener:
         return None
 
 
-def test_instance_control_server_accepts_only_open_ui() -> None:
+def test_instance_control__server_accepts__only_open_ui() -> None:
     connection = _ServerConnection(b'{"schema_version":1,"command":"DELETE_DATA"}')
     opened: list[bool] = []
     server = serve_instance_control(
@@ -289,7 +289,7 @@ def test_instance_control_server_accepts_only_open_ui() -> None:
     assert json.loads(connection.sent[0]) == {"schema_version": 1, "status": "REJECTED"}
 
 
-def test_existing_instance_control_has_one_closed_command() -> None:
+def test_existing_instance__control_has__one_closed_command() -> None:
     connection = _ClientConnection(b'{"schema_version":1,"status":"ACCEPTED"}')
     result = request_existing_instance_ui(
         r"\\.\pipe\GoogleWorkAgent-current-user",
@@ -327,7 +327,7 @@ class _Releasable:
         self.released = True
 
 
-def test_shutdown_forces_only_after_timeout_and_always_settles_artifacts(
+def test_shutdown_forces_only__after_timeout_and__always_settles_artifacts(
     tmp_path: Path,
 ) -> None:
     process = _Process(wait_result=0, wait_timeout=True)

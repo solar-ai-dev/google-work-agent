@@ -16,7 +16,7 @@ from google_work_agent.application.agents.retrieval.finalize_retrieval import (
 )
 
 
-def test_finalize_retrieval_preserves_full_contract_and_revision_lineage() -> None:
+def test_finalize_retrieval__preserves_full_contract__and_revision_lineage() -> None:
     prior = cast(
         RetrievalResultV1,
         {

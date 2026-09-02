@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_resolve_temporal_dependencies_exact_node_projection_and_router() -> None:
+def test_resolve_temporal__dependencies_exact_node__projection_and_router() -> None:
     owner = (
         Path(__file__).resolve().parents[5]
         / "src/google_work_agent/adapters/langgraph/subgraphs/work_analysis"

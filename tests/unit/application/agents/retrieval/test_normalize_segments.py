@@ -32,7 +32,7 @@ def _result(text: str) -> AcquisitionResultV1:
     )
 
 
-def test_segment_id_is_stable_and_content_sensitive() -> None:
+def test_segment_id__is_stable__and_content_sensitive() -> None:
     first = normalize_segments(_result("same content"))[0].segment_id
     repeated = normalize_segments(_result("same content"))[0].segment_id
     changed = normalize_segments(_result("changed content"))[0].segment_id

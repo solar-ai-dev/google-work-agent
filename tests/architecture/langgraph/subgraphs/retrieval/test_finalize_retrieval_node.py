@@ -7,7 +7,7 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.routing import (
 )
 
 
-def test_finalize_retrieval_has_exact_node_projection_and_terminal_router() -> None:
+def test_finalize_retrieval_has__exact_node_projection__and_terminal_router() -> None:
     owner = (
         Path(__file__).resolve().parents[5]
         / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval"
@@ -18,7 +18,7 @@ def test_finalize_retrieval_has_exact_node_projection_and_terminal_router() -> N
     assert 'return "end"' in (owner / "routing/route_after_finalize_retrieval.py").read_text()
 
 
-def test_finalize_router_owns_confirmation_reentry_and_terminal_edges() -> None:
+def test_finalize_router__owns_confirmation_reentry__and_terminal_edges() -> None:
     assert (
         route_after_finalize_retrieval.route_after_finalize_retrieval(
             {"__context_retrieval_retry_confirmation__": True}

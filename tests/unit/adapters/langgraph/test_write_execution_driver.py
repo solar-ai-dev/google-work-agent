@@ -230,7 +230,7 @@ class _Classify:
         return self._handler(cast(Any, query))
 
 
-def test_successful_write_phase_preserves_call_trajectory() -> None:
+def test_successful_write__phase_preserves__call_trajectory() -> None:
     calls: list[str] = []
     result = _coordinator(calls=calls).execute(_request())
 
@@ -252,7 +252,7 @@ def test_successful_write_phase_preserves_call_trajectory() -> None:
     ]
 
 
-def test_preflight_commits_claim_without_preparing_or_dispatching_write() -> None:
+def test_preflight_commits__claim_without_preparing__or_dispatching_write() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls=calls)
 
@@ -271,7 +271,7 @@ def test_preflight_commits_claim_without_preparing_or_dispatching_write() -> Non
     assert "verify_effect" not in calls
 
 
-def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
+def test_fresh_preflight__source_snapshot_is__forwarded_to_claim() -> None:
     calls: list[str] = []
     source_snapshot = {
         "resource_type": "task",
@@ -293,7 +293,7 @@ def test_fresh_preflight_source_snapshot_is_forwarded_to_claim() -> None:
     assert claim_command.source_snapshot == source_snapshot
 
 
-def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
+def test_uncertain_delivery__marks_unknown__without_blind_resend() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -307,7 +307,7 @@ def test_uncertain_delivery_marks_unknown_without_blind_resend() -> None:
     assert "store" not in calls
 
 
-def test_classify_dispatch_result_decision_is_authoritative_over_local_rederivation() -> None:
+def test_classify_dispatch_result__decision_is_authoritative__over_local_rederivation() -> None:
     """Issue #131 / 020-02-W: classify_dispatch_result is the sole write-
     dispatch persistence-decision authority. The coordinator must not
     independently re-derive MARK_FAILED vs MARK_UNKNOWN_RESULT from the raw
@@ -335,7 +335,7 @@ def test_classify_dispatch_result_decision_is_authoritative_over_local_rederivat
     assert "mark_unknown" not in calls
 
 
-def test_not_sent_failure_does_not_begin_verification() -> None:
+def test_not_sent__failure_does__not_begin_verification() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -348,7 +348,7 @@ def test_not_sent_failure_does_not_begin_verification() -> None:
     assert "begin_verification" not in calls
 
 
-def test_begin_rejection_aborts_claimed_attempt_before_connector_dispatch() -> None:
+def test_begin_rejection__aborts_claimed_attempt__before_connector_dispatch() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -368,7 +368,7 @@ def test_begin_rejection_aborts_claimed_attempt_before_connector_dispatch() -> N
     assert "dispatch" not in calls
 
 
-def test_auth_failure_not_sent_marks_failed_before_reauth() -> None:
+def test_auth_failure__not_sent_marks__failed_before_reauth() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -381,7 +381,7 @@ def test_auth_failure_not_sent_marks_failed_before_reauth() -> None:
     assert calls.count("dispatch") == 1
 
 
-def test_auth_failure_ambiguous_marks_unknown_before_reauth_and_never_resends() -> None:
+def test_auth_failure_ambiguous__marks_unknown_before__reauth_and_never_resends() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -395,7 +395,7 @@ def test_auth_failure_ambiguous_marks_unknown_before_reauth_and_never_resends() 
     assert calls.count("dispatch") == 1
 
 
-def test_claim_applied_false_reconciles_without_provider_write() -> None:
+def test_claim_applied__false_reconciles__without_provider_write() -> None:
     calls: list[str] = []
     claim = _claim_result(
         applied=False,
@@ -413,7 +413,7 @@ def test_claim_applied_false_reconciles_without_provider_write() -> None:
     assert calls == ["preflight", "claim"]
 
 
-def test_store_success_applied_false_reconciles_before_verification() -> None:
+def test_store_success__applied_false__reconciles_before_verification() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -430,7 +430,7 @@ def test_store_success_applied_false_reconciles_before_verification() -> None:
     assert "begin_verification" not in calls
 
 
-def test_begin_verification_applied_false_reconciles_before_verification_read() -> None:
+def test_begin_verification__applied_false_reconciles__before_verification_read() -> None:
     calls: list[str] = []
     begin = SimpleNamespace(
         applied=False,
@@ -448,7 +448,7 @@ def test_begin_verification_applied_false_reconciles_before_verification_read() 
     assert "verify_effect" not in calls
 
 
-def test_verification_credential_loss_routes_to_reauth_without_marking_write_failed() -> None:
+def test_verification_credential_loss__routes_to_reauth__without_marking_write_failed() -> None:
     calls: list[str] = []
     result = _coordinator(
         calls=calls,
@@ -460,7 +460,7 @@ def test_verification_credential_loss_routes_to_reauth_without_marking_write_fai
     assert "mark_failed" not in calls
 
 
-def test_verification_non_reauth_gateway_error_still_propagates() -> None:
+def test_verification_non__reauth_gateway__error_still_propagates() -> None:
     calls: list[str] = []
     coordinator = _coordinator(
         calls=calls,
@@ -477,7 +477,7 @@ def test_verification_non_reauth_gateway_error_still_propagates() -> None:
     assert calls[-1] == "verify_effect"
 
 
-def test_recover_unknown_credential_loss_routes_to_reauth_without_replaying_write() -> None:
+def test_recover_unknown_credential__loss_routes_to__reauth_without_replaying_write() -> None:
     calls: list[str] = []
     coordinator = _coordinator(
         calls=calls,

@@ -51,7 +51,7 @@ def _candidate(
     )
 
 
-def test_batch_uses_bounded_repository_contract_and_reports_progress() -> None:
+def test_batch_uses__bounded_repository_contract__and_reports_progress() -> None:
     candidates = (_candidate("UNKNOWN_RESULT_UNRESOLVED"),) * 2
     attempts = SimpleNamespace(list_reconciliation_candidates=Mock(return_value=candidates))
     handler = object.__new__(ReconcileInflightExecutionsHandler)
@@ -68,7 +68,7 @@ def test_batch_uses_bounded_repository_contract_and_reports_progress() -> None:
         handler(ReconcileInflightExecutionsCommand(schema_version=1, limit=257))
 
 
-def test_post_begin_orphan_marks_unknown_without_resending_write() -> None:
+def test_post_begin__orphan_marks_unknown__without_resending_write() -> None:
     action = SimpleNamespace(id="action-1", version=3)
     attempt = SimpleNamespace(id="attempt-1", version=4)
     mark_unknown = Mock(return_value=SimpleNamespace(applied=True))
@@ -91,7 +91,7 @@ def test_post_begin_orphan_marks_unknown_without_resending_write() -> None:
     assert command.expected_attempt_version == 4
 
 
-def test_pre_begin_orphan_aborts_claim_without_resending_write() -> None:
+def test_pre_begin__orphan_aborts_claim__without_resending_write() -> None:
     action = SimpleNamespace(id="action-1", version=3)
     attempt = SimpleNamespace(id="attempt-1", version=0)
     abort = Mock(return_value=SimpleNamespace(applied=True))
@@ -114,7 +114,7 @@ def test_pre_begin_orphan_aborts_claim_without_resending_write() -> None:
     assert command.error_code == "PROCESS_RESTART_BEFORE_BEGIN"
 
 
-def test_failed_continuation_uses_current_plan_and_current_run_guard() -> None:
+def test_failed_continuation_uses__current_plan_and__current_run_guard() -> None:
     handler = object.__new__(ReconcileInflightExecutionsHandler)
     run = SimpleNamespace(status=RunStatusV1.WAITING_APPROVAL)
     current_plan = SimpleNamespace(id="plan-current", revision_no=2, created_at_ms=2)

@@ -168,7 +168,7 @@ def _reauth_semantic_authority_violations(
     return violations
 
 
-def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
+def test_route_endpoints__invoke_their__exact_canonical_handlers() -> None:
     cases = {
         ROOT / "src/google_work_agent/api/routes/runs.py": {
             "start_run": "dependencies.start_run_handler",
@@ -193,7 +193,7 @@ def test_route_endpoints_invoke_their_exact_canonical_handlers() -> None:
             )
 
 
-def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
+def test_owned_routes_do__not_call_broad__legacy_semantic_services() -> None:
     forbidden = (
         ".query_service().",
         ".start_run_service()(",
@@ -211,7 +211,7 @@ def test_owned_routes_do_not_call_broad_legacy_semantic_services() -> None:
             assert token not in source, f"{path}: forbidden route authority {token}"
 
 
-def test_run_context_handler_is_composed_once_and_never_constructed_in_route() -> None:
+def test_run_context_handler__is_composed_once_and__never_constructed_in_route() -> None:
     route = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
     composition = (ROOT / "src/google_work_agent/api/composition.py").read_text(encoding="utf-8")
     assert "GetRunSnapshotHandler(" not in route
@@ -219,7 +219,7 @@ def test_run_context_handler_is_composed_once_and_never_constructed_in_route() -
     assert "get_execution_context_handler=get_execution_context" in composition
 
 
-def test_recovery_production_callers_do_not_bind_legacy_mismatch_authority() -> None:
+def test_recovery_production_callers__do_not_bind__legacy_mismatch_authority() -> None:
     for path in (
         ROOT / "src/google_work_agent/api/routes/runs.py",
         ROOT / "launcher/entrypoint.py",
@@ -228,7 +228,7 @@ def test_recovery_production_callers_do_not_bind_legacy_mismatch_authority() -> 
         assert "ResolveMismatchRecovery" not in source
 
 
-def test_recovery_has_one_canonical_writer_and_no_legacy_concrete_authority() -> None:
+def test_recovery_has_one__canonical_writer_and__no_legacy_concrete_authority() -> None:
     canonical = {
         ROOT / "src/google_work_agent/application/use_cases/recovery/require_recovery.py",
         ROOT / "src/google_work_agent/application/use_cases/recovery/resolve_recovery.py",
@@ -246,7 +246,7 @@ def test_recovery_has_one_canonical_writer_and_no_legacy_concrete_authority() ->
     ).exists()
 
 
-def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None:
+def test_migrated_query_handlers__have_no_sqlite__or_legacy_query_bridge() -> None:
     handlers = (
         ROOT / "src/google_work_agent/application/use_cases/run/get_run_snapshot.py",
         ROOT / "src/google_work_agent/application/use_cases/sse_event/list_run_events.py",
@@ -260,7 +260,7 @@ def test_migrated_query_handlers_have_no_sqlite_or_legacy_query_bridge() -> None
             assert token not in source, f"{path}: legacy query boundary {token}"
 
 
-def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -> None:
+def test_owned_routes_do__not_traverse_repositories__or_mutate_domain_directly() -> None:
     forbidden_owners = {"runs", "plans", "actions", "approvals", "command_receipts"}
     for path in ROUTES:
         source = path.read_text(encoding="utf-8")
@@ -283,7 +283,7 @@ def test_owned_routes_do_not_traverse_repositories_or_mutate_domain_directly() -
             ), f"{path}: route traverses repository owner {segments[1]}"
 
 
-def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes() -> None:
+def test_canonical_handlers_do__not_reverse_depend_on__api_or_provider_concretes() -> None:
     forbidden_prefixes = (
         "fastapi",
         "google_work_agent.api",
@@ -300,7 +300,7 @@ def test_canonical_handlers_do_not_reverse_depend_on_api_or_provider_concretes()
                 )
 
 
-def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> None:
+def test_canonical_handlers_do__not_delegate_to__broad_legacy_authorities() -> None:
     forbidden = {
         "google_work_agent.application.queries",
         "google_work_agent.application.start_run",
@@ -316,7 +316,7 @@ def test_canonical_handlers_do_not_delegate_to_broad_legacy_authorities() -> Non
             )
 
 
-def test_conversation_message_slice_has_one_production_authority() -> None:
+def test_conversation_message__slice_has__one_production_authority() -> None:
     assert not (ROOT / "src/google_work_agent/application/conversation_lifecycle.py").exists()
     assert not (USE_CASE_ROOT / "message/list_messages.py").exists()
     assert (USE_CASE_ROOT / "message/list_conversation_messages.py").exists()
@@ -325,7 +325,7 @@ def test_conversation_message_slice_has_one_production_authority() -> None:
     assert not broad_ports.exists()
 
 
-def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
+def test_resume_handlers__own_their_exact__transitions_and_commit() -> None:
     reauth_path = USE_CASE_ROOT / "run/resume_after_reauth.py"
     assert not (USE_CASE_ROOT / "run/resume_run.py").exists()
     reauth_tree = ast.parse(reauth_path.read_text(encoding="utf-8"))
@@ -361,7 +361,7 @@ def test_resume_handlers_own_their_exact_transitions_and_commit() -> None:
     assert any(name.endswith("commit") for name in confirmation_calls)
 
 
-def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
+def test_reauth_langgraph__resume_is__checkpoint_transport_only() -> None:
     source = LANGGRAPH_RESUME.read_text(encoding="utf-8")
     violations = _reauth_semantic_authority_violations(
         source,
@@ -388,7 +388,7 @@ def test_reauth_langgraph_resume_is_checkpoint_transport_only() -> None:
     assert any(name.endswith("_graph.invoke") for name in calls)
 
 
-def test_reauth_transitive_authority_analyzer_allows_checkpoint_only_helper_chain() -> None:
+def test_reauth_transitive_authority__analyzer_allows_checkpoint__only_helper_chain() -> None:
     source = """
 class Runtime:
     def entry(self):
@@ -412,7 +412,7 @@ class Runtime:
     }
 
 
-def test_reauth_transitive_authority_analyzer_rejects_indirected_recovery_authority() -> None:
+def test_reauth_transitive__authority_analyzer_rejects__indirected_recovery_authority() -> None:
     source = """
 class Runtime:
     def entry(self):
@@ -430,12 +430,12 @@ class Runtime:
     )
 
 
-def test_safe_checkpoint_resume_has_no_terminal_blocked_registration() -> None:
+def test_safe_checkpoint__resume_has_no__terminal_blocked_registration() -> None:
     source = (USE_CASE_ROOT / "run/resume_safe_checkpoint.py").read_text(encoding="utf-8")
     assert "RunStatusV1.BLOCKED" not in source
 
 
-def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None:
+def test_event_route_keeps__transport_but_not__replay_fallback_semantics() -> None:
     source = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
     assert (
         "StreamingResponse" in source
@@ -450,7 +450,7 @@ def test_event_route_keeps_transport_but_not_replay_fallback_semantics() -> None
     assert "dependencies.list_run_events_handler" in source
 
 
-def test_unregistered_conversation_and_event_transport_authorities_are_absent() -> None:
+def test_unregistered_conversation__and_event_transport__authorities_are_absent() -> None:
     assert not (ROOT / "src/google_work_agent/api/routes/events.py").exists()
     assert not (ROOT / "src/google_work_agent/api/dependencies/events.py").exists()
     assert not (ROOT / "src/google_work_agent/api/schemas/events/get_events.py").exists()
@@ -459,7 +459,7 @@ def test_unregistered_conversation_and_event_transport_authorities_are_absent() 
     assert not (USE_CASE_ROOT / "conversation/get_latest_run.py").exists()
 
 
-def test_reject_action_does_not_own_parent_run_completion() -> None:
+def test_reject_action__does_not_own__parent_run_completion() -> None:
     source = (USE_CASE_ROOT / "action/reject_action.py").read_text(encoding="utf-8")
     assert "transition_complete_write_run" not in source
     assert "CompleteWriteRunHandler" not in source

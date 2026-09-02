@@ -121,7 +121,7 @@ class _WorkflowRuntimeStub:
         return None
 
 
-def test_llm_runtime_routes_mask_secrets(tmp_path: Path) -> None:
+def test_llm_runtime__routes_mask__secrets(tmp_path: Path) -> None:
     clock = FakeClockPort(1_000)
     keyring = SessionMemorySecretStore()
     credential_service = LlmCredentialRouter(

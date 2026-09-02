@@ -5,7 +5,7 @@ from google_work_agent.domain.action.model import ActionDependency
 from google_work_agent.ports.persistence.plan_repository import PlanBundle
 
 
-def test_projects_dependencies_in_one_pass() -> None:
+def test_projects_dependencies__in_one__pass() -> None:
     bundle = object.__new__(PlanBundle)
     object.__setattr__(bundle, "plan", object())
     object.__setattr__(bundle, "actions", ())

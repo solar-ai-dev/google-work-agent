@@ -58,7 +58,7 @@ def _request_intent(
     )
 
 
-def test_out_of_scope_reads_empty_when_no_scope_constraints() -> None:
+def test_out_of_scope__reads_empty_when__no_scope_constraints() -> None:
     resolver = ScopeExpansionResolver()
     out_of_scope = resolver.out_of_scope_reads(
         request_intent=_request_intent(),
@@ -68,7 +68,7 @@ def test_out_of_scope_reads_empty_when_no_scope_constraints() -> None:
     assert out_of_scope == ()
 
 
-def test_out_of_scope_reads_flags_forbidden_task_source() -> None:
+def test_out_of__scope_reads_flags__forbidden_task_source() -> None:
     resolver = ScopeExpansionResolver()
     out_of_scope = resolver.out_of_scope_reads(
         request_intent=_request_intent(
@@ -80,7 +80,7 @@ def test_out_of_scope_reads_flags_forbidden_task_source() -> None:
     assert set(out_of_scope) == set(_TASK_READS)
 
 
-def test_out_of_scope_reads_flags_forbidden_calendar_source() -> None:
+def test_out_of__scope_reads_flags__forbidden_calendar_source() -> None:
     resolver = ScopeExpansionResolver()
     out_of_scope = resolver.out_of_scope_reads(
         request_intent=_request_intent(
@@ -92,7 +92,7 @@ def test_out_of_scope_reads_flags_forbidden_calendar_source() -> None:
     assert set(out_of_scope) == set(_CALENDAR_READS)
 
 
-def test_out_of_scope_reads_flags_required_sources_allowlist_excluding_category() -> None:
+def test_out_of_scope__reads_flags_required__sources_allowlist_excluding_category() -> None:
     resolver = ScopeExpansionResolver()
     out_of_scope = resolver.out_of_scope_reads(
         request_intent=_request_intent(
@@ -104,7 +104,7 @@ def test_out_of_scope_reads_flags_required_sources_allowlist_excluding_category(
     assert set(out_of_scope) == set(_TASK_READS)
 
 
-def test_out_of_scope_reads_allows_when_category_is_in_required_sources_allowlist() -> None:
+def test_out_of_scope_reads__allows_when_category_is__in_required_sources_allowlist() -> None:
     resolver = ScopeExpansionResolver()
     out_of_scope = resolver.out_of_scope_reads(
         request_intent=_request_intent(
@@ -116,7 +116,7 @@ def test_out_of_scope_reads_allows_when_category_is_in_required_sources_allowlis
     assert out_of_scope == ()
 
 
-def test_out_of_scope_reads_ignores_resource_kind_constraints() -> None:
+def test_out_of__scope_reads_ignores__resource_kind_constraints() -> None:
     """RESOURCE-kind constraints carry selected resource ids, not a source
     scope declaration (see retrieval_ranking.py._selected_resource_ids) --
     they must not be misread as a SCOPE restriction."""
@@ -149,7 +149,7 @@ def _build_receipt(
     )
 
 
-def test_find_valid_approval_accepts_matching_receipt() -> None:
+def test_find_valid__approval_accepts__matching_receipt() -> None:
     resolver = ScopeExpansionResolver()
     request_intent = _request_intent()
     receipt = _build_receipt(request_intent=request_intent)
@@ -163,7 +163,7 @@ def test_find_valid_approval_accepts_matching_receipt() -> None:
     assert approval == receipt
 
 
-def test_find_valid_approval_rejects_declined_receipt() -> None:
+def test_find_valid__approval_rejects__declined_receipt() -> None:
     resolver = ScopeExpansionResolver()
     request_intent = _request_intent()
     receipt = _build_receipt(request_intent=request_intent, decision="DECLINED")
@@ -177,7 +177,7 @@ def test_find_valid_approval_rejects_declined_receipt() -> None:
     assert approval is None
 
 
-def test_find_valid_approval_rejects_wrong_interrupt_id() -> None:
+def test_find_valid__approval_rejects__wrong_interrupt_id() -> None:
     """A receipt built for a different interrupt occurrence (foreign/replayed)
     must never unlock a scope expansion it was not built for."""
     resolver = ScopeExpansionResolver()
@@ -193,7 +193,7 @@ def test_find_valid_approval_rejects_wrong_interrupt_id() -> None:
     assert approval is None
 
 
-def test_find_valid_approval_rejects_when_no_current_interrupt() -> None:
+def test_find_valid__approval_rejects_when__no_current_interrupt() -> None:
     """Receipts are not standing credentials: a fresh (round-1) route()
     attempt with no just-resolved interrupt never reuses an older receipt,
     even if its content would otherwise match."""
@@ -210,7 +210,7 @@ def test_find_valid_approval_rejects_when_no_current_interrupt() -> None:
     assert approval is None
 
 
-def test_find_valid_approval_rejects_stale_request_intent_revision() -> None:
+def test_find_valid__approval_rejects_stale__request_intent_revision() -> None:
     resolver = ScopeExpansionResolver()
     original_intent = _request_intent(revision=1)
     receipt = _build_receipt(request_intent=original_intent)
@@ -225,7 +225,7 @@ def test_find_valid_approval_rejects_stale_request_intent_revision() -> None:
     assert approval is None
 
 
-def test_find_valid_approval_rejects_tampered_decision_context_hash() -> None:
+def test_find_valid__approval_rejects_tampered__decision_context_hash() -> None:
     resolver = ScopeExpansionResolver()
     request_intent = _request_intent()
     receipt = dict(_build_receipt(request_intent=request_intent))
@@ -240,7 +240,7 @@ def test_find_valid_approval_rejects_tampered_decision_context_hash() -> None:
     assert approval is None
 
 
-def test_find_valid_approval_rejects_receipt_for_different_resource_types() -> None:
+def test_find_valid_approval__rejects_receipt_for__different_resource_types() -> None:
     """A CALENDAR-scope receipt must never unlock a TASK scope expansion,
     even with the same interrupt id and request-intent revision."""
     resolver = ScopeExpansionResolver()
@@ -265,7 +265,7 @@ def test_find_valid_approval_rejects_receipt_for_different_resource_types() -> N
     assert approval is None
 
 
-def test_build_policy_confirmation_receipt_has_required_minimum_fields() -> None:
+def test_build_policy__confirmation_receipt_has__required_minimum_fields() -> None:
     request_intent = _request_intent()
     receipt = _build_receipt(request_intent=request_intent)
     assert receipt["schema_version"] == 1

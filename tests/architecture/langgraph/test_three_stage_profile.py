@@ -8,12 +8,14 @@ from google_work_agent.adapters.langgraph.profiles.three_stage import (
 )
 
 
-def test_three_profile_has_three_physical_subgraphs_and_six_semantic_owners() -> None:
-    bindings, controls, route_next_node, checkpointer, semantic_owners = profile_build_arguments()
+def test_three_profile_has__three_physical_subgraphs__and_six_semantic_owners() -> None:
+    bindings, controls, should_stop_for_cancel, checkpointer, semantic_owners = (
+        profile_build_arguments()
+    )
     composition = build_three_stage_graph(
         bindings=bindings,
         control_bindings=controls,
-        route_next_node=route_next_node,
+        should_stop_for_cancel=should_stop_for_cancel,
         checkpointer=checkpointer,
     )
 

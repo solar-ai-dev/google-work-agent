@@ -291,7 +291,7 @@ class _ResourceAccess:
         )
 
 
-def test_list_resources_handler_owns_gmail_defaults_projection_and_page_validation() -> None:
+def test_list_resources_handler__owns_gmail_defaults__projection_and_page_validation() -> None:
     access = _ResourceAccess()
 
     result = ListResourcesHandler(access)(
@@ -326,7 +326,7 @@ def test_list_resources_handler_owns_gmail_defaults_projection_and_page_validati
     }
 
 
-def test_list_resources_handler_owns_task_resolution_status_and_projection() -> None:
+def test_list_resources_handler__owns_task_resolution__status_and_projection() -> None:
     access = _ResourceAccess()
 
     result = ListResourcesHandler(access)(
@@ -360,7 +360,7 @@ def test_list_resources_handler_owns_task_resolution_status_and_projection() -> 
     }
 
 
-def test_list_resources_handler_owns_calendar_defaults_and_90_day_window() -> None:
+def test_list_resources_handler__owns_calendar_defaults__and_90_day_window() -> None:
     access = _ResourceAccess()
 
     ListResourcesHandler(access)(
@@ -386,7 +386,7 @@ def test_list_resources_handler_owns_calendar_defaults_and_90_day_window() -> No
     assert call["time_max"] == "2026-11-21T09:00:00+09:00"
 
 
-def test_count_resources_handler_owns_multi_page_count_without_api_continuations() -> None:
+def test_count_resources_handler__owns_multi_page__count_without_api_continuations() -> None:
     access = _ResourceAccess()
 
     result = CountResourcesHandler(access)(CountResourcesQuery(source="gmail"))
@@ -395,7 +395,7 @@ def test_count_resources_handler_owns_multi_page_count_without_api_continuations
     assert access.count_tokens == [None, "provider-2"]
 
 
-def test_get_resource_handler_owns_detail_projection_and_canonical_link() -> None:
+def test_get_resource_handler__owns_detail_projection__and_canonical_link() -> None:
     access = _ResourceAccess()
 
     result = GetResourceHandler(access)(GetResourceQuery(source="gmail", resource_id="thread-1"))
@@ -528,7 +528,7 @@ def _token_factory(values: Iterator[str]) -> Callable[[], str]:
     return lambda: next(values)
 
 
-def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> None:
+def test_canonical_list__handler_preserves_opaque__provider_token_boundary() -> None:
     gateway = _PagingGateway()
     raw = ConnectorResourceAccess(gateway=cast(ConnectorReadProjection, gateway))
     opaque = OpaqueConnectorResourceAccess(
@@ -565,7 +565,7 @@ def test_canonical_list_handler_preserves_opaque_provider_token_boundary() -> No
     assert gateway.tokens == [None, "provider-next"]
 
 
-def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_handle() -> None:
+def test_completed_tasks_materialize__terminal_pages_filter__dedupe_without_api_handle() -> None:
     gateway = _PagingTasksGateway()
     raw = ConnectorResourceAccess(
         gateway=cast(ConnectorReadProjection, gateway),
@@ -604,7 +604,7 @@ def test_completed_tasks_materialize_terminal_pages_filter_dedupe_without_api_ha
     assert page.items[0].link_url == "https://tasks.google.com/embed/"
 
 
-def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
+def test_non_completed__tasks_preserve__opaque_continuation_behavior() -> None:
     gateway = _PagingTasksGateway()
     raw = ConnectorResourceAccess(
         gateway=cast(ConnectorReadProjection, gateway),
@@ -651,7 +651,7 @@ def test_non_completed_tasks_preserve_opaque_continuation_behavior() -> None:
     )
 
 
-def test_canonical_count_handler_never_allocates_api_continuation_handles() -> None:
+def test_canonical_count__handler_never_allocates__api_continuation_handles() -> None:
     gateway = _PagingGateway()
     raw = ConnectorResourceAccess(gateway=cast(ConnectorReadProjection, gateway))
     opaque = OpaqueConnectorResourceAccess(

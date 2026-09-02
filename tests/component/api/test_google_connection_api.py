@@ -73,11 +73,16 @@ from google_work_agent.ports.system.readiness_port import (
 )
 
 
-def test_google_connection_api_flow_over_local_mcp_process(tmp_path: Path) -> None:
+def test_google_connection__api_flow_over__local_mcp_process(tmp_path: Path) -> None:
     manifest_path = tmp_path / "mcp-manifest.json"
     manifest_path.write_text(json.dumps(build_manifest_payload(), sort_keys=True), encoding="utf-8")
     fixture_manifest = (
-        Path(__file__).resolve().parents[2] / "fixtures" / "product" / "manifest.json"
+        Path(__file__).resolve().parents[2]
+        / "fixtures"
+        / "data"
+        / "google"
+        / "workspace"
+        / "product_fixture_v1.json"
     )
     executable = Path(sys.executable).resolve()
     registry = load_signed_tool_registry()

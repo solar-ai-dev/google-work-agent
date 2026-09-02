@@ -8,7 +8,7 @@ from google_work_agent.application.use_cases.run.build_terminal_message import (
 )
 
 
-def test_answer_draft_is_preserved_by_the_exact_v1_contract() -> None:
+def test_answer_draft_is__preserved_by_the__exact_v1_contract() -> None:
     result = BuildTerminalMessageHandler()(
         BuildTerminalMessageQueryV1(
             schema_version=1,
@@ -48,7 +48,7 @@ def test_answer_draft_is_preserved_by_the_exact_v1_contract() -> None:
         ),
     ),
 )
-def test_exact_v1_contract_rejects_invalid_inputs(
+def test_exact_v1__contract_rejects__invalid_inputs(
     query: BuildTerminalMessageQueryV1, message: str
 ) -> None:
     with pytest.raises(ValueError, match=message):

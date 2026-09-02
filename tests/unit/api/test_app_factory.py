@@ -191,7 +191,7 @@ def _build_container(guard: _AllowGuard | _DenyGuard) -> tuple[ApiContainer, _Co
     return container, coordinator
 
 
-def test_app_lifespan_runs_startup_then_shutdown_callbacks() -> None:
+def test_app_lifespan__runs_startup__then_shutdown_callbacks() -> None:
     container, _ = _build_container(_AllowGuard())
     lifecycle: list[str] = []
 
@@ -215,7 +215,7 @@ def test_app_lifespan_runs_startup_then_shutdown_callbacks() -> None:
     assert lifecycle == ["startup", "shutdown"]
 
 
-def test_app_lifespan_runs_all_resource_cleanup_callbacks() -> None:
+def test_app_lifespan__runs_all__resource_cleanup_callbacks() -> None:
     container, _ = _build_container(_AllowGuard())
     cleaned: list[str] = []
 
@@ -233,7 +233,7 @@ def test_app_lifespan_runs_all_resource_cleanup_callbacks() -> None:
     assert cleaned == ["first", "second"]
 
 
-def test_health_routes_and_runtime_respect_guard() -> None:
+def test_health_routes__and_runtime__respect_guard() -> None:
     container, _ = _build_container(_DenyGuard())
 
     with TestClient(create_app(container)) as client:
@@ -245,7 +245,7 @@ def test_health_routes_and_runtime_respect_guard() -> None:
     assert runtime.json()["error_code"] == "LOCAL_SESSION_INVALID"
 
 
-def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> None:
+def test_typed_confirmation__and_recovery_routes__derive_server_authority() -> None:
     container, coordinator = _build_container(_AllowGuard())
     container = replace(
         container,
@@ -333,7 +333,7 @@ def test_typed_confirmation_and_recovery_routes_derive_server_authority() -> Non
     assert coordinator.resume_calls == []
 
 
-def test_cancel_route_returns_partial_result_projection() -> None:
+def test_cancel_route__returns_partial__result_projection() -> None:
     container, _ = _build_container(_AllowGuard())
 
     def cancel_service(_command: object) -> WriteRunResponse:
@@ -378,7 +378,7 @@ def test_cancel_route_returns_partial_result_projection() -> None:
     assert response.json()["result_kind"] == "PARTIAL"
 
 
-def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
+def test_run_snapshot__rest_projection_includes__structured_action_risk() -> None:
     container, _ = _build_container(_AllowGuard())
     risk: dict[str, object] = {"validator": {"outcome": "WARNING"}}
     snapshot = RunSnapshot(
@@ -447,7 +447,7 @@ def test_run_snapshot_rest_projection_includes_structured_action_risk() -> None:
     assert "recovery_options" not in response.json()
 
 
-def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume() -> None:
+def test_runtime_mutation_routes__reject_browser_authority__and_arbitrary_resume() -> None:
     container, _ = _build_container(_AllowGuard())
     with TestClient(create_app(container)) as client:
         approval = client.post(
@@ -485,7 +485,7 @@ def test_runtime_mutation_routes_reject_browser_authority_and_arbitrary_resume()
     assert invalid_recovery.status_code == 422
 
 
-def test_ready_route_fails_closed_without_launcher_probe_verifier() -> None:
+def test_ready_route__fails_closed_without__launcher_probe_verifier() -> None:
     container, _ = _build_container(_AllowGuard())
     container = replace(container, launcher_probe_verifier=None)
 

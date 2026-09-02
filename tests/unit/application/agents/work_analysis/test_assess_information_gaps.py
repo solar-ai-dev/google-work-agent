@@ -9,7 +9,7 @@ from google_work_agent.ports.llm.structured_inference_contracts import PromptRef
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, intent, prompt_ref
 
 
-def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() -> None:
+def test_assess_information_gaps__uses_exact_prompt__and_bounded_retrieval_need() -> None:
     output = {
         "disposition": "NEEDS_MORE_DATA",
         "ambiguities": [],
@@ -38,7 +38,7 @@ def test_assess_information_gaps_uses_exact_prompt_and_bounded_retrieval_need() 
     )
 
 
-def test_assess_information_gaps_rejects_unbounded_evidence() -> None:
+def test_assess_information__gaps_rejects__unbounded_evidence() -> None:
     runtime = WorkAnalysisRuntimeFake(
         {
             "disposition": "COMPLETE",

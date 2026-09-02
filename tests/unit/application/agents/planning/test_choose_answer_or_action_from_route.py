@@ -5,7 +5,7 @@ from google_work_agent.application.agents.planning.choose_answer_or_action_from_
 )
 
 
-def test_chooses_only_from_frozen_output_mode() -> None:
+def test_chooses_only__from_frozen__output_mode() -> None:
     answer = {"output_plan": {"output_mode": "ANSWER", "output_routes": []}}
     action = {"output_plan": {"output_mode": "ACTION", "output_routes": [{}]}}
 
@@ -13,7 +13,7 @@ def test_chooses_only_from_frozen_output_mode() -> None:
     assert choose_answer_or_action_from_route(action) == "ACTION"
 
 
-def test_rejects_missing_frozen_output_mode() -> None:
+def test_rejects_missing__frozen_output__mode() -> None:
     import pytest
 
     with pytest.raises(ValueError):

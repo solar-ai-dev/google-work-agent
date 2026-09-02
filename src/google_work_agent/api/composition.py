@@ -450,13 +450,13 @@ from google_work_agent.ports.system.component_circuit_state_port import (
     ComponentCircuitKey,
     ComponentCircuitStatePort,
 )
+from google_work_agent.ports.system.contracts.application_settings import (
+    AppSettings,
+    WorkHours,
+)
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
-)
-from google_work_agent.ports.system.contracts.runtime import (
-    AppSettings,
-    WorkHours,
 )
 from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowCancelRequest,

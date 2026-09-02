@@ -5,7 +5,7 @@ from google_work_agent.domain.execution_attempt.transitions.abort_claimed_execut
 )
 
 
-def test_abort_claimed_execution_is_pre_dispatch_only() -> None:
+def test_abort_claimed__execution_is__pre_dispatch_only() -> None:
     aborted = transition_abort_claimed_execution(
         action_status=ActionStatusV1.EXECUTING,
         action_version=1,

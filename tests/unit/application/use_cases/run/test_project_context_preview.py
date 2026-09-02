@@ -20,7 +20,7 @@ class _Checkpoint:
         return RetrievalHeadV1(1, run_id, "thread-1", 7, "retrieval-current", "cp-1", 1)
 
 
-def test_context_preview_contains_only_current_selected_retrieval_evidence(
+def test_context_preview__contains_only_current__selected_retrieval_evidence(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "context-preview.db"

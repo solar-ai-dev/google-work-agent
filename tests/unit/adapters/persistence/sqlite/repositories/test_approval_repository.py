@@ -6,7 +6,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.approval_reposit
 from google_work_agent.domain.approval.model import Approval, ApprovalStatusV1
 
 
-def test_approval_repository_exact_active_snapshot_and_cas_surface() -> None:
+def test_approval_repository__exact_active_snapshot__and_cas_surface() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.executescript(

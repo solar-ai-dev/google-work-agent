@@ -3,7 +3,7 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 )
 
 
-def test_signed_manifest_matches_current_canonical_google_workspace_rows() -> None:
+def test_signed_manifest__matches_current_canonical__google_workspace_rows() -> None:
     registry = load_signed_tool_registry()
     expected = {
         "gmail_search_threads",

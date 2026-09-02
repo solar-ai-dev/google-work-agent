@@ -185,12 +185,12 @@ def _call(
     )
 
 
-def test_valid_task_update_requires_approval() -> None:
+def test_valid_task__update_requires__approval() -> None:
     result = _call(_task_update_plan())
     assert result["result"] == "REQUIRE_APPROVAL"
 
 
-def test_update_blocks_when_evidence_is_not_tied_to_exact_current_run_target() -> None:
+def test_update_blocks_when_evidence__is_not_tied_to__exact_current_run_target() -> None:
     result = _call(
         _task_update_plan(),
         evidence=_evidence("task:other"),
@@ -200,12 +200,12 @@ def test_update_blocks_when_evidence_is_not_tied_to_exact_current_run_target() -
     assert result["reason_codes"] == ["PLAN_DRAFT_INVALID"]
 
 
-def test_create_requires_evidence_but_not_existing_target() -> None:
+def test_create_requires__evidence_but__not_existing_target() -> None:
     result = _call(_task_create_plan(), reader=_ResourceReader({}))
     assert result["result"] == "REQUIRE_APPROVAL"
 
 
-def test_invalid_tool_effect_pair_blocks() -> None:
+def test_invalid_tool__effect_pair__blocks() -> None:
     plan = _task_create_plan()
     plan["actions"][0]["effect"] = "DELETE"
 
@@ -215,14 +215,14 @@ def test_invalid_tool_effect_pair_blocks() -> None:
     assert result["reason_codes"] == ["PLAN_DRAFT_INVALID"]
 
 
-def test_stale_review_cannot_authorize_current_plan() -> None:
+def test_stale_review__cannot_authorize__current_plan() -> None:
     result = _call(_task_create_plan(), review=_review(plan_revision=2))
 
     assert result["result"] == "BLOCK"
     assert result["reason_codes"] == ["PLAN_REVIEW_INVALID"]
 
 
-def test_work_analysis_receipt_ref_must_resolve_to_approved_receipt() -> None:
+def test_work_analysis_receipt__ref_must_resolve__to_approved_receipt() -> None:
     analysis = _analysis(receipt_refs=[{"artifact_id": "receipt-artifact-1", "revision": 1}])
 
     result = _call(
@@ -235,7 +235,9 @@ def test_work_analysis_receipt_ref_must_resolve_to_approved_receipt() -> None:
     assert result["reason_codes"] == ["WORK_ANALYSIS_INVALID"]
 
 
-def test_not_required_analysis_with_action_fails_closed_on_override_provenance_dependency() -> None:
+def test_not_required_analysis__with_action_fails_closed__on_override_provenance_dependency() -> (
+    None
+):
     analysis = _analysis(
         action_necessity="NOT_REQUIRED",
         receipt_refs=[{"artifact_id": "receipt-artifact-1", "revision": 1}],
@@ -252,7 +254,7 @@ def test_not_required_analysis_with_action_fails_closed_on_override_provenance_d
         )
 
 
-def test_registry_authority_must_be_explicitly_injected() -> None:
+def test_registry_authority__must_be__explicitly_injected() -> None:
     service_parameter = signature(CanonicalDomainValidationService).parameters["tool_registry"]
     helper_parameter = signature(build_domain_validation_output_from_v2).parameters["tool_registry"]
 

@@ -47,7 +47,7 @@ def observability_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def test_trace_and_audit_rows_are_wrapped_as_sanitized_envelopes(
+def test_trace_and_audit__rows_are_wrapped__as_sanitized_envelopes(
     observability_database: Path,
 ) -> None:
     with sqlite_unit_of_work_factory(observability_database)() as unit_of_work:
@@ -98,7 +98,7 @@ def test_trace_and_audit_rows_are_wrapped_as_sanitized_envelopes(
         connection.close()
 
 
-def test_trace_and_audit_cursor_queries_and_purge_work(
+def test_trace_and__audit_cursor_queries__and_purge_work(
     observability_database: Path,
 ) -> None:
     connection = connect_sqlite(observability_database)

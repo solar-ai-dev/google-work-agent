@@ -6,7 +6,7 @@ from google_work_agent.domain.plan.model import PlanStatusV1
 from google_work_agent.domain.run.model import RunStatusV1
 
 
-def test_approve_action_requires_write_and_passed_review() -> None:
+def test_approve_action__requires_write__and_passed_review() -> None:
     rejected = transition_approve_action(
         ActionStatusV1.MODIFIED,
         1,
@@ -42,7 +42,7 @@ def test_approve_action_requires_write_and_passed_review() -> None:
     assert not read.applied
 
 
-def test_approve_action_rejects_superseded_plan_child() -> None:
+def test_approve_action__rejects_superseded__plan_child() -> None:
     result = transition_approve_action(
         ActionStatusV1.PROPOSED,
         1,
@@ -58,7 +58,7 @@ def test_approve_action_rejects_superseded_plan_child() -> None:
 
 
 @pytest.mark.parametrize("run_status", list(RunStatusV1))
-def test_approve_action_exact_parent_run_status_matrix(run_status: RunStatusV1) -> None:
+def test_approve_action__exact_parent__run_status_matrix(run_status: RunStatusV1) -> None:
     result = transition_approve_action(
         ActionStatusV1.PROPOSED,
         0,
@@ -77,7 +77,7 @@ def test_approve_action_exact_parent_run_status_matrix(run_status: RunStatusV1) 
     "plan_status",
     [status for status in PlanStatusV1 if status is not PlanStatusV1.WAITING_APPROVAL],
 )
-def test_approve_action_rejects_every_other_plan_status(plan_status: PlanStatusV1) -> None:
+def test_approve_action__rejects_every__other_plan_status(plan_status: PlanStatusV1) -> None:
     result = transition_approve_action(
         ActionStatusV1.PROPOSED,
         0,

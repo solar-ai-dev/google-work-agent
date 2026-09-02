@@ -6,7 +6,7 @@ ROOT = Path(__file__).resolve().parents[5]
 OWNER = ROOT / "src/google_work_agent/adapters/langgraph/subgraphs/tool_routing"
 
 
-def test_bind_candidates_has_exact_projection_router_and_no_precondition_node() -> None:
+def test_bind_candidates_has__exact_projection_router__and_no_precondition_node() -> None:
     node = (OWNER / "nodes/bind_registry_candidates_node.py").read_text(encoding="utf-8")
     assert "project_bind_registry_candidates_input" in node
     assert "bind_registry_candidates(" in node

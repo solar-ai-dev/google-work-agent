@@ -43,7 +43,7 @@ def _finding(
     }
 
 
-def test_compiled_planning_answer_executes_canonical_operations() -> None:
+def test_compiled_planning__answer_executes__canonical_operations() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -87,7 +87,7 @@ def test_compiled_planning_answer_executes_canonical_operations() -> None:
     assert calls == ["planning.outline_answer", "planning.compose_answer"]
 
 
-def test_compiled_planning_graph_has_exact_six_runtime_nodes() -> None:
+def test_compiled_planning__graph_has_exact__six_runtime_nodes() -> None:
     graph = PlanningSubgraph(
         dependencies=PlanningRuntimeDependencies(invoke=lambda _prompt_id, _input: {})
     ).build()
@@ -101,7 +101,7 @@ def test_compiled_planning_graph_has_exact_six_runtime_nodes() -> None:
     }
 
 
-def test_compiled_planning_action_executes_exact_four_node_path() -> None:
+def test_compiled_planning__action_executes_exact__four_node_path() -> None:
     route = {
         "route_id": "r1",
         "resource_type": "GMAIL_DRAFT",
@@ -150,7 +150,7 @@ def test_compiled_planning_action_executes_exact_four_node_path() -> None:
     ]
 
 
-def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_recheck() -> None:
+def test_compiled_review_revise__emits_bounded_planning__revision_signal_without_recheck() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -208,7 +208,7 @@ def test_compiled_review_revise_emits_bounded_planning_revision_signal_without_r
     assert "review.recheck_affected_dimensions" not in calls
 
 
-def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
+def test_compiled_review_pass__does_not_emit__planning_revision_signal() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -241,7 +241,7 @@ def test_compiled_review_pass_does_not_emit_planning_revision_signal() -> None:
     ]
 
 
-def test_compiled_review_recheck_refreshes_only_affected_dimensions() -> None:
+def test_compiled_review__recheck_refreshes__only_affected_dimensions() -> None:
     calls: list[str] = []
 
     def invoke(prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:

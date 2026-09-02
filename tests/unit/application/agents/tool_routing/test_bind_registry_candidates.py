@@ -15,7 +15,7 @@ def _catalog() -> SignedToolRegistry:
     return load_signed_tool_registry()
 
 
-def test_task_create_binds_bounded_registry_candidates_and_read_dependency() -> None:
+def test_task_create_binds__bounded_registry_candidates__and_read_dependency() -> None:
     ids = iter(f"route-{index}" for index in range(10))
     binding = bind_registry_candidates(
         candidate=SemanticRouteCandidate(

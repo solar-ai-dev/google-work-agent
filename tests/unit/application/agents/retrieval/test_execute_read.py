@@ -66,7 +66,7 @@ def _binding() -> ValidatedConnectorToolBindingV1:
     "run_id,route_id,query_hash",
     [("other", "r1", "q" * 64), ("run", "r2", "q" * 64), ("run", "r1", "x" * 64)],
 )
-def test_invalid_continuation_binding_prevents_provider_call(
+def test_invalid_continuation__binding_prevents__provider_call(
     run_id: str, route_id: str, query_hash: str
 ) -> None:
     cache = InMemoryRunRetrievalCache()
@@ -97,7 +97,7 @@ def test_invalid_continuation_binding_prevents_provider_call(
     assert reader.calls == []
 
 
-def test_exhausted_continuation_does_not_restart_provider_read() -> None:
+def test_exhausted_continuation__does_not__restart_provider_read() -> None:
     cache = InMemoryRunRetrievalCache()
     cache.put_read_result(
         RunRetrievalCacheEntryV1(

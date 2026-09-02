@@ -5,7 +5,7 @@ from google_work_agent.domain.action.transitions.modify_action import transition
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_modify_action_moves_approved_to_modified() -> None:
+def test_modify_action__moves_approved__to_modified() -> None:
     result = transition_modify_action(
         ActionStatusV1.APPROVED,
         2,
@@ -18,7 +18,7 @@ def test_modify_action_moves_approved_to_modified() -> None:
 
 
 @pytest.mark.parametrize("plan_status", list(PlanStatusV1))
-def test_modify_action_requires_current_waiting_write_plan(plan_status: PlanStatusV1) -> None:
+def test_modify_action__requires_current__waiting_write_plan(plan_status: PlanStatusV1) -> None:
     result = transition_modify_action(
         ActionStatusV1.PROPOSED,
         0,
@@ -30,7 +30,7 @@ def test_modify_action_requires_current_waiting_write_plan(plan_status: PlanStat
     assert result.applied is (plan_status is PlanStatusV1.WAITING_APPROVAL)
 
 
-def test_modify_action_rejects_legacy_read() -> None:
+def test_modify_action__rejects_legacy__read() -> None:
     result = transition_modify_action(
         ActionStatusV1.PROPOSED,
         0,

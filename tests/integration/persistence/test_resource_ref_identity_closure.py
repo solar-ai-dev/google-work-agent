@@ -13,7 +13,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.resource_ref_rep
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 
 
-def test_same_external_id_coexists_across_registered_resource_types(tmp_path: Path) -> None:
+def test_same_external__id_coexists_across__registered_resource_types(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "resource-identity.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)

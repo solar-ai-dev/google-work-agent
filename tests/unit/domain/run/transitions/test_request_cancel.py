@@ -4,7 +4,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.request_cancel import transition_request_cancel
 
 
-def test_request_cancel_accepts_nonterminal_and_rejects_terminal() -> None:
+def test_request_cancel__accepts_nonterminal__and_rejects_terminal() -> None:
     assert transition_request_cancel(RunStatusV1.PLANNING) is RunStatusV1.CANCEL_REQUESTED
     with pytest.raises(RunTransitionRejected):
         transition_request_cancel(RunStatusV1.COMPLETED)

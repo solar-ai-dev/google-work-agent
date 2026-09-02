@@ -50,7 +50,7 @@ class _CalendarRead:
         )
 
 
-def test_calendar_detail_projects_closed_contract() -> None:
+def test_calendar_detail__projects_closed__contract() -> None:
     signing_secret = b"s" * 32
     handle = IssueSelectionHandle(
         signing_secret=signing_secret,

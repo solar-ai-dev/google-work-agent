@@ -16,7 +16,7 @@ def _calls(path: Path) -> set[str]:
     }
 
 
-def test_determine_resources_uses_exact_operation_projection_and_router() -> None:
+def test_determine_resources__uses_exact_operation__projection_and_router() -> None:
     assert {"project_determine_io_resources_input", "determine_io_resources"} <= _calls(
         OWNER / "nodes/determine_io_resources_node.py"
     )

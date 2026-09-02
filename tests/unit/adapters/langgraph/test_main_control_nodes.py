@@ -32,7 +32,7 @@ class _RunFacts:
     next_allowed_commands: tuple[str, ...]
 
 
-def test_initialize_projects_start_analysis_without_copying_foreign_state() -> None:
+def test_initialize_projects__start_analysis_without__copying_foreign_state() -> None:
     patch = initialize_node(
         {"run_id": "run-1", "foreign": "keep"},
         start_analysis=lambda _run_id: StartAnalysisResult(True, "APPLIED", "ANALYZING", 1, ()),
@@ -47,7 +47,7 @@ def test_initialize_projects_start_analysis_without_copying_foreign_state() -> N
     assert "foreign" not in patch
 
 
-def test_retrieval_entry_requires_frozen_routes_and_routes_registered_subgraph() -> None:
+def test_retrieval_entry_requires__frozen_routes_and__routes_registered_subgraph() -> None:
     state = {
         "run_id": "run-1",
         "tool_route_plan": {"input_plan": {"input_routes": [{"route_id": "r1"}]}},
@@ -73,7 +73,7 @@ def test_retrieval_entry_requires_frozen_routes_and_routes_registered_subgraph()
         )
 
 
-def test_planning_entry_fails_closed_on_illegal_durable_status() -> None:
+def test_planning_entry__fails_closed_on__illegal_durable_status() -> None:
     patch = planning_entry_node(
         {"run_id": "run-1"},
         current_run_status=lambda _run_id: "WAITING_APPROVAL",
@@ -89,7 +89,7 @@ def test_planning_entry_fails_closed_on_illegal_durable_status() -> None:
     }
 
 
-def test_review_entry_routes_then_settles_persisted_review() -> None:
+def test_review_entry__routes_then__settles_persisted_review() -> None:
     initial = {
         "approved_plan_id": "plan-1",
         "__modify_review_plan_id__": "plan-1",
@@ -119,7 +119,7 @@ def test_review_entry_routes_then_settles_persisted_review() -> None:
     }
 
 
-def test_review_entry_does_not_reload_persisted_plan_for_fresh_replan_draft() -> None:
+def test_review_entry_does__not_reload_persisted_plan__for_fresh_replan_draft() -> None:
     state = {
         "approved_plan_id": "plan-1",
         "__replan_from_plan_id__": "plan-1",
@@ -139,7 +139,7 @@ def test_review_entry_does_not_reload_persisted_plan_for_fresh_replan_draft() ->
     assert "__workflow_control__" not in entered
 
 
-def test_validation_and_preflight_reject_unregistered_targets_and_return_patches() -> None:
+def test_validation_and_preflight__reject_unregistered_targets__and_return_patches() -> None:
     assert domain_validation_node(
         {"foreign": "keep"},
         validate_and_project=lambda _state: {"__target__": "preflight"},
@@ -158,7 +158,7 @@ def test_validation_and_preflight_reject_unregistered_targets_and_return_patches
         preflight_node({}, check_freshness_and_claim=lambda _state: {"__target__": "unknown"})
 
 
-def test_domain_reconcile_uses_only_durable_status_and_allowed_commands() -> None:
+def test_domain_reconcile_uses__only_durable_status__and_allowed_commands() -> None:
     assert domain_reconcile_node(
         {"run_id": "run-1", "workflow_phase": "ACTION_EXECUTION"},
         read_durable_run=lambda _run_id: _RunFacts("RECOVERY_REQUIRED", ("RESOLVE_RECOVERY",)),

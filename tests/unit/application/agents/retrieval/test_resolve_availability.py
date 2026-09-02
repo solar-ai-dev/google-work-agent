@@ -3,7 +3,7 @@ from google_work_agent.application.agents.retrieval.resolve_availability import 
 )
 
 
-def test_resolve_availability_merges_busy_intervals_and_subtracts_window() -> None:
+def test_resolve_availability__merges_busy_intervals__and_subtracts_window() -> None:
     result = resolve_availability(
         window_start="2026-08-30T09:00:00+09:00",
         window_end="2026-08-30T13:00:00+09:00",

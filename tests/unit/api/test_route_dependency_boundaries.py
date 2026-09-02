@@ -58,7 +58,7 @@ def _contains_any(annotation: object) -> bool:
     return annotation is Any or any(_contains_any(arg) for arg in get_args(annotation))
 
 
-def test_route_modules_do_not_import_container_or_concrete_infrastructure() -> None:
+def test_route_modules_do__not_import_container__or_concrete_infrastructure() -> None:
     for module in _route_modules():
         imported_values = tuple(vars(module).values())
         assert ApiContainer not in imported_values, module.__name__
@@ -71,7 +71,7 @@ def test_route_modules_do_not_import_container_or_concrete_infrastructure() -> N
         ), module.__name__
 
 
-def test_route_dependency_contracts_are_owner_local_and_do_not_expose_any() -> None:
+def test_route_dependency_contracts__are_owner_local_and__do_not_expose_any() -> None:
     for dependency_type in ROUTE_DEPENDENCY_TYPES:
         assert dependency_type.__module__.startswith("google_work_agent.api.dependencies.")
         assert dependency_type.__module__ != "google_work_agent.api.dependencies"

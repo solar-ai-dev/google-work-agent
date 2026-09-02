@@ -63,7 +63,7 @@ def _methods(protocol: type[object]) -> set[str]:
     }
 
 
-def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
+def test_canonical_repository__ports_have__exact_public_surfaces() -> None:
     run_methods = {
         "create",
         "get",
@@ -146,7 +146,7 @@ def test_canonical_repository_ports_have_exact_public_surfaces() -> None:
     assert _methods(SqliteAuditEventRepository) == {"append", "list_page", "purge_before"}
 
 
-def test_legacy_repository_paths_symbols_and_dependency_directions_are_absent() -> None:
+def test_legacy_repository_paths__symbols_and_dependency__directions_are_absent() -> None:
     old_paths = (
         _SOURCE / "ports" / "persistence" / "action_dependency_repository.py",
         _SOURCE / "ports" / "persistence" / "audit_repository.py",

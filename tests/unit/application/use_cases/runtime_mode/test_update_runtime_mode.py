@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.runtime_mode.update_runtime_mode im
 )
 
 
-def test_runtime_mode_update_is_replay_safe(tmp_path: Path) -> None:
+def test_runtime_mode__update_is__replay_safe(tmp_path: Path) -> None:
     handler = UpdateRuntimeModeHandler(
         runtime_mode=ProcessRuntimeModeAdapter("AUTO"),
         replay=FilesystemOperationalCommandReplayAdapter(tmp_path / "replay"),
@@ -26,7 +26,7 @@ def test_runtime_mode_update_is_replay_safe(tmp_path: Path) -> None:
     assert replay.replayed is True
 
 
-def test_runtime_mode_update_is_blocked_before_reservation_when_a_run_is_active(
+def test_runtime_mode_update_is__blocked_before_reservation_when__a_run_is_active(
     tmp_path: Path,
 ) -> None:
     replay = FilesystemOperationalCommandReplayAdapter(tmp_path / "replay")

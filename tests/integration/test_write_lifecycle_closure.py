@@ -17,7 +17,7 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import Re
 from google_work_agent.application.use_cases.run.block_run import BlockRunHandler
 
 
-def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:
+def test_block_run_cleanup__is_single_uow__and_trigger_safe() -> None:
     transition_source = inspect.getsource(BlockRunHandler.__call__)
     cleanup_source = inspect.getsource(BlockRunHandler._settle_children)
 
@@ -29,7 +29,7 @@ def test_block_run_cleanup_is_single_uow_and_trigger_safe() -> None:
     assert revoke_at < terminal_at < cancel_at
 
 
-def test_corrective_recovery_reserves_durable_plan_without_runtime_payload_authority() -> None:
+def test_corrective_recovery_reserves__durable_plan_without__runtime_payload_authority() -> None:
     source = inspect.getsource(ResolveRecoveryHandler._apply_resolution_effects)
 
     assert '"CORRECTIVE_PLAN_REQUIRED"' in source
@@ -37,7 +37,7 @@ def test_corrective_recovery_reserves_durable_plan_without_runtime_payload_autho
     assert "resume_target" not in source
 
 
-def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
+def test_corrective_runtime__uses_profile__translated_planning_target() -> None:
     source = inspect.getsource(LangGraphWorkflowRuntime._resume_corrective_plan)
 
     assert "SupervisorTarget.SOLUTION_PLANNING.value" in source
@@ -51,7 +51,7 @@ def test_corrective_runtime_uses_profile_translated_planning_target() -> None:
     assert "resume_target" not in source
 
 
-def test_corrective_resume_retries_pending_non_interrupt_task_and_reconciles_publish() -> None:
+def test_corrective_resume_retries__pending_non_interrupt__task_and_reconciles_publish() -> None:
     source = inspect.getsource(LangGraphWorkflowRuntime._resume_corrective_plan)
 
     assert "has_pending_interrupt" in source
@@ -64,7 +64,7 @@ def test_corrective_resume_retries_pending_non_interrupt_task_and_reconciles_pub
     assert "WorkflowPhase.WAITING_APPROVAL.value" in source
 
 
-def test_corrective_persistence_separates_reserved_plan_from_child_remapping() -> None:
+def test_corrective_persistence__separates_reserved_plan__from_child_remapping() -> None:
     ordinary_source = inspect.getsource(plan_persistence.PlanPersistenceMixin._persist_write_plan)
     corrective_source = inspect.getsource(corrective_persistence)
     runtime_source = inspect.getsource(LangGraphWorkflowRuntime._persist_write_plan)

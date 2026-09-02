@@ -1,7 +1,7 @@
 from google_work_agent.application.agents.planning.build_dependencies import build_dependencies
 
 
-def test_only_same_stable_resource_is_ordered() -> None:
+def test_only_same__stable_resource__is_ordered() -> None:
     seeds = [
         {
             "action_id": "a1",

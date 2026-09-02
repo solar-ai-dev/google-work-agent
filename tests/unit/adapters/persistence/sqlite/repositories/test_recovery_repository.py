@@ -19,7 +19,7 @@ from google_work_agent.ports.persistence.retention_repository import RetentionCu
 from google_work_agent.ports.system.contracts.workflow_handoff import MainControlResumeTargetV2
 
 
-def test_store_context_then_load_current_round_trips(tmp_path: Path) -> None:
+def test_store_context__then_load__current_round_trips(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -37,7 +37,7 @@ def test_store_context_then_load_current_round_trips(tmp_path: Path) -> None:
     assert "action_id" not in loaded
 
 
-def test_store_context_rejects_stale_version(tmp_path: Path) -> None:
+def test_store_context__rejects_stale__version(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -49,7 +49,7 @@ def test_store_context_rejects_stale_version(tmp_path: Path) -> None:
         unit_of_work.commit()
 
 
-def test_store_context_accepts_version_bump(tmp_path: Path) -> None:
+def test_store_context__accepts_version__bump(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -65,7 +65,7 @@ def test_store_context_accepts_version_bump(tmp_path: Path) -> None:
     assert updated["recovery_fingerprint"] == "fp-2"
 
 
-def test_database_rejects_foreign_reason_fingerprint(tmp_path: Path) -> None:
+def test_database_rejects__foreign_reason__fingerprint(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     invalid = _context()
     invalid["observed_external_state_fingerprint"] = "mismatch-only"
@@ -75,7 +75,7 @@ def test_database_rejects_foreign_reason_fingerprint(tmp_path: Path) -> None:
         unit_of_work.recovery_contexts.store_context(invalid)
 
 
-def test_clear_context_removes_current_context(tmp_path: Path) -> None:
+def test_clear_context__removes_current__context(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -90,7 +90,7 @@ def test_clear_context_removes_current_context(tmp_path: Path) -> None:
     assert loaded is None
 
 
-def test_clear_context_rejects_stale_expected_version(tmp_path: Path) -> None:
+def test_clear_context__rejects_stale__expected_version(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -102,7 +102,7 @@ def test_clear_context_rejects_stale_expected_version(tmp_path: Path) -> None:
         unit_of_work.commit()
 
 
-def test_clear_context_preserves_version_monotonicity_across_recreation(tmp_path: Path) -> None:
+def test_clear_context__preserves_version__monotonicity_across_recreation(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -122,7 +122,7 @@ def test_clear_context_preserves_version_monotonicity_across_recreation(tmp_path
     assert recreated["version"] == 1
 
 
-def test_cleared_context_tombstone_does_not_block_terminal_run_retention(
+def test_cleared_context_tombstone__does_not_block__terminal_run_retention(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -168,7 +168,7 @@ def test_cleared_context_tombstone_does_not_block_terminal_run_retention(
         connection.close()
 
 
-def test_active_recovery_context_still_protects_terminal_run_from_retention(
+def test_active_recovery_context__still_protects_terminal__run_from_retention(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -206,7 +206,7 @@ def test_active_recovery_context_still_protects_terminal_run_from_retention(
         connection.close()
 
 
-def test_list_candidates_bounded_orders_by_created_at(tmp_path: Path) -> None:
+def test_list_candidates__bounded_orders__by_created_at(tmp_path: Path) -> None:
     database_path = _database(tmp_path, extra_runs=["r-2"])
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -221,7 +221,7 @@ def test_list_candidates_bounded_orders_by_created_at(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize("limit", [0, -1, 1001])
-def test_list_candidates_rejects_non_positive_or_unbounded_limit(
+def test_list_candidates__rejects_non_positive__or_unbounded_limit(
     tmp_path: Path, limit: int
 ) -> None:
     database_path = _database(tmp_path)

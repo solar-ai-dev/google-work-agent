@@ -75,7 +75,7 @@ def _app(dependencies: AttachmentRouteDependencies) -> FastAPI:
     return app
 
 
-def test_attachment_multipart_replay_and_safe_download(
+def test_attachment_multipart__replay_and__safe_download(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

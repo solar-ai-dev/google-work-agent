@@ -50,7 +50,7 @@ class _Service:
         return 0
 
 
-def test_main_executes_canonical_new_instance_order(
+def test_main_executes__canonical_new__instance_order(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:
@@ -115,7 +115,7 @@ def test_main_executes_canonical_new_instance_order(
     assert reservation.released is True
 
 
-def test_main_existing_instance_requests_ui_without_starting_service(
+def test_main_existing__instance_requests_ui__without_starting_service(
     monkeypatch: Any,
     tmp_path: Path,
 ) -> None:

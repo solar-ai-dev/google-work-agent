@@ -57,7 +57,7 @@ def _code_artifacts(bundle: Path) -> tuple[Path, ...]:
     )
 
 
-def test_signing_happens_before_manifest_hash_and_tampering_fails_closed(tmp_path: Path) -> None:
+def test_signing_happens_before__manifest_hash_and__tampering_fails_closed(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     assemble_application_bundle(
         profile=DeploymentProfile.API_ONLY,
@@ -90,7 +90,7 @@ def test_signing_happens_before_manifest_hash_and_tampering_fails_closed(tmp_pat
         verify_installation(bundle.resolve(), trusted_public_key_pem=signer.public_key_pem)
 
 
-def test_production_rejects_unsigned_or_incomplete_code_artifact_set(tmp_path: Path) -> None:
+def test_production_rejects__unsigned_or_incomplete__code_artifact_set(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     assemble_application_bundle(
         profile=DeploymentProfile.API_ONLY,

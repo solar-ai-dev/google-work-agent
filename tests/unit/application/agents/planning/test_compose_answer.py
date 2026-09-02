@@ -7,7 +7,7 @@ import pytest
 from google_work_agent.application.agents.planning.compose_answer import compose_answer
 
 
-def test_compose_uses_approved_outline_and_emits_v2_candidate() -> None:
+def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:
     captured: dict[str, object] = {}
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
@@ -35,7 +35,7 @@ def test_compose_uses_approved_outline_and_emits_v2_candidate() -> None:
     }
 
 
-def test_compose_rejects_evidence_not_approved_by_outline() -> None:
+def test_compose_rejects__evidence_not__approved_by_outline() -> None:
     with pytest.raises(ValueError, match="outside"):
         compose_answer(
             user_request="Summarize.",

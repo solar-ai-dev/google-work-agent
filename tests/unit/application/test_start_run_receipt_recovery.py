@@ -551,7 +551,7 @@ def _handler(uow: _UnitOfWork) -> StartRunHandler:
     )
 
 
-def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None:
+def test_fresh_start_run__persists_one_run_one__user_message_and_receipt() -> None:
     uow = _UnitOfWork()
     result = _handler(uow)(_command())
 
@@ -569,7 +569,7 @@ def test_fresh_start_run_persists_one_run_one_user_message_and_receipt() -> None
     assert uow.commit_count == 1
 
 
-def test_completed_receipt_replays_without_duplicate_side_effects() -> None:
+def test_completed_receipt__replays_without__duplicate_side_effects() -> None:
     uow = _UnitOfWork()
     command = _command()
     stored = _stored_success(command)
@@ -603,7 +603,7 @@ def test_completed_receipt_replays_without_duplicate_side_effects() -> None:
         ("aggregate_type", "Action"),
     ),
 )
-def test_completed_receipt_with_wrong_identity_fails_closed_before_replay(
+def test_completed_receipt_with__wrong_identity_fails__closed_before_replay(
     field_name: str,
     wrong_value: str,
 ) -> None:
@@ -634,7 +634,7 @@ def test_completed_receipt_with_wrong_identity_fails_closed_before_replay(
     assert len(uow.audits.items) == 0
 
 
-def test_received_receipt_with_applied_aggregate_finishes_receipt_without_duplicates() -> None:
+def test_received_receipt_with__applied_aggregate_finishes__receipt_without_duplicates() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -659,7 +659,7 @@ def test_received_receipt_with_applied_aggregate_finishes_receipt_without_duplic
     assert len(uow.audits.items) == 1
 
 
-def test_received_receipt_without_aggregate_and_without_prior_evidence_fails_closed() -> None:
+def test_received_receipt_without__aggregate_and_without__prior_evidence_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -676,7 +676,7 @@ def test_received_receipt_without_aggregate_and_without_prior_evidence_fails_clo
     assert uow.commit_count == 0
 
 
-def test_received_receipt_without_aggregate_command_received_only_fails_closed() -> None:
+def test_received_receipt_without__aggregate_command_received__only_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -694,7 +694,7 @@ def test_received_receipt_without_aggregate_command_received_only_fails_closed()
     assert uow.commit_count == 0
 
 
-def test_received_receipt_without_aggregate_with_prior_run_created_audit_fails_closed() -> None:
+def test_received_receipt_without__aggregate_with_prior_run__created_audit_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -711,7 +711,7 @@ def test_received_receipt_without_aggregate_with_prior_run_created_audit_fails_c
     assert len(uow.traces.items) == 0
 
 
-def test_received_receipt_without_aggregate_with_prior_command_applied_fails_closed() -> None:
+def test_received_receipt_without__aggregate_with_prior__command_applied_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -730,7 +730,7 @@ def test_received_receipt_without_aggregate_with_prior_command_applied_fails_clo
     assert len(uow.traces.items) == 0
 
 
-def test_received_receipt_without_aggregate_with_prior_run_created_trace_fails_closed() -> None:
+def test_received_receipt_without__aggregate_with_prior_run__created_trace_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -747,7 +747,7 @@ def test_received_receipt_without_aggregate_with_prior_run_created_trace_fails_c
     assert len(uow.traces.items) == 1
 
 
-def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_fails_closed() -> (
+def test_received_receipt_without__aggregate_with_conflicting_run__created_audit_fails_closed() -> (
     None
 ):
     uow = _UnitOfWork()
@@ -765,7 +765,7 @@ def test_received_receipt_without_aggregate_with_conflicting_run_created_audit_f
     assert len(uow.traces.items) == 0
 
 
-def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None:
+def test_received_receipt_age__never_turns_absence__into_unapplied_proof() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = replace(_received(command), created_at_ms=0)
@@ -789,7 +789,7 @@ def test_received_receipt_age_never_turns_absence_into_unapplied_proof() -> None
     assert len(uow.traces.items) == 0
 
 
-def test_received_receipt_with_duplicate_run_created_audit_fails_closed() -> None:
+def test_received_receipt_with__duplicate_run_created__audit_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -809,7 +809,7 @@ def test_received_receipt_with_duplicate_run_created_audit_fails_closed() -> Non
     assert uow.commit_count == 0
 
 
-def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
+def test_received_receipt__with_partial__aggregate_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -830,7 +830,7 @@ def test_received_receipt_with_partial_aggregate_fails_closed() -> None:
     assert uow.command_receipts.finish_count == 0
 
 
-def test_received_receipt_with_run_and_handoff_but_no_message_fails_closed() -> None:
+def test_received_receipt_with__run_and_handoff_but__no_message_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -877,7 +877,7 @@ def test_received_receipt_with_run_and_handoff_but_no_message_fails_closed() -> 
     assert uow.messages.add_count == 0
 
 
-def test_received_receipt_with_message_only_partial_aggregate_fails_closed() -> None:
+def test_received_receipt_with__message_only_partial__aggregate_fails_closed() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = _received(command)
@@ -899,7 +899,7 @@ def test_received_receipt_with_message_only_partial_aggregate_fails_closed() -> 
     assert uow.command_receipts.finish_count == 0
 
 
-def test_same_command_id_different_hash_is_conflict_without_domain_mutation() -> None:
+def test_same_command_id__different_hash_is__conflict_without_domain_mutation() -> None:
     uow = _UnitOfWork()
     original = _command(request_hash="hash-1")
     uow.command_receipts.record = _received(original)
@@ -914,7 +914,7 @@ def test_same_command_id_different_hash_is_conflict_without_domain_mutation() ->
     assert len(uow.traces.items) == 1
 
 
-def test_existing_open_run_remains_a_start_run_conflict() -> None:
+def test_existing_open__run_remains_a__start_run_conflict() -> None:
     uow = _UnitOfWork()
     uow.runs.records["other-run"] = RunRecord(
         id="other-run",
@@ -935,7 +935,7 @@ def test_existing_open_run_remains_a_start_run_conflict() -> None:
     assert uow.command_receipts.finish_count == 1
 
 
-def test_insert_integrity_race_reconciles_to_open_run_conflict() -> None:
+def test_insert_integrity__race_reconciles_to__open_run_conflict() -> None:
     uow = _UnitOfWork()
     original_create = uow.runs.create
 
@@ -961,7 +961,7 @@ def test_insert_integrity_race_reconciles_to_open_run_conflict() -> None:
     assert uow.command_receipts.finish_count == 1
 
 
-def test_commit_failure_after_handoff_staged_propagates_and_stops_at_commit() -> None:
+def test_commit_failure_after__handoff_staged_propagates__and_stops_at_commit() -> None:
     uow = _UnitOfWork()
 
     def fail_commit() -> None:
@@ -976,7 +976,7 @@ def test_commit_failure_after_handoff_staged_propagates_and_stops_at_commit() ->
     assert uow.workflow_handoffs.stage_count == 1
 
 
-def test_completed_receipt_without_response_and_without_aggregate_is_not_reapplied() -> None:
+def test_completed_receipt_without__response_and_without__aggregate_is_not_reapplied() -> None:
     uow = _UnitOfWork()
     command = _command()
     uow.command_receipts.record = replace(

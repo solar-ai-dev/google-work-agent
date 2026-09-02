@@ -7,7 +7,7 @@ from google_work_agent.application.tool_registry.load_signed_tool_registry impor
 )
 
 
-def test_mcp_projection_is_exact_signed_registry_subset() -> None:
+def test_mcp_projection__is_exact__signed_registry_subset() -> None:
     registry = load_signed_tool_registry()
     expected = registry.descriptor_expectations("google_workspace")
 

@@ -10,7 +10,7 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.credentia
 )
 
 
-def test_mcp_oauth_flow_uses_google_loopback_authorization_and_no_token_leakage() -> None:
+def test_mcp_oauth_flow__uses_google_loopback_authorization__and_no_token_leakage() -> None:
     state = GoogleWorkspaceCredentialProvider(keyring=_FakeSecretStorePort())
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="test-desktop-client-id",

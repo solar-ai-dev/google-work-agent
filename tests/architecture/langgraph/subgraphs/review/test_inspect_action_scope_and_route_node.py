@@ -18,7 +18,7 @@ from google_work_agent.adapters.langgraph.subgraphs.review.routing import (
 DIMENSION = "review.inspect_action_scope_and_route"
 
 
-def test_action_node_projection_and_policy_router_are_exact() -> None:
+def test_action_node__projection_and_policy__router_are_exact() -> None:
     state = {
         "request_intent": {},
         "tool_route_plan": {"output_plan": {"output_routes": []}},
@@ -45,7 +45,7 @@ def test_action_node_projection_and_policy_router_are_exact() -> None:
     )
 
 
-def test_action_projection_fails_closed_for_answer_artifact() -> None:
+def test_action_projection__fails_closed__for_answer_artifact() -> None:
     with pytest.raises(ValueError, match="ACTION Planning artifact"):
         action_projection.project_inspect_action_scope_and_route_input(
             {
@@ -57,7 +57,7 @@ def test_action_projection_fails_closed_for_answer_artifact() -> None:
         )
 
 
-def test_goal_router_selects_action_inspector_only_for_action_artifact() -> None:
+def test_goal_router_selects__action_inspector_only__for_action_artifact() -> None:
     state = {
         "goal_evidence_result": {
             "dimension": "review.inspect_goal_and_evidence",

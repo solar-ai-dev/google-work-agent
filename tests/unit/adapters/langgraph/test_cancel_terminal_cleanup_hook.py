@@ -19,7 +19,7 @@ class _LlmRuntime:
         self.discarded.append(run_id)
 
 
-def test_cancel_terminal_cleanup_hook_discards_read_evidence_and_llm_run_state() -> None:
+def test_cancel_terminal_cleanup__hook_discards_read_evidence__and_llm_run_state() -> None:
     runtime = object.__new__(LangGraphWorkflowRuntime)
     evidence = _RunScopedStore()
     read_cache = _RunScopedStore()

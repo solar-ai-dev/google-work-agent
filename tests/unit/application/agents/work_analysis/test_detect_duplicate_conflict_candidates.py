@@ -4,7 +4,7 @@ from google_work_agent.application.agents.work_analysis import (
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
 
-def test_duplicate_is_never_promoted_by_candidate_operation() -> None:
+def test_duplicate_is__never_promoted__by_candidate_operation() -> None:
     output = {
         "relation_candidates": [
             {

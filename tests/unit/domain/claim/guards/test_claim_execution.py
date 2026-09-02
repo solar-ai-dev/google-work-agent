@@ -38,7 +38,7 @@ def _guard(**changes: object) -> ClaimExecutionGuardInput:
     return ClaimExecutionGuardInput(**values)  # type: ignore[arg-type]
 
 
-def test_claim_execution_accepts_exact_safe_facts_and_rejects_each_boundary() -> None:
+def test_claim_execution_accepts__exact_safe_facts__and_rejects_each_boundary() -> None:
     guard_claim_execution(_guard())
     invalid = (
         {"effect_type": EffectType.READ},

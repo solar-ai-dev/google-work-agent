@@ -21,7 +21,7 @@ from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
 )
 
 
-def test_owned_nodes_do_not_execute_mcp_or_provider_directly() -> None:
+def test_owned_nodes_do__not_execute_mcp__or_provider_directly() -> None:
     source = "\n".join(
         inspect.getsource(node)
         for node in (
@@ -36,7 +36,7 @@ def test_owned_nodes_do_not_execute_mcp_or_provider_directly() -> None:
     assert "sqlite" not in source
 
 
-def test_retrieval_projection_is_operation_allowlisted() -> None:
+def test_retrieval_projection__is_operation__allowlisted() -> None:
     state = {
         "request_intent": {"goal": "find evidence"},
         "rag_candidates": [],
@@ -50,7 +50,7 @@ def test_retrieval_projection_is_operation_allowlisted() -> None:
     }
 
 
-def test_work_analysis_projection_is_operation_allowlisted() -> None:
+def test_work_analysis__projection_is__operation_allowlisted() -> None:
     state = cast(
         WorkAnalysisLocalState,
         {

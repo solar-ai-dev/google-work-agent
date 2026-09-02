@@ -42,7 +42,7 @@ def _uow_with_receipt(response_json: str) -> MagicMock:
     return unit_of_work
 
 
-def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
+def test_modify_same__hash_receipt_replays__without_second_mutation() -> None:
     unit_of_work = _uow_with_receipt(
         dumps(
             {
@@ -81,7 +81,7 @@ def test_modify_same_hash_receipt_replays_without_second_mutation() -> None:
     unit_of_work.command_receipts.add_received.assert_not_called()
 
 
-def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> None:
+def test_reject_same_hash__receipt_replays_without__second_reject_or_audit() -> None:
     unit_of_work = _uow_with_receipt(
         dumps(
             {
@@ -117,7 +117,7 @@ def test_reject_same_hash_receipt_replays_without_second_reject_or_audit() -> No
     unit_of_work.command_receipts.add_received.assert_not_called()
 
 
-def test_prepare_retry_same_hash_receipt_replays_without_new_retry_attempt() -> None:
+def test_prepare_retry_same__hash_receipt_replays__without_new_retry_attempt() -> None:
     unit_of_work = _uow_with_receipt(
         dumps(
             {

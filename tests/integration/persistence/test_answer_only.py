@@ -48,7 +48,7 @@ def answer_only_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
+def test_answer_only__completion_is__atomic(answer_only_database: Path) -> None:
     service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
@@ -147,7 +147,7 @@ def test_answer_only_completion_is_atomic(answer_only_database: Path) -> None:
         connection.close()
 
 
-def test_same_command_id_and_hash_returns_stored_result(answer_only_database: Path) -> None:
+def test_same_command__id_and_hash__returns_stored_result(answer_only_database: Path) -> None:
     service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
@@ -177,7 +177,7 @@ def test_same_command_id_and_hash_returns_stored_result(answer_only_database: Pa
         connection.close()
 
 
-def test_bounded_answer_only_completion_persists_and_replays_partial(
+def test_bounded_answer__only_completion_persists__and_replays_partial(
     answer_only_database: Path,
 ) -> None:
     service = CompleteAnswerOnlyRunHandler(
@@ -216,7 +216,7 @@ def test_bounded_answer_only_completion_persists_and_replays_partial(
         connection.close()
 
 
-def test_same_command_id_and_different_hash_is_blocked(answer_only_database: Path) -> None:
+def test_same_command__id_and_different__hash_is_blocked(answer_only_database: Path) -> None:
     service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
@@ -255,7 +255,7 @@ def test_same_command_id_and_different_hash_is_blocked(answer_only_database: Pat
         connection.close()
 
 
-def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> None:
+def test_stale_version__is_rejected__and_recorded(answer_only_database: Path) -> None:
     service = CompleteAnswerOnlyRunHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
         now_ms=lambda: 1000,
@@ -297,7 +297,7 @@ def test_stale_version_is_rejected_and_recorded(answer_only_database: Path) -> N
         connection.close()
 
 
-def test_answer_only_rejects_oversized_terminal_input_before_uow(
+def test_answer_only__rejects_oversized_terminal__input_before_uow(
     answer_only_database: Path,
 ) -> None:
     service = CompleteAnswerOnlyRunHandler(
@@ -339,7 +339,7 @@ def test_answer_only_rejects_oversized_terminal_input_before_uow(
         connection.close()
 
 
-def test_received_receipt_is_recovered_from_completed_run(answer_only_database: Path) -> None:
+def test_received_receipt__is_recovered__from_completed_run(answer_only_database: Path) -> None:
     connection = connect_sqlite(answer_only_database)
     try:
         connection.execute(

@@ -9,7 +9,9 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 
 
-def test_current_registry_rejects_unregistered_connector_resource_identity(tmp_path: Path) -> None:
+def test_current_registry__rejects_unregistered__connector_resource_identity(
+    tmp_path: Path,
+) -> None:
     connection = connect_sqlite(tmp_path / "connector-registry.db")
     try:
         apply_migrations(connection, now_ms=lambda: 1)

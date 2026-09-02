@@ -17,7 +17,7 @@ class _Transport:
         return ProviderResponsePayload({}, "", "request-1", 1, 2, 3)
 
 
-def test_gemini_leaf_dispatches_structured_inference() -> None:
+def test_gemini_leaf__dispatches_structured__inference() -> None:
     adapter = GeminiStructuredInferenceAdapter("gemini", _Transport(), "model-1")  # type: ignore[arg-type]
 
     result = adapter.invoke_structured(

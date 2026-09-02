@@ -80,7 +80,7 @@ def _seed_failed_attempt(
     )
 
 
-def test_execution_attempt_repository_exact_active_and_cas_surface() -> None:
+def test_execution_attempt__repository_exact_active__and_cas_surface() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(
@@ -124,7 +124,7 @@ def test_execution_attempt_repository_exact_active_and_cas_surface() -> None:
     )
 
 
-def test_reconciliation_candidates_use_exact_current_continuation_predicates() -> None:
+def test_reconciliation_candidates__use_exact__current_continuation_predicates() -> None:
     connection = _reconciliation_connection()
     repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
 
@@ -165,7 +165,7 @@ def test_reconciliation_candidates_use_exact_current_continuation_predicates() -
     ]
 
 
-def test_reconciliation_candidates_use_exact_phase_markers() -> None:
+def test_reconciliation_candidates__use_exact__phase_markers() -> None:
     connection = _reconciliation_connection()
     repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
     phases = (
@@ -222,7 +222,7 @@ def test_reconciliation_candidates_use_exact_phase_markers() -> None:
     ]
 
 
-def test_reconciliation_candidates_exclude_stale_parent_authority_and_are_sql_bounded() -> None:
+def test_reconciliation_candidates_exclude__stale_parent_authority__and_are_sql_bounded() -> None:
     connection = _reconciliation_connection()
     repository = execution_attempt_repository.SqliteExecutionAttemptRepository(connection)
 

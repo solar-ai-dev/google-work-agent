@@ -84,7 +84,7 @@ def _database(tmp_path: Path, *, status: str, version: int = 0) -> Path:
     return path
 
 
-def test_phase_handlers_apply_receipt_audit_and_run_cas_atomically(tmp_path: Path) -> None:
+def test_phase_handlers_apply__receipt_audit_and__run_cas_atomically(tmp_path: Path) -> None:
     path = _database(tmp_path, status="CREATED")
     factory = sqlite_unit_of_work_factory(path, now_ms=lambda: 10)
     start = StartAnalysisHandler(unit_of_work_factory=factory, now_ms=lambda: 10)
@@ -121,7 +121,7 @@ def test_phase_handlers_apply_receipt_audit_and_run_cas_atomically(tmp_path: Pat
     }
 
 
-def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path: Path) -> None:
+def test_published_review__reentry_revokes_approval__and_supersedes_plan(tmp_path: Path) -> None:
     path = _database(tmp_path, status="WAITING_APPROVAL", version=4)
     with connect_sqlite(path) as connection:
         connection.execute(
@@ -192,7 +192,7 @@ def test_published_review_reentry_revokes_approval_and_supersedes_plan(tmp_path:
     assert approval["status"] == "REVOKED"
 
 
-def test_audit_failure_rolls_back_run_and_receipt(tmp_path: Path) -> None:
+def test_audit_failure__rolls_back__run_and_receipt(tmp_path: Path) -> None:
     path = _database(tmp_path, status="CREATED")
     with connect_sqlite(path) as connection:
         connection.execute(
@@ -218,7 +218,7 @@ def test_audit_failure_rolls_back_run_and_receipt(tmp_path: Path) -> None:
     assert int(receipt_count["count"]) == 0
 
 
-def test_published_reentry_with_inflight_action_has_zero_domain_mutation(tmp_path: Path) -> None:
+def test_published_reentry_with__inflight_action_has__zero_domain_mutation(tmp_path: Path) -> None:
     path = _database(tmp_path, status="VERIFYING", version=6)
     with connect_sqlite(path) as connection:
         connection.execute(
@@ -276,7 +276,7 @@ def test_published_reentry_with_inflight_action_has_zero_domain_mutation(tmp_pat
     assert int(audits["count"]) == 0
 
 
-def test_context_adjustment_uses_retrieval_head_and_stages_resume_atomically(
+def test_context_adjustment_uses__retrieval_head_and__stages_resume_atomically(
     tmp_path: Path,
 ) -> None:
     path = _database(tmp_path, status="WAITING_APPROVAL", version=7)

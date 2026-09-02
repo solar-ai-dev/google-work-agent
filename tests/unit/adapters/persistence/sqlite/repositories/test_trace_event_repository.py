@@ -7,7 +7,7 @@ from google_work_agent.adapters.persistence.sqlite.repositories.trace_event_repo
 from google_work_agent.domain.trace_event.model import TraceEvent
 
 
-def test_trace_event_repository_sanitizes_lists_and_purges() -> None:
+def test_trace_event__repository_sanitizes__lists_and_purges() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.execute(

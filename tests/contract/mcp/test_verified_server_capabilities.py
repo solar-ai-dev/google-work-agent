@@ -28,7 +28,7 @@ build_google_workspace_internal_capabilities = (
 )
 
 
-def test_verified_server_declared_surface_maps_to_handlers() -> None:
+def test_verified_server__declared_surface__maps_to_handlers() -> None:
     verified_server._validate_declared_surface()
 
     public_names = frozenset(entry.tool_name for entry in load_signed_tool_registry().entries)
@@ -46,7 +46,7 @@ def test_verified_server_declared_surface_maps_to_handlers() -> None:
         assert verified_server.has_internal_operation(name)
 
 
-def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
+def test_callable_legacy__helper_is__not_dispatch_authority() -> None:
     assert callable(workspace_tools._gmail_thread_list_metadata)
     state = cast(workspace_tools.GoogleWorkspaceCredentialProvider, object())
 
@@ -60,7 +60,7 @@ def test_callable_legacy_helper_is_not_dispatch_authority() -> None:
     assert str(captured.value) == "TOOL_NOT_AVAILABLE"
 
 
-def test_google_connector_uses_verified_server_for_default_module() -> None:
+def test_google_connector__uses_verified_server__for_default_module() -> None:
     descriptor = build_google_workspace_connector_descriptor(
         _artifact_config(),
         expected_tool_descriptors=tuple(
@@ -74,7 +74,7 @@ def test_google_connector_uses_verified_server_for_default_module() -> None:
     )
 
 
-def test_google_connector_preserves_explicit_test_module() -> None:
+def test_google_connector__preserves_explicit__test_module() -> None:
     config = _artifact_config(module_name="tests.fakes.mcp_server")
     descriptor = build_google_workspace_connector_descriptor(
         config,
@@ -86,7 +86,7 @@ def test_google_connector_preserves_explicit_test_module() -> None:
     assert descriptor.artifact_config.module_name == "tests.fakes.mcp_server"
 
 
-def test_recovery_search_binding_uses_the_internal_capability_contract() -> None:
+def test_recovery_search__binding_uses_the__internal_capability_contract() -> None:
     binding = google_workspace_internal_read_binding("search_by_recovery_fingerprint")
     capability = next(
         item

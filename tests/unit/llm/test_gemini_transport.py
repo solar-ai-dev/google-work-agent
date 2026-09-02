@@ -72,7 +72,7 @@ def _fake_response() -> bytes:
     ).encode("utf-8")
 
 
-def test_invoke_structured_omits_temperature_when_sampling_is_unset(
+def test_invoke_structured__omits_temperature_when__sampling_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Production dispatch (sampling_temperature None) must produce the
@@ -100,7 +100,7 @@ def test_invoke_structured_omits_temperature_when_sampling_is_unset(
     assert sent_body["generationConfig"] == {"responseMimeType": "application/json"}
 
 
-def test_invoke_structured_sends_fixed_temperature_when_set(
+def test_invoke_structured__sends_fixed__temperature_when_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Request] = []
@@ -131,7 +131,7 @@ def test_invoke_structured_sends_fixed_temperature_when_set(
     assert "seed" not in sent_body["generationConfig"]
 
 
-def test_gemini_transport_never_accepts_a_seed_argument(
+def test_gemini_transport__never_accepts__a_seed_argument(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """GeminiHTTPClient.invoke_structured has no sampling_seed parameter at
@@ -142,7 +142,7 @@ def test_gemini_transport_never_accepts_a_seed_argument(
     assert "sampling_seed" not in signature.parameters
 
 
-def test_provider_forwards_temperature_but_never_seed_to_gemini_transport(
+def test_provider_forwards_temperature__but_never_seed__to_gemini_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Request] = []
@@ -175,7 +175,7 @@ def test_provider_forwards_temperature_but_never_seed_to_gemini_transport(
     assert "seed" not in sent_body
 
 
-def test_provider_omits_temperature_when_runtime_policy_leaves_sampling_unset(
+def test_provider_omits_temperature__when_runtime_policy__leaves_sampling_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pins the production path: a bare ``RuntimePolicy()`` (what

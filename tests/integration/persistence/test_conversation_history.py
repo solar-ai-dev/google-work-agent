@@ -99,7 +99,7 @@ def _insert_message(
     )
 
 
-def test_history_returns_every_turn_of_one_conversation_in_time_order(tmp_path: Path) -> None:
+def test_history_returns_every__turn_of_one__conversation_in_time_order(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
     connection = connect_sqlite(database_path)
     try:
@@ -169,7 +169,7 @@ def test_history_returns_every_turn_of_one_conversation_in_time_order(tmp_path: 
     assert history.truncated is False
 
 
-def test_history_keeps_a_failed_run_and_an_open_run_in_the_projection(tmp_path: Path) -> None:
+def test_history_keeps_a_failed__run_and_an_open__run_in_the_projection(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
     connection = connect_sqlite(database_path)
     try:
@@ -223,7 +223,7 @@ def test_history_keeps_a_failed_run_and_an_open_run_in_the_projection(tmp_path: 
     assert [item.content for item in history.messages] == ["실패한 요청", "진행 중 요청"]
 
 
-def test_history_is_empty_for_a_conversation_without_messages(tmp_path: Path) -> None:
+def test_history_is__empty_for_a__conversation_without_messages(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
     history = _history_handler(database_path)(
@@ -236,7 +236,7 @@ def test_history_is_empty_for_a_conversation_without_messages(tmp_path: Path) ->
     assert history.truncated is False
 
 
-def test_history_is_none_for_an_unknown_conversation(tmp_path: Path) -> None:
+def test_history_is__none_for__an_unknown_conversation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
 
     assert (
@@ -245,7 +245,7 @@ def test_history_is_none_for_an_unknown_conversation(tmp_path: Path) -> None:
     )
 
 
-def test_history_keeps_the_newest_messages_and_reports_truncation(tmp_path: Path) -> None:
+def test_history_keeps__the_newest_messages__and_reports_truncation(tmp_path: Path) -> None:
     database_path = _seeded_database(tmp_path)
     total = DEFAULT_HISTORY_MESSAGE_LIMIT + 5
     connection = connect_sqlite(database_path)

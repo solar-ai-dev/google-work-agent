@@ -47,7 +47,7 @@ def _called_names(path: Path) -> set[str]:
     return result
 
 
-def test_resource_attachment_google_routes_hide_concrete_connector_exceptions() -> None:
+def test_resource_attachment__google_routes_hide__concrete_connector_exceptions() -> None:
     forbidden = (
         "GoogleWorkspaceGatewayError",
         "GoogleWorkspaceErrorCode",
@@ -61,7 +61,7 @@ def test_resource_attachment_google_routes_hide_concrete_connector_exceptions() 
             assert symbol not in source, (route_name, symbol)
 
 
-def test_routes_actually_invoke_canonical_application_handlers() -> None:
+def test_routes_actually__invoke_canonical__application_handlers() -> None:
     expected = {
         "resources.py": {
             "ListResourcesHandler",
@@ -85,7 +85,7 @@ def test_routes_actually_invoke_canonical_application_handlers() -> None:
         assert _called_names(ROUTE_DIR / route_name).intersection(handlers) or "handler(" in source
 
 
-def test_route_wire_ownership_uses_canonical_multipart_attachment_boundary() -> None:
+def test_route_wire__ownership_uses_canonical__multipart_attachment_boundary() -> None:
     calls = _called_names(ROUTE_DIR / "attachments.py")
     assert "read" in calls
     source = _source(ROUTE_DIR / "attachments.py")
@@ -93,7 +93,7 @@ def test_route_wire_ownership_uses_canonical_multipart_attachment_boundary() -> 
     assert "data_base64" not in source
 
 
-def test_owned_routes_and_use_cases_have_zero_provider_sdk_dependencies() -> None:
+def test_owned_routes_and__use_cases_have__zero_provider_sdk_dependencies() -> None:
     paths = [
         ROUTE_DIR / "resources.py",
         ROUTE_DIR / "attachments.py",
@@ -110,7 +110,7 @@ def test_owned_routes_and_use_cases_have_zero_provider_sdk_dependencies() -> Non
     assert violations == []
 
 
-def test_application_use_cases_do_not_depend_on_api_schemas() -> None:
+def test_application_use_cases__do_not_depend__on_api_schemas() -> None:
     violations: list[tuple[str, str]] = []
     for owner in ("resource_ref", "attachment", "connector_connection"):
         for path in (USE_CASE_DIR / owner).glob("*.py"):
@@ -120,7 +120,7 @@ def test_application_use_cases_do_not_depend_on_api_schemas() -> None:
     assert violations == []
 
 
-def test_canonical_handlers_do_not_call_broad_legacy_semantic_surfaces() -> None:
+def test_canonical_handlers_do__not_call_broad__legacy_semantic_surfaces() -> None:
     forbidden_calls = {
         "list_gmail_threads",
         "list_tasks",
@@ -143,7 +143,7 @@ def test_canonical_handlers_do_not_call_broad_legacy_semantic_surfaces() -> None
     assert "google_work_agent.application.google_connection" not in imports
 
 
-def test_revoke_connection_operation_filename_matches_symbol_grammar() -> None:
+def test_revoke_connection__operation_filename__matches_symbol_grammar() -> None:
     path = USE_CASE_DIR / "connection" / "revoke_connection.py"
     assert path.is_file()
     assert not (USE_CASE_DIR / "connector_connection" / "disconnect_connector.py").exists()

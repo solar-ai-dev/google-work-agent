@@ -25,7 +25,7 @@ def _candidate(kind: str = "DUPLICATES") -> WorkRelationV1:
     )
 
 
-def test_guarded_candidate_without_current_source_truth_is_not_final() -> None:
+def test_guarded_candidate_without__current_source_truth__is_not_final() -> None:
     result = validate_relations(
         work_facts=[fact("f1"), fact("f2")],
         entity_relation_candidates=[],
@@ -38,7 +38,7 @@ def test_guarded_candidate_without_current_source_truth_is_not_final() -> None:
     assert result["relation_validation_ambiguities"][0]["requires_confirmation"] is True
 
 
-def test_current_source_truth_promotes_exact_guarded_relation() -> None:
+def test_current_source__truth_promotes__exact_guarded_relation() -> None:
     candidate = _candidate()
     current_source_truth: CurrentSourceRelationV1 = {
         "relation_id": "source-relation-7",
@@ -59,7 +59,7 @@ def test_current_source_truth_promotes_exact_guarded_relation() -> None:
     assert result["relation_validation_ambiguities"] == []
 
 
-def test_unknown_or_free_text_relation_kind_fails_closed() -> None:
+def test_unknown_or__free_text_relation__kind_fails_closed() -> None:
     with pytest.raises(ValueError, match="unknown WorkRelationV1"):
         validate_relations(
             work_facts=[fact("f1"), fact("f2")],

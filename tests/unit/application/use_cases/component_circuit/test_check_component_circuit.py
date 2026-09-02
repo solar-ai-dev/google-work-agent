@@ -37,7 +37,7 @@ class _StatePort:
         ("OPEN", 10, True, "OK"),
     ],
 )
-def test_check_component_circuit_obeys_retry_boundary(
+def test_check_component__circuit_obeys__retry_boundary(
     state: str, now_ms: int, allowed: bool, reason: str
 ) -> None:
     port = _StatePort(
@@ -59,7 +59,7 @@ def test_check_component_circuit_obeys_retry_boundary(
     assert result.state == state
 
 
-def test_check_component_circuit_rejects_negative_time() -> None:
+def test_check_component__circuit_rejects__negative_time() -> None:
     port = _StatePort(ComponentCircuitStateV1(1, KEY, "CLOSED", 0, None, None))
     with pytest.raises(ValueError, match="invalid component-circuit query"):
         CheckComponentCircuitHandler(port)(CheckComponentCircuitQueryV1(1, KEY, -1))

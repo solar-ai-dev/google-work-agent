@@ -17,7 +17,7 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 
 
-def test_main_state_has_exact_v2_owner_and_no_retrieval_scratch_fields() -> None:
+def test_main_state_has__exact_v2_owner_and__no_retrieval_scratch_fields() -> None:
     fields = set(get_type_hints(GraphState))
 
     assert not hasattr(state_module, "ProductionGraphStateV2")
@@ -33,7 +33,7 @@ def test_main_state_has_exact_v2_owner_and_no_retrieval_scratch_fields() -> None
     }.isdisjoint(fields)
 
 
-def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
+def test_initial_state_pins__profile_version_and__immutable_run_input() -> None:
     request = WorkflowStartRequest(
         run_id="run-1",
         conversation_id="conversation-1",
@@ -61,7 +61,7 @@ def test_initial_state_pins_profile_version_and_immutable_run_input() -> None:
     assert "context_result" not in state
 
 
-def test_domain_backed_summary_contracts_are_exact_and_main_owned() -> None:
+def test_domain_backed_summary__contracts_are_exact__and_main_owned() -> None:
     assert set(get_type_hints(ExecutionSummaryV1)) == {
         "schema_version",
         "action_id",

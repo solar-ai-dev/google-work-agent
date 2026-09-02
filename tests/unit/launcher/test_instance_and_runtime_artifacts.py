@@ -12,7 +12,7 @@ from launcher.create_service_instance_id import create_service_instance_id
 from launcher.prepare_data_directory import prepare_data_directory
 
 
-def test_single_instance_is_atomic_and_live_owner_is_reused(tmp_path: Path) -> None:
+def test_single_instance_is__atomic_and_live__owner_is_reused(tmp_path: Path) -> None:
     def process_identity(process_id: int) -> str:
         return f"token-{process_id}"
 
@@ -36,7 +36,7 @@ def test_single_instance_is_atomic_and_live_owner_is_reused(tmp_path: Path) -> N
     assert not (tmp_path / "service.lock").exists()
 
 
-def test_stale_lock_is_adjudicated_before_new_owner_acquires(tmp_path: Path) -> None:
+def test_stale_lock__is_adjudicated_before__new_owner_acquires(tmp_path: Path) -> None:
     lock_path = tmp_path / "service.lock"
     lock_path.write_text(
         json.dumps(
@@ -66,7 +66,7 @@ def test_stale_lock_is_adjudicated_before_new_owner_acquires(tmp_path: Path) -> 
     lease.release()
 
 
-def test_data_layout_and_runtime_metadata_are_exact_and_secret_free(tmp_path: Path) -> None:
+def test_data_layout_and__runtime_metadata_are__exact_and_secret_free(tmp_path: Path) -> None:
     acl_calls: list[Path] = []
     layout = prepare_data_directory(tmp_path, acl_initializer=acl_calls.append)
     reservation = allocate_dynamic_port()
@@ -100,7 +100,7 @@ def test_data_layout_and_runtime_metadata_are_exact_and_secret_free(tmp_path: Pa
     assert not layout.service_instance_path.exists()
 
 
-def test_dynamic_port_is_loopback_reserved_until_explicit_release() -> None:
+def test_dynamic_port__is_loopback_reserved__until_explicit_release() -> None:
     reservation = allocate_dynamic_port()
     competing = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:

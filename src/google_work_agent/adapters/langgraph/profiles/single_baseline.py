@@ -11,7 +11,6 @@ from google_work_agent.adapters.langgraph.main.graph import (
     MainControlNodeBindings,
     WorkflowGraphComposition,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     CompiledAgentSubgraphIdV1,
@@ -36,7 +35,7 @@ def build_single_baseline_graph(
     *,
     bindings: GraphNodeBindings,
     control_bindings: MainControlNodeBindings,
-    route_next_node: Callable[[GraphState], str],
+    should_stop_for_cancel: Callable[[str], bool],
     checkpointer: Any,
 ) -> WorkflowGraphComposition:
     """Build the one-physical-subgraph profile over the shared Main Graph."""
@@ -46,6 +45,6 @@ def build_single_baseline_graph(
         topology=("single_workflow",),
         bindings=bindings,
         control_bindings=control_bindings,
-        route_next_node=route_next_node,
+        should_stop_for_cancel=should_stop_for_cancel,
         checkpointer=checkpointer,
     )

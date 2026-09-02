@@ -18,7 +18,7 @@ EXPECTED_EVALUATION_CODE = {
 }
 
 
-def test_single_evaluation_owner_has_no_legacy_framework_or_parallel_root() -> None:
+def test_single_evaluation_owner__has_no_legacy__framework_or_parallel_root() -> None:
     assert not (ROOT / "experiments").exists()
     assert not (EVALUATION / "compat").exists()
     assert not any(
@@ -41,7 +41,7 @@ def test_single_evaluation_owner_has_no_legacy_framework_or_parallel_root() -> N
     } == (EXPECTED_EVALUATION_CODE)
 
 
-def test_product_and_evaluation_import_graph_is_bidirectionally_closed() -> None:
+def test_product_and__evaluation_import_graph__is_bidirectionally_closed() -> None:
     product_violations: list[str] = []
     for root in PRODUCT_ROOTS:
         for path in root.rglob("*.py"):
@@ -60,7 +60,7 @@ def test_product_and_evaluation_import_graph_is_bidirectionally_closed() -> None
     assert evaluation_violations == []
 
 
-def test_evaluation_assets_are_repository_only_and_results_are_local_by_default() -> None:
+def test_evaluation_assets_are__repository_only_and_results__are_local_by_default() -> None:
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'include = ["google_work_agent*"]' in pyproject
     assert "evaluation*" not in pyproject
@@ -78,7 +78,7 @@ def test_evaluation_assets_are_repository_only_and_results_are_local_by_default(
     assert required <= tracked
 
 
-def test_evaluation_assets_do_not_reference_retired_experiments_tree() -> None:
+def test_evaluation_assets__do_not_reference__retired_experiments_tree() -> None:
     checked_suffixes = {".json", ".jsonl", ".md"}
     for owner in (EVALUATION / "configs", EVALUATION / "datasets"):
         for path in owner.rglob("*"):

@@ -591,7 +591,7 @@ class _WorkflowRuntimeComposition:
         self._graph_composition = profile_builder(
             bindings=self._graph_node_bindings,
             control_bindings=self._main_graph_control_bindings,
-            route_next_node=self._route_next_node,
+            should_stop_for_cancel=self._should_stop_for_cancel,
             checkpointer=self._checkpointer,
         )
         self._native_agent_subgraphs = self._native_subgraphs_for_profile()
@@ -1509,34 +1509,6 @@ class _WorkflowRuntimeComposition:
             )
         )
         return bool(result.applied)
-
-    def _route_next_node(self, state: GraphState) -> str:
-        run_id = state.get("run_id")
-        terminal_chain = {
-            "cancel_resolution",
-            "response_synthesis",
-            "terminal_commit",
-            "finalize",
-        }
-        if (
-            isinstance(run_id, str)
-            and self._should_stop_for_cancel(run_id)
-            and state.get("__target__") not in terminal_chain
-        ):
-            return "end"
-        control = state.get("__workflow_control__")
-        workflow_signal = state.get("workflow_signal")
-        review_is_complete = state.get("plan_review") is not None or (
-            isinstance(workflow_signal, Mapping)
-            and workflow_signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
-        )
-        if (
-            isinstance(control, Mapping)
-            and control.get("stage") == "REVIEW_PENDING_SETTLEMENT"
-            and review_is_complete
-        ):
-            return "review_entry"
-        return cast(str, state.get("__target__", "end"))
 
     def _merge_decision(
         self,

@@ -44,7 +44,7 @@ class _InstallerBackend:
         return artifact
 
 
-def test_build_installer_consumes_verified_signed_profile_bundle(tmp_path: Path) -> None:
+def test_build_installer__consumes_verified__signed_profile_bundle(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     assemble_application_bundle(
         profile=DeploymentProfile.API_ONLY,
@@ -96,7 +96,7 @@ def test_build_installer_consumes_verified_signed_profile_bundle(tmp_path: Path)
     assert installer.read_bytes().endswith(b"-signed")
 
 
-def test_build_installer_rejects_file_added_after_manifest_signing(tmp_path: Path) -> None:
+def test_build_installer__rejects_file_added__after_manifest_signing(tmp_path: Path) -> None:
     bundle = tmp_path / "bundle"
     assemble_application_bundle(
         profile=DeploymentProfile.API_ONLY,

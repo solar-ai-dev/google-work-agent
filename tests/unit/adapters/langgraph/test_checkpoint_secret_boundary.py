@@ -26,7 +26,7 @@ def _checkpointer() -> tuple[sqlite3.Connection, SecretBoundaryCheckpointer]:
     return connection, SecretBoundaryCheckpointer(SqliteSaver(connection))
 
 
-def test_checkpoint_boundary_preserves_allowed_metadata_and_round_trips() -> None:
+def test_checkpoint_boundary__preserves_allowed_metadata__and_round_trips() -> None:
     connection, checkpointer = _checkpointer()
     try:
         checkpoint = empty_checkpoint()
@@ -71,7 +71,7 @@ def test_checkpoint_boundary_preserves_allowed_metadata_and_round_trips() -> Non
         connection.close()
 
 
-def test_checkpoint_boundary_rejects_random_secret_in_checkpoint_metadata_and_writes() -> None:
+def test_checkpoint_boundary_rejects__random_secret_in__checkpoint_metadata_and_writes() -> None:
     connection, checkpointer = _checkpointer()
     try:
         allowed_checkpoint = empty_checkpoint()
@@ -143,7 +143,7 @@ def test_checkpoint_boundary_rejects_random_secret_in_checkpoint_metadata_and_wr
         connection.close()
 
 
-def test_checkpoint_boundary_rejects_raw_credential_object_fail_closed() -> None:
+def test_checkpoint_boundary__rejects_raw_credential__object_fail_closed() -> None:
     class ProviderCredential:
         def __init__(self, secret_value: str) -> None:
             self.access_token = secret_value
@@ -194,7 +194,7 @@ def _compiled_graph(checkpointer: SecretBoundaryCheckpointer) -> Any:
     return builder.compile(checkpointer=checkpointer)
 
 
-def test_compiled_graph_checkpoint_positive_round_trip_preserves_allowed_metadata() -> None:
+def test_compiled_graph_checkpoint__positive_round_trip__preserves_allowed_metadata() -> None:
     connection = sqlite3.connect(":memory:", check_same_thread=False)
     checkpointer = SecretBoundaryCheckpointer(SqliteSaver(connection))
     graph = _compiled_graph(checkpointer)
@@ -266,7 +266,7 @@ def _increment_secret_state(state: _SecretCompiledGraphState) -> dict[str, objec
     return {"count": state["count"] + 1}
 
 
-def test_compiled_graph_checkpoint_secret_state_fails_closed_without_raw_db_bytes(
+def test_compiled_graph_checkpoint__secret_state_fails_closed__without_raw_db_bytes(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "compiled-secret-checkpoint.db"
@@ -313,7 +313,7 @@ def test_compiled_graph_checkpoint_secret_state_fails_closed_without_raw_db_byte
         assert persisted_count == 0
 
 
-def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
+def test_sync_sqlite__capabilities_are_not__expanded_to_async() -> None:
     connection, checkpointer = _checkpointer()
     config: RunnableConfig = {"configurable": {"thread_id": "sync-only", "checkpoint_ns": ""}}
     checkpoint = empty_checkpoint()
@@ -338,7 +338,7 @@ def test_sync_sqlite_capabilities_are_not_expanded_to_async() -> None:
         connection.close()
 
 
-def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
+def test_workflow_graph__composition_wraps__product_checkpointer() -> None:
     from google_work_agent.adapters.langgraph.main.graph import (
         GraphNodeBindings,
         MainControlNodeBindings,
@@ -393,7 +393,7 @@ def test_workflow_graph_composition_wraps_product_checkpointer() -> None:
                 terminal_commit=noop,
                 finalize=noop,
             ),
-            route_next_node=lambda _state: "end",
+            should_stop_for_cancel=lambda _run_id: False,
             checkpointer=underlying,
         )
 

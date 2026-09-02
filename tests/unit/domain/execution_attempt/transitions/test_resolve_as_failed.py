@@ -8,7 +8,7 @@ from google_work_agent.domain.execution_attempt.transitions.resolve_as_failed im
 from google_work_agent.domain.results import InvariantViolationError
 
 
-def test_resolve_as_failed_requires_confirmed_non_execution() -> None:
+def test_resolve_as__failed_requires__confirmed_non_execution() -> None:
     with pytest.raises(InvariantViolationError):
         transition_resolve_as_failed(
             ActionStatusV1.UNKNOWN_RESULT,

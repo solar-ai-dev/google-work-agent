@@ -15,7 +15,7 @@ def _result() -> dict[str, object]:
     return {"schema_version": 1, "dimension": DIMENSION, "findings": []}
 
 
-def test_inspect_constraints_uses_only_bounded_supplied_policy_summary() -> None:
+def test_inspect_constraints__uses_only_bounded__supplied_policy_summary() -> None:
     calls: list[dict[str, object]] = []
     policy_summary = {"tool_policies": [{"tool_id": "calendar.create_event"}]}
 
@@ -38,7 +38,7 @@ def test_inspect_constraints_uses_only_bounded_supplied_policy_summary() -> None
     assert "tool_route_plan" not in calls[0]
 
 
-def test_inspect_constraints_skips_inference_when_bounded_inputs_are_empty() -> None:
+def test_inspect_constraints_skips__inference_when_bounded__inputs_are_empty() -> None:
     result = inspect_constraints_and_policy_summary(
         request_intent={"constraints": []},
         planning_result={"schema_version": 2, "actions": []},
@@ -49,7 +49,7 @@ def test_inspect_constraints_skips_inference_when_bounded_inputs_are_empty() -> 
     assert result == _result()
 
 
-def test_inspect_constraints_rejects_finding_with_final_status() -> None:
+def test_inspect_constraints__rejects_finding__with_final_status() -> None:
     candidate = _result()
     candidate["status"] = "BLOCK"
     with pytest.raises(ValueError, match="keys do not match"):

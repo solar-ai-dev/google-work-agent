@@ -73,7 +73,7 @@ class _Transport(OllamaTransport):
         raise AssertionError("tool calling is outside this structured-inference test")
 
 
-def test_ollama_leaf_dispatches_only_to_configured_local_transport() -> None:
+def test_ollama_leaf__dispatches_only_to__configured_local_transport() -> None:
     adapter = OllamaStructuredInferenceAdapter(
         "ollama", _Transport(), "http://127.0.0.1:11434", "model-1"
     )

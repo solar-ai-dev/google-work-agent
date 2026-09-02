@@ -94,7 +94,7 @@ PORT_METHODS = {
 }
 
 
-def test_exact_24_canonical_port_method_surfaces() -> None:
+def test_exact_24__canonical_port__method_surfaces() -> None:
     assert len(PORT_METHODS) == 24
     for relative_path, expected_methods in PORT_METHODS.items():
         module = ast.parse((SRC / relative_path).read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ def test_exact_24_canonical_port_method_surfaces() -> None:
         assert actual_methods == expected_methods, relative_path
 
 
-def test_initial_workflow_binding_port_is_narrower_than_checkpoint_port() -> None:
+def test_initial_workflow_binding__port_is_narrower__than_checkpoint_port() -> None:
     module = ast.parse((SRC / "ports/system/checkpoint_port.py").read_text(encoding="utf-8"))
     initial = next(
         node
@@ -128,7 +128,7 @@ def test_initial_workflow_binding_port_is_narrower_than_checkpoint_port() -> Non
     }
 
 
-def test_google_mcp_dispatch_has_exact_signed_registry_operation_set() -> None:
+def test_google_mcp_dispatch__has_exact_signed__registry_operation_set() -> None:
     registry = load_signed_tool_registry()
 
     assert set(dispatch_tool._OPERATIONS) == {entry.tool_id for entry in registry.entries}
@@ -138,7 +138,7 @@ def test_google_mcp_dispatch_has_exact_signed_registry_operation_set() -> None:
     }
 
 
-def test_removed_boundary_authorities_and_compatibility_paths_are_absent() -> None:
+def test_removed_boundary__authorities_and_compatibility__paths_are_absent() -> None:
     removed = (
         "adapters/connectors/connector_registry.py",
         "adapters/connectors/execution_router.py",
@@ -165,7 +165,7 @@ def test_removed_boundary_authorities_and_compatibility_paths_are_absent() -> No
     assert "GoogleOAuthCredentialProvider" not in production
 
 
-def test_boundary_adapter_packages_do_not_reexport_concrete_owners() -> None:
+def test_boundary_adapter__packages_do_not__reexport_concrete_owners() -> None:
     for relative in (
         "adapters/llm/__init__.py",
         "adapters/llm/gemini/__init__.py",
@@ -175,7 +175,7 @@ def test_boundary_adapter_packages_do_not_reexport_concrete_owners() -> None:
         assert not [node for node in module.body if isinstance(node, (ast.Import, ast.ImportFrom))]
 
 
-def test_entrypoint_routes_public_tools_through_operation_per_file_dispatch() -> None:
+def test_entrypoint_routes_public__tools_through_operation__per_file_dispatch() -> None:
     from google_work_agent.adapters.connectors.google.workspace.mcp_server.dispatch_tool import (
         _OPERATIONS,
     )
@@ -213,7 +213,7 @@ def test_entrypoint_routes_public_tools_through_operation_per_file_dispatch() ->
         assert not (SRC / f"adapters/connectors/google/workspace/mcp_server/{removed}").exists()
 
 
-def test_connector_write_has_one_production_dispatch_caller() -> None:
+def test_connector_write__has_one__production_dispatch_caller() -> None:
     callers = []
     for path in SRC.rglob("*.py"):
         source = path.read_text(encoding="utf-8")

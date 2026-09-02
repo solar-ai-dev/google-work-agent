@@ -87,7 +87,7 @@ def aggregate_database(tmp_path: Path) -> Path:
     return database_path
 
 
-def test_cross_run_resource_links_are_rejected(aggregate_database: Path) -> None:
+def test_cross_run__resource_links__are_rejected(aggregate_database: Path) -> None:
     connection = connect_sqlite(aggregate_database)
     try:
         with pytest.raises(
@@ -115,7 +115,7 @@ def test_cross_run_resource_links_are_rejected(aggregate_database: Path) -> None
         connection.close()
 
 
-def test_user_message_evidence_uses_conversation_identity_not_run_identity(
+def test_user_message_evidence__uses_conversation_identity__not_run_identity(
     aggregate_database: Path,
 ) -> None:
     connection = connect_sqlite(aggregate_database)
@@ -168,7 +168,7 @@ def test_user_message_evidence_uses_conversation_identity_not_run_identity(
         connection.close()
 
 
-def test_cross_plan_dependency_and_cross_run_action_evidence_are_rejected(
+def test_cross_plan_dependency__and_cross_run__action_evidence_are_rejected(
     aggregate_database: Path,
 ) -> None:
     connection = connect_sqlite(aggregate_database)
@@ -196,7 +196,7 @@ def test_cross_plan_dependency_and_cross_run_action_evidence_are_rejected(
         connection.close()
 
 
-def test_nfr019_write_safety_triggers_survive_plan_aggregate_migration(
+def test_nfr019_write__safety_triggers_survive__plan_aggregate_migration(
     aggregate_database: Path,
 ) -> None:
     expected = {

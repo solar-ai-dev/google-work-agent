@@ -9,7 +9,7 @@ from google_work_agent.adapters.persistence.sqlite.unit_of_work import (
 )
 
 
-def test_file_database_connection_applies_required_pragmas(tmp_path: Path) -> None:
+def test_file_database__connection_applies__required_pragmas(tmp_path: Path) -> None:
     database_path = tmp_path / "connection.db"
 
     connection = connect_sqlite(database_path)
@@ -31,7 +31,7 @@ def test_file_database_connection_applies_required_pragmas(tmp_path: Path) -> No
     assert database_path.exists()
 
 
-def test_connection_close_is_caller_controlled(tmp_path: Path) -> None:
+def test_connection_close__is_caller__controlled(tmp_path: Path) -> None:
     connection = connect_sqlite(tmp_path / "close.db")
     connection.close()
 
@@ -43,7 +43,7 @@ def test_connection_close_is_caller_controlled(tmp_path: Path) -> None:
         raise AssertionError("closed SQLite connection accepted a query")
 
 
-def test_read_unit_of_work_does_not_compete_for_writer_lock(tmp_path: Path) -> None:
+def test_read_unit_of__work_does_not__compete_for_writer_lock(tmp_path: Path) -> None:
     database_path = tmp_path / "read-uow.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection, now_ms=lambda: 1)

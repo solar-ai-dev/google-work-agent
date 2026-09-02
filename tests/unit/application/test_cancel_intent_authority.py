@@ -14,7 +14,7 @@ class _Reader:
         return self.value
 
 
-def test_only_applied_request_cancel_receipt_is_cancel_authority() -> None:
+def test_only_applied__request_cancel_receipt__is_cancel_authority() -> None:
     assert is_applied_request_cancel_receipt(
         command_type="RequestRunCancellation",
         aggregate_type="Run",
@@ -43,7 +43,7 @@ def test_only_applied_request_cancel_receipt_is_cancel_authority() -> None:
         assert not is_applied_request_cancel_receipt(**values)
 
 
-def test_cancel_query_delegates_to_receipt_reader_not_audit() -> None:
+def test_cancel_query__delegates_to_receipt__reader_not_audit() -> None:
     reader = _Reader(True)
 
     assert has_durable_cancel_intent(reader, "run-1") is True

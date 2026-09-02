@@ -10,7 +10,7 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 )
 
 
-def test_resolves_requested_refs_in_requested_order() -> None:
+def test_resolves_requested__refs_in__requested_order() -> None:
     store = RunScopedEvidenceStore()
     first, second = _draft("evidence-1"), _draft("evidence-2")
     store.put(run_id="run-1", evidence_drafts=[first, second])
@@ -21,7 +21,7 @@ def test_resolves_requested_refs_in_requested_order() -> None:
     ]
 
 
-def test_unknown_and_cross_run_refs_fail_closed() -> None:
+def test_unknown_and__cross_run__refs_fail_closed() -> None:
     store = RunScopedEvidenceStore()
     store.put(run_id="run-1", evidence_drafts=[_draft("evidence-1")])
 
@@ -31,7 +31,7 @@ def test_unknown_and_cross_run_refs_fail_closed() -> None:
         store.resolve(run_id="run-2", evidence_refs=["evidence-1"])
 
 
-def test_same_id_is_idempotent_but_conflicting_content_fails_closed() -> None:
+def test_same_id_is__idempotent_but_conflicting__content_fails_closed() -> None:
     store = RunScopedEvidenceStore()
     draft = _draft("evidence-1")
     store.put(run_id="run-1", evidence_drafts=[draft])
@@ -43,7 +43,7 @@ def test_same_id_is_idempotent_but_conflicting_content_fails_closed() -> None:
         store.put(run_id="run-1", evidence_drafts=[conflicting])
 
 
-def test_discard_removes_run_evidence() -> None:
+def test_discard_removes__run__evidence() -> None:
     store = RunScopedEvidenceStore()
     store.put(run_id="run-1", evidence_drafts=[_draft("evidence-1")])
     store.discard_run(run_id="run-1")
@@ -52,7 +52,7 @@ def test_discard_removes_run_evidence() -> None:
         store.resolve(run_id="run-1", evidence_refs=["evidence-1"])
 
 
-def test_projection_resolves_only_result_refs() -> None:
+def test_projection_resolves__only_result__refs() -> None:
     store = RunScopedEvidenceStore()
     draft = _draft("evidence-1")
     store.put(run_id="run-1", evidence_drafts=[draft])

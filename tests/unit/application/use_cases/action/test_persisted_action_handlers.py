@@ -96,7 +96,7 @@ def _action(*, status: ActionStatusV1, version: int = 1) -> SimpleNamespace:
     )
 
 
-def test_modify_persists_revocation_review_receipt_and_audit() -> None:
+def test_modify_persists__revocation_review__receipt_and_audit() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.APPROVED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
@@ -233,7 +233,7 @@ def _assert_terminal_modify_regression(
     assert unit_of_work.verifications.method_calls == []
 
 
-def test_expired_modify_persists_modified_state_and_reopens_review() -> None:
+def test_expired_modify__persists_modified_state__and_reopens_review() -> None:
     _assert_terminal_modify_regression(
         initial_status=ActionStatusV1.EXPIRED,
         initial_version=4,
@@ -241,7 +241,7 @@ def test_expired_modify_persists_modified_state_and_reopens_review() -> None:
     )
 
 
-def test_failed_modify_persists_modified_state_without_execution_shortcut() -> None:
+def test_failed_modify__persists_modified_state__without_execution_shortcut() -> None:
     _assert_terminal_modify_regression(
         initial_status=ActionStatusV1.FAILED,
         initial_version=5,
@@ -249,7 +249,7 @@ def test_failed_modify_persists_modified_state_without_execution_shortcut() -> N
     )
 
 
-def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> None:
+def test_modify_superseded_plan__child_has_zero_effect__and_zero_owner_io() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.PROPOSED)
     unit_of_work.command_receipts.get_by_command_id.side_effect = [None, None]
@@ -286,7 +286,7 @@ def test_modify_superseded_plan_child_has_zero_effect_and_zero_owner_io() -> Non
     assert gateway.method_calls == []
 
 
-def test_reject_persists_revocation_and_dependency_consequence() -> None:
+def test_reject_persists__revocation_and__dependency_consequence() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.APPROVED, version=2)
     dependent = SimpleNamespace(id="action-2", status=ActionStatusV1.APPROVED.value, version=1)
@@ -333,7 +333,7 @@ def test_reject_persists_revocation_and_dependency_consequence() -> None:
     unit_of_work.commit.assert_called_once()
 
 
-def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
+def test_prepare_retry__preserves_prior_evidence__and_reopens_review() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
@@ -375,7 +375,7 @@ def test_prepare_retry_preserves_prior_evidence_and_reopens_review() -> None:
     unit_of_work.commit.assert_called_once()
 
 
-def test_prepare_retry_handoff_failure_prevents_command_commit() -> None:
+def test_prepare_retry__handoff_failure__prevents_command_commit() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
@@ -410,7 +410,7 @@ def test_prepare_retry_handoff_failure_prevents_command_commit() -> None:
     unit_of_work.commit.assert_not_called()
 
 
-def test_refresh_expired_action_reuses_fresh_source_and_updates_target_ref() -> None:
+def test_refresh_expired_action__reuses_fresh_source__and_updates_target_ref() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.EXPIRED, version=2)
     action.effect_type = EffectType.UPDATE.value
@@ -480,7 +480,7 @@ def test_refresh_expired_action_reuses_fresh_source_and_updates_target_ref() -> 
     assert stage.execution.resume_target.stage_id == "REVIEW_ENTRY"
 
 
-def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
+def test_prepare_retry__superseded_plan_child__has_zero_effect() -> None:
     unit_of_work = _uow()
     action = _action(status=ActionStatusV1.FAILED, version=5)
     unit_of_work.command_receipts.get_by_command_id.return_value = None
@@ -514,7 +514,7 @@ def test_prepare_retry_superseded_plan_child_has_zero_effect() -> None:
 
 
 @pytest.mark.parametrize("status", [ActionStatusV1.UNKNOWN_RESULT, ActionStatusV1.MISMATCH])
-def test_prepare_retry_never_retries_uncertain_or_mismatch(status: ActionStatusV1) -> None:
+def test_prepare_retry__never_retries__uncertain_or_mismatch(status: ActionStatusV1) -> None:
     unit_of_work = _uow()
     action = _action(status=status, version=6)
     unit_of_work.command_receipts.get_by_command_id.return_value = None

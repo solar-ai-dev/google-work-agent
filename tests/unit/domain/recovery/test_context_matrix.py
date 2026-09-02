@@ -5,7 +5,7 @@ import pytest
 from google_work_agent.domain.recovery.model import validate_recovery_context_shape
 
 
-def test_unknown_result_requires_action_and_attempt_without_verification() -> None:
+def test_unknown_result__requires_action_and__attempt_without_verification() -> None:
     validate_recovery_context_shape(
         reason="UNKNOWN_RESULT",
         scope="ACTION",
@@ -24,7 +24,7 @@ def test_unknown_result_requires_action_and_attempt_without_verification() -> No
     ("reason", "scope"),
     [("UNKNOWN_RESULT", "RUN"), ("VERIFICATION_MISMATCH", "RUN")],
 )
-def test_action_reasons_reject_run_scope(reason: str, scope: str) -> None:
+def test_action_reasons__reject_run__scope(reason: str, scope: str) -> None:
     with pytest.raises(ValueError):
         validate_recovery_context_shape(
             reason=reason,  # type: ignore[arg-type]
@@ -40,7 +40,7 @@ def test_action_reasons_reject_run_scope(reason: str, scope: str) -> None:
         )
 
 
-def test_checkpoint_mismatch_requires_registered_target_and_fingerprint() -> None:
+def test_checkpoint_mismatch__requires_registered__target_and_fingerprint() -> None:
     with pytest.raises(ValueError, match="registered resume target"):
         validate_recovery_context_shape(
             reason="CHECKPOINT_MISMATCH",
@@ -56,7 +56,7 @@ def test_checkpoint_mismatch_requires_registered_target_and_fingerprint() -> Non
         )
 
 
-def test_unknown_result_rejects_foreign_reason_fingerprints() -> None:
+def test_unknown_result__rejects_foreign__reason_fingerprints() -> None:
     with pytest.raises(ValueError, match="foreign reason facts"):
         validate_recovery_context_shape(
             reason="UNKNOWN_RESULT",

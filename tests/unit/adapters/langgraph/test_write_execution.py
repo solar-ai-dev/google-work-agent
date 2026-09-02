@@ -76,7 +76,7 @@ def _state() -> dict[str, object]:
     }
 
 
-def test_not_sent_failure_continues_to_preflight_for_independent_action() -> None:
+def test_not_sent_failure__continues_to_preflight__for_independent_action() -> None:
     result = _failed_node(independent_action_remains=True)._execute_action(
         state=cast(Any, _state()),
         run_id="run-1",
@@ -96,7 +96,7 @@ def test_not_sent_failure_continues_to_preflight_for_independent_action() -> Non
     assert workflow_control["reason"] == "FAILED_CONTINUE_INDEPENDENT"
 
 
-def test_not_sent_failure_suspends_when_no_independent_action_remains() -> None:
+def test_not_sent_failure__suspends_when_no__independent_action_remains() -> None:
     result = _failed_node(independent_action_remains=False)._execute_action(
         state=cast(Any, _state()),
         run_id="run-1",
@@ -116,7 +116,7 @@ def test_not_sent_failure_suspends_when_no_independent_action_remains() -> None:
     assert workflow_control["reason"] == "FAILED_RETRY_OR_CANCEL_REQUIRED"
 
 
-def test_read_plan_uses_legacy_read_authority_without_write_driver() -> None:
+def test_read_plan_uses__legacy_read_authority__without_write_driver() -> None:
     calls: list[str] = []
     read_action = replace(
         _action(),
@@ -163,7 +163,7 @@ def test_read_plan_uses_legacy_read_authority_without_write_driver() -> None:
     assert result_payload["action_ids"] == ["action-1"]
 
 
-def test_cancelled_read_plan_stops_before_read_or_write_execution() -> None:
+def test_cancelled_read_plan__stops_before_read__or_write_execution() -> None:
     read_called = False
     read_action = replace(_action(), effect_type="READ")
 
@@ -189,7 +189,7 @@ def test_cancelled_read_plan_stops_before_read_or_write_execution() -> None:
     assert read_called is False
 
 
-def test_verified_and_rejected_write_actions_route_to_partial_terminal_synthesis() -> None:
+def test_verified_and_rejected__write_actions_route__to_partial_terminal_synthesis() -> None:
     verified = replace(_action(), status=ActionStatusV1.VERIFIED.value)
     rejected = replace(
         _action(),
@@ -214,7 +214,7 @@ def test_verified_and_rejected_write_actions_route_to_partial_terminal_synthesis
     assert control["action_statuses"] == ["VERIFIED", "REJECTED"]
 
 
-def test_preflight_routes_closed_partial_plan_to_terminal_action_reconciliation() -> None:
+def test_preflight_routes_closed__partial_plan_to__terminal_action_reconciliation() -> None:
     verified = replace(_action(), status=ActionStatusV1.VERIFIED.value)
     rejected = replace(_action(), id="action-2", status=ActionStatusV1.REJECTED.value)
     node = WriteExecutionNode(
@@ -233,7 +233,7 @@ def test_preflight_routes_closed_partial_plan_to_terminal_action_reconciliation(
     assert result["__logical_target__"] == "action_execution"
 
 
-def test_read_gateway_failure_is_settled_before_terminal_projection() -> None:
+def test_read_gateway__failure_is_settled__before_terminal_projection() -> None:
     failed_commands: list[object] = []
     proposed = replace(
         _action(),

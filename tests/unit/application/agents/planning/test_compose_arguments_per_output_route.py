@@ -35,7 +35,7 @@ OBJECTIVE = {
 }
 
 
-def test_argument_prompt_receives_only_selected_bound_tool_schema() -> None:
+def test_argument_prompt__receives_only_selected__bound_tool_schema() -> None:
     bound = resolve_default_container(
         route=ROUTE,  # type: ignore[arg-type]
         selected_tool_schema=planning_tool_argument_schema("tasks_create_task"),
@@ -62,7 +62,7 @@ def test_argument_prompt_receives_only_selected_bound_tool_schema() -> None:
     assert result[0]["arguments"]["task_list_id"] == "list-1"
 
 
-def test_argument_candidate_cannot_override_bound_container() -> None:
+def test_argument_candidate__cannot_override__bound_container() -> None:
     bound = resolve_default_container(
         route=ROUTE,  # type: ignore[arg-type]
         selected_tool_schema=planning_tool_argument_schema("tasks_create_task"),

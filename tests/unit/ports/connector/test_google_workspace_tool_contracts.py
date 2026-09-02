@@ -24,7 +24,7 @@ build_google_workspace_internal_capabilities = (
 )
 
 
-def test_contract_catalog_matches_public_and_internal_callable_surface() -> None:
+def test_contract_catalog__matches_public_and__internal_callable_surface() -> None:
     public_names = {entry.tool_name for entry in load_signed_tool_registry().entries}
     internal_names = {
         capability.tool_name for capability in build_google_workspace_internal_capabilities()
@@ -36,7 +36,7 @@ def test_contract_catalog_matches_public_and_internal_callable_surface() -> None
     assert len(contract_names) == 23
 
 
-def test_internal_capability_schema_hash_is_actual_contract_hash() -> None:
+def test_internal_capability__schema_hash_is__actual_contract_hash() -> None:
     for capability in build_google_workspace_internal_capabilities():
         contract = google_workspace_tool_contract(capability.tool_name)
         assert capability.input_schema_version == contract.input_schema_version
@@ -44,7 +44,7 @@ def test_internal_capability_schema_hash_is_actual_contract_hash() -> None:
         assert capability.tool_schema_hash == contract.schema_hash
 
 
-def test_actual_schema_change_changes_schema_hash() -> None:
+def test_actual_schema__change_changes__schema_hash() -> None:
     contract = google_workspace_tool_contract("gmail_get_thread")
     changed_input = deepcopy(contract.input_schema)
     properties = changed_input["properties"]
@@ -59,7 +59,7 @@ def test_actual_schema_change_changes_schema_hash() -> None:
     assert changed.schema_hash != contract.schema_hash
 
 
-def test_missing_required_input_is_rejected() -> None:
+def test_missing_required__input_is__rejected() -> None:
     with pytest.raises(ToolContractViolation) as captured:
         validate_tool_input("gmail_get_thread", {})
 
@@ -67,7 +67,7 @@ def test_missing_required_input_is_rejected() -> None:
     assert any("thread_id is required" in error for error in captured.value.errors)
 
 
-def test_unknown_root_input_field_is_rejected() -> None:
+def test_unknown_root__input_field__is_rejected() -> None:
     with pytest.raises(ToolContractViolation) as captured:
         validate_tool_input(
             "tasks_get_task",
@@ -81,7 +81,7 @@ def test_unknown_root_input_field_is_rejected() -> None:
     assert any("provider_secret is not allowed" in error for error in captured.value.errors)
 
 
-def test_representative_valid_inputs_are_accepted() -> None:
+def test_representative_valid__inputs_are__accepted() -> None:
     validate_tool_input(
         "calendar_list_events",
         {
@@ -112,7 +112,7 @@ def test_representative_valid_inputs_are_accepted() -> None:
     )
 
 
-def test_representative_valid_snapshot_output_is_accepted() -> None:
+def test_representative_valid__snapshot_output__is_accepted() -> None:
     validate_tool_output(
         "tasks_get_task",
         {
@@ -130,7 +130,7 @@ def test_representative_valid_snapshot_output_is_accepted() -> None:
     )
 
 
-def test_representative_valid_page_output_is_accepted() -> None:
+def test_representative_valid__page_output__is_accepted() -> None:
     validate_tool_output(
         "tasks_list_tasklists",
         {
@@ -140,7 +140,7 @@ def test_representative_valid_page_output_is_accepted() -> None:
     )
 
 
-def test_malformed_output_is_rejected() -> None:
+def test_malformed_output__is__rejected() -> None:
     with pytest.raises(ToolContractViolation) as captured:
         validate_tool_output(
             "gmail_get_thread",

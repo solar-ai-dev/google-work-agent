@@ -18,7 +18,7 @@ def _guard(current_status: RunStatusV1, *, resume_status: RunStatusV1) -> None:
     )
 
 
-def test_resume_after_reauth_requires_safe_persisted_phase() -> None:
+def test_resume_after__reauth_requires__safe_persisted_phase() -> None:
     _guard(RunStatusV1.REAUTH_REQUIRED, resume_status=RunStatusV1.WAITING_APPROVAL)
     with pytest.raises(RunTransitionRejected):
         _guard(RunStatusV1.VERIFYING, resume_status=RunStatusV1.WAITING_APPROVAL)

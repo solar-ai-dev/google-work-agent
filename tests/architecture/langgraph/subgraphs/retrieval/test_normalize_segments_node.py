@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 
-def test_normalize_segments_exact_node_projection_and_router() -> None:
+def test_normalize_segments__exact_node__projection_and_router() -> None:
     owner = (
         Path(__file__).resolve().parents[5]
         / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval"
@@ -17,7 +17,7 @@ def test_normalize_segments_exact_node_projection_and_router() -> None:
     )
 
 
-def test_production_retrieval_uses_exact_eight_node_boundaries() -> None:
+def test_production_retrieval__uses_exact__eight_node_boundaries() -> None:
     root = Path(__file__).resolve().parents[5]
     source = (
         root / "src/google_work_agent/adapters/langgraph/subgraphs/retrieval/graph.py"

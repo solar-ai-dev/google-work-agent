@@ -8,7 +8,7 @@ from google_work_agent.application.agents.review.aggregate_review_findings impor
 from google_work_agent.application.agents.review.validate_review import validate_review
 
 
-def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
+def test_review_aggregation__materializes_pass__and_revise_contracts() -> None:
     passed = aggregate_review_findings([], artifact_id="r1", revision=1)
     assert validate_review(passed)["status"] == "PASS"
 
@@ -42,7 +42,7 @@ def test_review_aggregation_materializes_pass_and_revise_contracts() -> None:
     ]
 
 
-def test_review_pass_cannot_carry_issues() -> None:
+def test_review_pass__cannot_carry__issues() -> None:
     with pytest.raises(ValueError, match="keys"):
         validate_review(
             {

@@ -113,7 +113,7 @@ class _Access:
         return datetime(2026, 8, 28, tzinfo=UTC)
 
 
-def test_list_resources_projects_bounded_gmail_page_with_default_query() -> None:
+def test_list_resources_projects__bounded_gmail_page__with_default_query() -> None:
     access = _Access()
     result = ListResourcesHandler(access)(
         ListResourcesQuery(
@@ -128,7 +128,7 @@ def test_list_resources_projects_bounded_gmail_page_with_default_query() -> None
     assert result.page.items[0].subject == "Status"
 
 
-def test_list_resources_rejects_unknown_source_without_provider_call() -> None:
+def test_list_resources__rejects_unknown_source__without_provider_call() -> None:
     access = _Access()
 
     with pytest.raises(ConnectorOperationFailure) as error:

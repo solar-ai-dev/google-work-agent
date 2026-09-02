@@ -102,7 +102,7 @@ def test_select_tool_if_needed__single_registry_candidate__does_not_require_llm(
     assert budget == build_default_run_budget()
 
 
-def test_select_tool_uses_exact_canonical_prompt_projection() -> None:
+def test_select_tool__uses_exact__canonical_prompt_projection() -> None:
     runtime = RecordingLLMRuntime(
         outputs=[
             {
@@ -141,7 +141,7 @@ def test_select_tool_uses_exact_canonical_prompt_projection() -> None:
     }
 
 
-def test_select_semantic_revision_reuses_base_slot() -> None:
+def test_select_semantic__revision_reuses__base_slot() -> None:
     runtime = RecordingLLMRuntime(
         outputs=[
             {

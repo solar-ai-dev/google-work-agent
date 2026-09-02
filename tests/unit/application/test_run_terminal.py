@@ -44,7 +44,7 @@ def _checkpoint_roundtrip(state: dict[str, object]) -> dict[str, object]:
     return cast(dict[str, object], decoded)
 
 
-def test_derive_finalize_intent_prefers_persisted_finalize_handoff_after_checkpoint() -> None:
+def test_derive_finalize_intent__prefers_persisted_finalize__handoff_after_checkpoint() -> None:
     state = _state(
         request_intent=None,
         **build_finalize_state_update(
@@ -63,7 +63,7 @@ def test_derive_finalize_intent_prefers_persisted_finalize_handoff_after_checkpo
     }
 
 
-def test_derive_finalize_intent_keeps_technical_failure_in_persisted_handoff() -> None:
+def test_derive_finalize_intent__keeps_technical_failure__in_persisted_handoff() -> None:
     state = _state(
         **build_finalize_state_update(
             intent="FAILED",
@@ -81,7 +81,7 @@ def test_derive_finalize_intent_keeps_technical_failure_in_persisted_handoff() -
     }
 
 
-def test_derive_finalize_intent_completes_current_answer_from_state_only() -> None:
+def test_derive_finalize_intent__completes_current_answer__from_state_only() -> None:
     intent = derive_finalize_intent(
         state=_checkpoint_roundtrip(
             _state(
@@ -104,7 +104,7 @@ def test_derive_finalize_intent_completes_current_answer_from_state_only() -> No
     }
 
 
-def test_derive_finalize_intent_does_not_use_trace_context_as_terminal_authority() -> None:
+def test_derive_finalize_intent__does_not_use_trace__context_as_terminal_authority() -> None:
     intent = derive_finalize_intent(
         state=_state(
             workflow_phase="FINALIZE",

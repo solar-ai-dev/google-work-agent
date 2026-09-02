@@ -15,7 +15,7 @@ from google_work_agent.adapters.langgraph.registry.node_registry import (
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 
 
-def test_node_registry_is_the_exact_canonical_35_node_manifest() -> None:
+def test_node_registry_is__the_exact_canonical__thirty_five_node_manifest() -> None:
     assert RUNTIME_NODE_OWNERS == {
         "request.identify_goal": "REQUEST_UNDERSTANDING",
         "request.detect_ambiguity": "REQUEST_UNDERSTANDING",
@@ -55,7 +55,7 @@ def test_node_registry_is_the_exact_canonical_35_node_manifest() -> None:
     }
 
 
-def test_profile_owner_bindings_are_closed_and_exact() -> None:
+def test_profile_owner__bindings_are__closed_and_exact() -> None:
     registry = NodeRegistry(graph_version="graph-v1")
 
     assert registry.profile_owner_bindings == {
@@ -86,7 +86,7 @@ def test_profile_owner_bindings_are_closed_and_exact() -> None:
     }
 
 
-def test_every_runtime_node_resolves_from_each_live_profile_builder_binding() -> None:
+def test_every_runtime_node__resolves_from_each__live_profile_builder_binding() -> None:
     registry = NodeRegistry(graph_version="graph-v1")
 
     for profile in supported_graph_profiles():
@@ -98,7 +98,7 @@ def test_every_runtime_node_resolves_from_each_live_profile_builder_binding() ->
             )
 
 
-def test_registry_manifest_and_compiled_bindings_cannot_be_hot_swapped() -> None:
+def test_registry_manifest_and__compiled_bindings_cannot__be_hot_swapped() -> None:
     registry = NodeRegistry(graph_version="graph-v1")
 
     with pytest.raises(TypeError):
@@ -111,7 +111,7 @@ def test_registry_manifest_and_compiled_bindings_cannot_be_hot_swapped() -> None
         )
 
 
-def test_node_registry_rejects_stale_unknown_and_wrong_owner_bindings() -> None:
+def test_node_registry_rejects__stale_unknown_and__wrong_owner_bindings() -> None:
     registry = NodeRegistry(graph_version="graph-v1")
     assert registry.contains("graph-v1", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble")
     assert not registry.contains("graph-v0", "SIX_ROLE_BASELINE", "PLANNING", "planning.assemble")
@@ -125,7 +125,7 @@ def test_node_registry_rejects_stale_unknown_and_wrong_owner_bindings() -> None:
     )
 
 
-def test_node_registry_rejects_an_empty_graph_version() -> None:
+def test_node_registry__rejects_an__empty_graph_version() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         NodeRegistry(graph_version="")
 
@@ -143,7 +143,7 @@ def test_node_registry_rejects_an_empty_graph_version() -> None:
         "validate_review",
     ],
 )
-def test_supporting_operations_are_not_runtime_nodes(supporting_operation: str) -> None:
+def test_supporting_operations__are_not__runtime_nodes(supporting_operation: str) -> None:
     registry = NodeRegistry(graph_version="graph-v1")
 
     assert not registry.contains(

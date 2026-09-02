@@ -12,7 +12,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 )
 
 
-def test_exact_dependency_node_projection_router_are_wired_without_prompt() -> None:
+def test_exact_dependency_node__projection_router_are__wired_without_prompt() -> None:
     source = inspect.getsource(PlanningSubgraph.build)
     assert 'graph.add_node("derive_dependencies"' in source
     assert callable(build_dependencies_node)

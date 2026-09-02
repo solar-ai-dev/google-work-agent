@@ -5,7 +5,7 @@ from google_work_agent.api.errors.result_code_http_mapping import (
 from google_work_agent.domain.results import ResultCode
 
 
-def test_result_codes_map_to_the_documented_http_status() -> None:
+def test_result_codes__map_to_the__documented_http_status() -> None:
     assert http_status_for_result_code(ResultCode.TRANSITION_APPLIED.value) == 200
     assert http_status_for_result_code(ResultCode.VERSION_CONFLICT.value) == 409
     assert http_status_for_result_code(ResultCode.DUPLICATE_COMMAND.value) == 409
@@ -17,5 +17,5 @@ def test_result_codes_map_to_the_documented_http_status() -> None:
     assert http_status_for_result_code(ResultCode.SCHEMA_VIOLATION.value) == 422
 
 
-def test_schema_violation_maps_to_a_named_error_code() -> None:
+def test_schema_violation__maps_to_a__named_error_code() -> None:
     assert error_code_for_result_code(ResultCode.SCHEMA_VIOLATION.value) == "SCHEMA_VIOLATION"

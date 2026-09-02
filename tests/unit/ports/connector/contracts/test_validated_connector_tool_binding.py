@@ -20,7 +20,7 @@ def _binding(**overrides: object) -> ValidatedConnectorToolBindingV1:
     return ValidatedConnectorToolBindingV1(**values)  # type: ignore[arg-type]
 
 
-def test_validated_binding_accepts_exact_contract() -> None:
+def test_validated_binding__accepts_exact__contract() -> None:
     assert _binding().tool_id == "gmail_get_thread"
 
 
@@ -28,6 +28,6 @@ def test_validated_binding_accepts_exact_contract() -> None:
     ("field", "value"),
     [("effect", "EXECUTE"), ("registry_entry_hash", "A" * 64), ("tool_id", "")],
 )
-def test_validated_binding_rejects_invalid_contract(field: str, value: object) -> None:
+def test_validated_binding__rejects_invalid__contract(field: str, value: object) -> None:
     with pytest.raises(ValueError):
         _binding(**{field: value})

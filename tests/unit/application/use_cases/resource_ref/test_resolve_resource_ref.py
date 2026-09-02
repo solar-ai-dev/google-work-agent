@@ -9,7 +9,7 @@ from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref i
 )
 
 
-def test_returns_none_for_unknown_resource_ref(tmp_path: Path) -> None:
+def test_returns_none__for_unknown__resource_ref(tmp_path: Path) -> None:
     path = tmp_path / "resolve.db"
     with connect_sqlite(path) as connection:
         apply_migrations(connection)

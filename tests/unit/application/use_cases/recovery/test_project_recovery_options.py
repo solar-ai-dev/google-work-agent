@@ -26,7 +26,7 @@ from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
         ("CONTRACT_VIOLATION", ("RECHECK",)),
     ],
 )
-def test_projection_matches_domain_matrix_without_cancel_intent(
+def test_projection_matches__domain_matrix__without_cancel_intent(
     reason: str, expected: tuple[str, ...]
 ) -> None:
     context = {
@@ -56,7 +56,7 @@ def test_projection_matches_domain_matrix_without_cancel_intent(
     )
 
 
-def test_executed_awaiting_verification_hides_terminal_resolutions() -> None:
+def test_executed_awaiting__verification_hides__terminal_resolutions() -> None:
     context = {"run_id": "run-1", "reason": "CHECKPOINT_MISMATCH", "action_id": None}
     plan = SimpleNamespace(id="plan-1")
     executed = SimpleNamespace(id="action-1", status="EXECUTED")

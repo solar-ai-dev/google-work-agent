@@ -29,7 +29,7 @@ def _action(action_id: str, position: int, status: ActionStatusV1) -> Action:
     )
 
 
-def test_action_repository_owns_dependency_storage_and_readiness() -> None:
+def test_action_repository__owns_dependency__storage_and_readiness() -> None:
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
     connection.executescript(

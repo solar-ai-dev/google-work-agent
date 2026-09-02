@@ -8,12 +8,14 @@ from google_work_agent.adapters.langgraph.profiles.single_baseline import (
 )
 
 
-def test_single_profile_has_one_physical_subgraph_and_six_semantic_owners() -> None:
-    bindings, controls, route_next_node, checkpointer, semantic_owners = profile_build_arguments()
+def test_single_profile_has__one_physical_subgraph__and_six_semantic_owners() -> None:
+    bindings, controls, should_stop_for_cancel, checkpointer, semantic_owners = (
+        profile_build_arguments()
+    )
     composition = build_single_baseline_graph(
         bindings=bindings,
         control_bindings=controls,
-        route_next_node=route_next_node,
+        should_stop_for_cancel=should_stop_for_cancel,
         checkpointer=checkpointer,
     )
 

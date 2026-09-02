@@ -1,7 +1,7 @@
 from installer.windows.upgrade_policy import WindowsUpgradePolicy
 
 
-def test_upgrade_requires_signature_shutdown_backup_and_migration_readiness() -> None:
+def test_upgrade_requires__signature_shutdown_backup__and_migration_readiness() -> None:
     policy = WindowsUpgradePolicy()
     assert (
         policy.assess(
@@ -41,7 +41,7 @@ def test_upgrade_requires_signature_shutdown_backup_and_migration_readiness() ->
     )
 
 
-def test_downgrade_is_blocked_except_explicit_development_override() -> None:
+def test_downgrade_is__blocked_except__explicit_development_override() -> None:
     policy = WindowsUpgradePolicy()
     assert (
         policy.assess(

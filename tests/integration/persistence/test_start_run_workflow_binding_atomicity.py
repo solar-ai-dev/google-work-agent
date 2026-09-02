@@ -19,7 +19,7 @@ from google_work_agent.application.use_cases.run.start_run import StartRunComman
 from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 
 
-def test_start_run_commits_one_binding_with_all_atomic_participants(tmp_path: Path) -> None:
+def test_start_run_commits__one_binding_with__all_atomic_participants(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     handler = _handler(database_path)
     command = _command()
@@ -50,7 +50,7 @@ def test_start_run_commits_one_binding_with_all_atomic_participants(tmp_path: Pa
 
 
 @pytest.mark.parametrize("failure_table", ["workflow_bindings", "workflow_handoffs"])
-def test_binding_or_handoff_stage_failure_rolls_back_every_participant(
+def test_binding_or_handoff__stage_failure_rolls__back_every_participant(
     tmp_path: Path, failure_table: str
 ) -> None:
     database_path = _database(tmp_path)
@@ -62,7 +62,7 @@ def test_binding_or_handoff_stage_failure_rolls_back_every_participant(
     _assert_no_start_run_participant(database_path)
 
 
-def test_commit_failure_leaves_no_partial_start_run_participant(tmp_path: Path) -> None:
+def test_commit_failure__leaves_no_partial__start_run_participant(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
 
     def factory() -> UnitOfWork:

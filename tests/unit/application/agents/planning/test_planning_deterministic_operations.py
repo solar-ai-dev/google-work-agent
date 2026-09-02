@@ -16,7 +16,7 @@ def _seed(action_id: str, tool_id: str, arguments: dict[str, object]) -> dict[st
     }
 
 
-def test_dependencies_only_link_same_stable_resource() -> None:
+def test_dependencies_only__link_same__stable_resource() -> None:
     seeds = [
         _seed("a1", "tasks_update_task", {"task_list_id": "l1", "task_id": "t1"}),
         _seed("a2", "tasks_update_task", {"task_list_id": "l1", "task_id": "t2"}),
@@ -28,7 +28,7 @@ def test_dependencies_only_link_same_stable_resource() -> None:
     )
 
 
-def test_assemble_plan_uses_deterministic_dependency_authority() -> None:
+def test_assemble_plan__uses_deterministic__dependency_authority() -> None:
     seeds = [
         _seed("a1", "tasks_update_task", {"task_list_id": "l1", "task_id": "t1"}),
         _seed("a2", "tasks_update_task", {"task_list_id": "l1", "task_id": "t1"}),

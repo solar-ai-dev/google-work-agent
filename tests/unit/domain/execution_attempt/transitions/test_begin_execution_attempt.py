@@ -4,7 +4,7 @@ from google_work_agent.domain.execution_attempt.transitions.begin_execution_atte
 )
 
 
-def test_begin_execution_attempt_is_the_only_dispatch_authority() -> None:
+def test_begin_execution__attempt_is_the__only_dispatch_authority() -> None:
     allowed = transition_begin_execution_attempt(
         ExecutionAttemptStatusV1.CLAIMED,
         0,

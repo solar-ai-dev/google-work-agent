@@ -45,7 +45,9 @@ class _ExecutionPort:
         return True
 
 
-def test_claims_durable_admission_before_submit_and_replays_same_admission(tmp_path: Path) -> None:
+def test_claims_durable_admission__before_submit_and__replays_same_admission(
+    tmp_path: Path,
+) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -73,7 +75,7 @@ def test_claims_durable_admission_before_submit_and_replays_same_admission(tmp_p
     assert persisted.execution_admission == execution.submissions[0].admission
 
 
-def test_non_accepted_submit_releases_equal_epoch_admission(tmp_path: Path) -> None:
+def test_non_accepted__submit_releases__equal_epoch_admission(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -96,7 +98,7 @@ def test_non_accepted_submit_releases_equal_epoch_admission(tmp_path: Path) -> N
     assert persisted.last_submit_reason == "ALREADY_RUNNING"
 
 
-def test_later_normal_handoff_stays_queued_while_dispatch_head_is_active(
+def test_later_normal_handoff__stays_queued_while__dispatch_head_is_active(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -138,7 +140,7 @@ def test_later_normal_handoff_stays_queued_while_dispatch_head_is_active(
     assert queued.execution_admission is None
 
 
-def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted(
+def test_reused_admission_with__stale_binding_is__released_not_blindly_resubmitted(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -190,7 +192,7 @@ def test_reused_admission_with_stale_binding_is_released_not_blindly_resubmitted
     assert persisted.execution_admission is None
 
 
-def test_stale_admission_is_retired_before_preempting_authority_return(tmp_path: Path) -> None:
+def test_stale_admission__is_retired_before__preempting_authority_return(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -219,7 +221,7 @@ def test_stale_admission_is_retired_before_preempting_authority_return(tmp_path:
     assert persisted.execution_admission is None
 
 
-def test_normal_schedule_rejects_each_fresh_preempting_status_without_submit(
+def test_normal_schedule_rejects__each_fresh_preempting__status_without_submit(
     tmp_path: Path,
 ) -> None:
     for status in ("REAUTH_REQUIRED", "RECOVERY_REQUIRED", "CANCEL_REQUESTED"):
@@ -247,7 +249,7 @@ def test_normal_schedule_rejects_each_fresh_preempting_status_without_submit(
         assert execution.submissions == []
 
 
-def test_cancel_requested_allows_only_its_cancel_resolution_handoff(tmp_path: Path) -> None:
+def test_cancel_requested__allows_only_its__cancel_resolution_handoff(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     target = MainControlResumeTargetV2(
@@ -285,7 +287,7 @@ def test_cancel_requested_allows_only_its_cancel_resolution_handoff(tmp_path: Pa
     assert len(execution.submissions) == 1
 
 
-def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
+def test_consumed_recovery__resolves_latest__active_lineage_checkpoint() -> None:
     target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     checkpoint = GraphCheckpointEnvelopeV1(
         1,
@@ -329,7 +331,7 @@ def test_consumed_recovery_resolves_latest_active_lineage_checkpoint() -> None:
     assert binding.resume_target == target
 
 
-def test_normal_resume_rebases_queued_handoff_onto_latest_same_run_checkpoint() -> None:
+def test_normal_resume_rebases__queued_handoff_onto__latest_same_run_checkpoint() -> None:
     target = MainControlResumeTargetV2("MAIN_CONTROL", "PREFLIGHT", "SIX_ROLE_BASELINE", "v1")
     checkpoint = GraphCheckpointEnvelopeV1(
         1,
@@ -456,9 +458,7 @@ def _pending_resume_handoff(target: MainControlResumeTargetV2) -> WorkflowHandof
         1,
         "h-queued",
         "cmd-queued",
-        RunExecutionRefV1(
-            1, "RESUME", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", target
-        ),
+        RunExecutionRefV1(1, "RESUME", "r-1", "t-1", "SIX_ROLE_BASELINE", "v1", "AUTO", target),
         "cp-old",
         2,
         2,

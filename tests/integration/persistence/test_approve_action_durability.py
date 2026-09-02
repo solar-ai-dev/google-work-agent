@@ -179,7 +179,7 @@ def _handler(
 
 
 @pytest.mark.parametrize("starting_status", ("PROPOSED", "MODIFIED"))
-def test_approve_action_is_atomic_durable_replayable_and_uuid_backed(
+def test_approve_action_is__atomic_durable_replayable__and_uuid_backed(
     tmp_path: Path, starting_status: str
 ) -> None:
     database_path = tmp_path / f"approve-{starting_status.lower()}.db"
@@ -210,7 +210,7 @@ def test_approve_action_is_atomic_durable_replayable_and_uuid_backed(
 
 
 @pytest.mark.parametrize("uow_type", (_FailingApprovalUnitOfWork, _FailingAuditUnitOfWork))
-def test_approve_action_required_effect_failure_rolls_back_all_command_facts(
+def test_approve_action_required__effect_failure_rolls__back_all_command_facts(
     tmp_path: Path, uow_type: type[SqliteUnitOfWork]
 ) -> None:
     database_path = tmp_path / f"approve-rollback-{uow_type.__name__}.db"

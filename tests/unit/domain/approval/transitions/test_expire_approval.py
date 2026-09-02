@@ -32,7 +32,7 @@ def _input(**changes: object) -> ApprovalExpiryInput:
     return ApprovalExpiryInput(**values)  # type: ignore[arg-type]
 
 
-def test_expire_approval_is_a_coupled_mutation() -> None:
+def test_expire_approval__is_a__coupled_mutation() -> None:
     assert transition_expire_approval(_input(now_ms=101)) == (
         ActionStatusV1.EXPIRED,
         ApprovalStatusV1.EXPIRED,
@@ -43,12 +43,12 @@ def test_expire_approval_is_a_coupled_mutation() -> None:
     "plan_status",
     [status for status in PlanStatusV1 if status is not PlanStatusV1.WAITING_APPROVAL],
 )
-def test_expire_approval_rejects_non_waiting_plan(plan_status: PlanStatusV1) -> None:
+def test_expire_approval__rejects_non__waiting_plan(plan_status: PlanStatusV1) -> None:
     with pytest.raises(ValueError):
         transition_expire_approval(_input(plan_status=plan_status, now_ms=101))
 
 
-def test_expire_approval_rejects_still_current_active_approval() -> None:
+def test_expire_approval__rejects_still__current_active_approval() -> None:
     with pytest.raises(ValueError, match="still-current"):
         transition_expire_approval(_input())
 
@@ -63,5 +63,5 @@ def test_expire_approval_rejects_still_current_active_approval() -> None:
         ("approval_tool_schema_version", "old-schema"),
     ],
 )
-def test_expire_approval_accepts_each_canonical_stale_binding(field: str, value: object) -> None:
+def test_expire_approval__accepts_each__canonical_stale_binding(field: str, value: object) -> None:
     assert transition_expire_approval(_input(**{field: value}))[0] is ActionStatusV1.EXPIRED

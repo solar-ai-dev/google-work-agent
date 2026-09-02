@@ -1,7 +1,7 @@
 from google_work_agent.application.agents.retrieval.build_query import build_query_attempt
 
 
-def test_query_attempt_uses_bounded_query_and_page_identities() -> None:
+def test_query_attempt__uses_bounded_query__and_page_identities() -> None:
     attempt = build_query_attempt(
         query_attempt_id="attempt-1",
         run_id="run-1",

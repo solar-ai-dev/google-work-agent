@@ -9,7 +9,7 @@ def _source(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 
-def test_planning_graph_has_no_generic_semantic_binding_authority() -> None:
+def test_planning_graph__has_no_generic__semantic_binding_authority() -> None:
     source = _source("src/google_work_agent/adapters/langgraph/subgraphs/planning/graph.py")
     assert "PlanningNodeBindings" not in source
     assert "operation=bindings." not in source
@@ -20,7 +20,7 @@ def test_planning_graph_has_no_generic_semantic_binding_authority() -> None:
     assert "route_after_compose_answer" in source
 
 
-def test_production_has_no_second_planning_answer_authority() -> None:
+def test_production_has__no_second__planning_answer_authority() -> None:
     optional_path = (
         ROOT / "src/google_work_agent/application/orchestration/optional_agent_inputs.py"
     )
@@ -37,7 +37,7 @@ def test_production_has_no_second_planning_answer_authority() -> None:
     assert "_rebuild_six_role_graph_with_optional_subgraphs" not in response_source
 
 
-def test_review_graph_has_no_generic_semantic_binding_authority() -> None:
+def test_review_graph__has_no_generic__semantic_binding_authority() -> None:
     source = _source("src/google_work_agent/adapters/langgraph/subgraphs/review/graph.py")
     assert "ReviewNodeBindings" not in source
     assert "operation=bindings." not in source
@@ -47,7 +47,7 @@ def test_review_graph_has_no_generic_semantic_binding_authority() -> None:
     assert "route_after_aggregate_review_findings" in source
 
 
-def test_nodes_import_canonical_application_operations_directly() -> None:
+def test_nodes_import__canonical_application__operations_directly() -> None:
     expected = {
         "planning": (
             "outline_answer",
@@ -76,7 +76,7 @@ def test_nodes_import_canonical_application_operations_directly() -> None:
             assert "operation(projected)" not in source
 
 
-def test_review_revise_does_not_route_to_pre_revision_recheck() -> None:
+def test_review_revise_does__not_route_to__pre_revision_recheck() -> None:
     source = _source(
         "src/google_work_agent/adapters/langgraph/subgraphs/review/"
         "routing/route_after_aggregate_review_findings.py"
@@ -85,7 +85,7 @@ def test_review_revise_does_not_route_to_pre_revision_recheck() -> None:
     assert '"REVISE": "recheck_affected_dimensions"' not in source
 
 
-def test_planning_review_nodes_do_not_execute_forbidden_boundaries() -> None:
+def test_planning_review__nodes_do_not__execute_forbidden_boundaries() -> None:
     for owner in ("planning", "review"):
         node_dir = ROOT / f"src/google_work_agent/adapters/langgraph/subgraphs/{owner}/nodes"
         combined = "\n".join(path.read_text(encoding="utf-8") for path in node_dir.glob("*.py"))

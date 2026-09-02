@@ -1,7 +1,7 @@
 from tests.support.fakes import FakeKeyring
 
 
-def test_fake_keyring_supports_set_get_delete() -> None:
+def test_fake_keyring__supports_set__get_delete() -> None:
     keyring = FakeKeyring()
 
     assert keyring.get_secret(service="gmail", account="user-1") is None
@@ -12,7 +12,7 @@ def test_fake_keyring_supports_set_get_delete() -> None:
     assert keyring.delete_secret(service="gmail", account="user-1") is False
 
 
-def test_fake_keyring_isolates_service_and_account_and_redacts_repr() -> None:
+def test_fake_keyring_isolates__service_and_account__and_redacts_repr() -> None:
     keyring = FakeKeyring()
     keyring.set_secret(service="gmail", account="user-1", secret="secret-a")
     keyring.set_secret(service="calendar", account="user-1", secret="secret-b")

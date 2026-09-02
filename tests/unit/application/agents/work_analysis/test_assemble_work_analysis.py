@@ -5,7 +5,7 @@ from google_work_agent.application.agents.work_analysis.assemble_work_analysis i
 from tests.support.work_analysis import fact
 
 
-def test_exact_duplicate_defaults_to_not_required_without_llm_policy_authority() -> None:
+def test_exact_duplicate_defaults__to_not_required__without_llm_policy_authority() -> None:
     result = assemble_work_analysis(
         artifact_id="analysis-1",
         revision=1,
@@ -33,7 +33,7 @@ def test_exact_duplicate_defaults_to_not_required_without_llm_policy_authority()
     assert result["policy_confirmation_receipt_refs"] == []
 
 
-def test_duplicate_required_candidate_stays_undetermined_without_receipt() -> None:
+def test_duplicate_required__candidate_stays__undetermined_without_receipt() -> None:
     result = assemble_work_analysis(
         artifact_id="analysis-1",
         revision=1,
@@ -60,7 +60,7 @@ def test_duplicate_required_candidate_stays_undetermined_without_receipt() -> No
     assert result["action_necessity_reason"] == "DUPLICATE_OVERRIDE_REQUIRED"
 
 
-def test_current_approved_duplicate_override_receipt_is_bound_into_result() -> None:
+def test_current_approved_duplicate__override_receipt_is__bound_into_result() -> None:
     based_on = [{"artifact_id": "intent-1", "revision": 1}]
     receipt = {
         "schema_version": 1,

@@ -31,7 +31,7 @@ class _Action:
     depends_on_action_ids: tuple[str, ...] = ()
 
 
-def test_shared_plan_structure_rejects_zero_evidence_action() -> None:
+def test_shared_plan__structure_rejects__zero_evidence_action() -> None:
     with pytest.raises(ValueError, match="action requires evidence"):
         validate_plan_structure(
             actions=(_Action("action-1", 1, ()),),
@@ -40,7 +40,7 @@ def test_shared_plan_structure_rejects_zero_evidence_action() -> None:
         )
 
 
-def test_shared_plan_structure_rejects_missing_evidence_and_dependency_cycle() -> None:
+def test_shared_plan_structure__rejects_missing_evidence__and_dependency_cycle() -> None:
     with pytest.raises(LookupError, match="action references missing evidence"):
         validate_plan_structure(
             actions=(_Action("action-1", 1, ("missing",)),),
@@ -59,7 +59,7 @@ def test_shared_plan_structure_rejects_missing_evidence_and_dependency_cycle() -
         )
 
 
-def test_write_plan_evidence_policy_counts_each_actions_links_not_plan_total() -> None:
+def test_write_plan_evidence__policy_counts_each_actions__links_not_plan_total() -> None:
     evidence = (
         WriteEvidenceDraft(
             evidence_id="evidence-1",
@@ -103,7 +103,7 @@ def test_write_plan_evidence_policy_counts_each_actions_links_not_plan_total() -
         validate_write_plan(command, load_signed_tool_registry())
 
 
-def test_write_plan_accepts_two_action_linked_evidences_for_unselected_update() -> None:
+def test_write_plan_accepts__two_action_linked__evidences_for_unselected_update() -> None:
     evidence = (
         WriteEvidenceDraft(
             evidence_id="evidence-1",

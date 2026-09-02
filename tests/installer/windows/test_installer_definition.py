@@ -3,7 +3,7 @@ from pathlib import Path
 from installer.windows.installer_definition import WindowsInstallerDefinition
 
 
-def test_installer_is_per_user_x64_signed_and_rollback_capable(tmp_path: Path) -> None:
+def test_installer_is_per__user_x64_signed__and_rollback_capable(tmp_path: Path) -> None:
     definition = WindowsInstallerDefinition()
 
     assert definition.install_scope == "CURRENT_USER"

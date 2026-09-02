@@ -7,7 +7,7 @@ from google_work_agent.adapters.langgraph.main.state import GraphState
 from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
 
 
-def test_route_reconsideration_to_tool_route_is_detected() -> None:
+def test_route_reconsideration__to_tool__route_is_detected() -> None:
     state = cast(
         GraphState,
         {
@@ -23,7 +23,7 @@ def test_route_reconsideration_to_tool_route_is_detected() -> None:
     assert _is_route_reconsideration_to_tool_route(state) is True
 
 
-def test_normal_tool_route_transition_is_not_treated_as_reconsideration() -> None:
+def test_normal_tool_route__transition_is_not__treated_as_reconsideration() -> None:
     state = cast(
         GraphState,
         {
@@ -36,7 +36,7 @@ def test_normal_tool_route_transition_is_not_treated_as_reconsideration() -> Non
     assert _is_route_reconsideration_to_tool_route(state) is False
 
 
-def test_retrieval_required_signal_does_not_trigger_route_freshness_cleanup() -> None:
+def test_retrieval_required_signal__does_not_trigger__route_freshness_cleanup() -> None:
     state = cast(
         GraphState,
         {

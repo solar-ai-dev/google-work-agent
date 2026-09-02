@@ -13,7 +13,7 @@ from google_work_agent.application.use_cases.execution_attempt.dispatch_connecto
 from google_work_agent.ports.connector.connector_write_port import ConnectorWriteResultV1
 
 
-def test_exact_canonical_contract_fields() -> None:
+def test_exact_canonical__contract__fields() -> None:
     assert tuple(field.name for field in fields(ClassifyDispatchResultQueryV1)) == (
         "schema_version",
         "dispatch_result",
@@ -26,7 +26,7 @@ def test_exact_canonical_contract_fields() -> None:
     )
 
 
-def test_not_sent_failure_maps_to_mark_failed_without_surrogate_result() -> None:
+def test_not_sent_failure__maps_to_mark__failed_without_surrogate_result() -> None:
     connector_result = ConnectorWriteResultV1(
         schema_version=1,
         success=False,

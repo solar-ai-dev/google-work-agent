@@ -46,7 +46,7 @@ def _request_with_run_composition() -> tuple[Request, SimpleNamespace]:
     )
 
 
-def test_run_dependency_exposes_explicit_canonical_composition_inputs() -> None:
+def test_run_dependency__exposes_explicit__canonical_composition_inputs() -> None:
     request, container = _request_with_run_composition()
     dependencies = get_run_route_dependencies(request)
 
@@ -60,7 +60,7 @@ def test_run_dependency_exposes_explicit_canonical_composition_inputs() -> None:
     assert dependencies.get_execution_context_handler is container.get_execution_context_handler
 
 
-def test_run_command_dependency_does_not_expose_low_level_authorities() -> None:
+def test_run_command_dependency__does_not_expose__low_level_authorities() -> None:
     request, _container = _request_with_run_composition()
     dependencies = get_run_route_dependencies(request)
 

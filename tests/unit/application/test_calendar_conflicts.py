@@ -75,7 +75,7 @@ def arguments(*, event_id: str | None = None) -> dict[str, object]:
     return result
 
 
-def test_fresh_check_scopes_every_page_to_exact_zero_buffer_interval() -> None:
+def test_fresh_check_scopes__every_page_to__exact_zero_buffer_interval() -> None:
     gateway = Gateway()
     risk = CalendarConflictValidator(
         gateway=gateway,
@@ -96,7 +96,7 @@ def test_fresh_check_scopes_every_page_to_exact_zero_buffer_interval() -> None:
     assert risk["calendar_conflict"]["freshness"] == "FRESH_GOOGLE_GET"  # type: ignore[index]
 
 
-def test_tentative_event_matching_freebusy_remains_warning() -> None:
+def test_tentative_event__matching_freebusy__remains_warning() -> None:
     gateway = Gateway()
     gateway.pages = [
         ResourcePage(items=(event("tentative", response="tentative"),), next_page_token=None)
@@ -129,7 +129,7 @@ def test_tentative_event_matching_freebusy_remains_warning() -> None:
     assert risk["calendar_conflict"]["decision"] == "WARNING"  # type: ignore[index]
 
 
-def test_update_self_exclusion_keeps_same_time_other_event_hard() -> None:
+def test_update_self_exclusion__keeps_same_time__other_event_hard() -> None:
     gateway = Gateway()
     gateway.pages = [ResourcePage(items=(event("target"), event("other")), next_page_token=None)]
 
@@ -161,7 +161,7 @@ def test_update_self_exclusion_keeps_same_time_other_event_hard() -> None:
     assert risk["calendar_conflict"]["matched_resource_ids"] == ["other"]  # type: ignore[index]
 
 
-def test_pagination_cycle_fails_closed() -> None:
+def test_pagination_cycle__fails__closed() -> None:
     gateway = Gateway()
     gateway.pages = [ResourcePage(items=(), next_page_token="repeat")] * 2
     validator = CalendarConflictValidator(
@@ -177,7 +177,7 @@ def test_pagination_cycle_fails_closed() -> None:
         raise AssertionError("pagination cycle must fail closed")
 
 
-def test_evidence_check_omits_risk_without_calendar_source() -> None:
+def test_evidence_check__omits_risk__without_calendar_source() -> None:
     assert (
         evidence_calendar_conflict_risk(
             arguments=arguments(),
@@ -189,7 +189,7 @@ def test_evidence_check_omits_risk_without_calendar_source() -> None:
     )
 
 
-def test_evidence_check_uses_current_run_calendar_resources_only() -> None:
+def test_evidence_check__uses_current_run__calendar_resources_only() -> None:
     snapshot = event("event-1")
     risk = evidence_calendar_conflict_risk(
         arguments=arguments(),
@@ -227,14 +227,14 @@ def conflict_risk(decision: str, *matched_ids: str) -> dict[str, object]:
     }
 
 
-def test_no_conflict_approval_needs_no_acknowledgement() -> None:
+def test_no_conflict__approval_needs__no_acknowledgement() -> None:
     decision = require_calendar_conflict_acknowledgement(
         risk=conflict_risk("NO_CONFLICT"), acknowledged=False
     )
     assert decision is not None and decision.value == "NO_CONFLICT"
 
 
-def test_warning_approval_requires_acknowledgement() -> None:
+def test_warning_approval__requires__acknowledgement() -> None:
     with pytest.raises(PolicyViolationError, match="acknowledgement"):
         require_calendar_conflict_acknowledgement(risk=conflict_risk("WARNING"), acknowledged=False)
     assert require_calendar_conflict_acknowledgement(
@@ -242,7 +242,7 @@ def test_warning_approval_requires_acknowledgement() -> None:
     )
 
 
-def test_hard_conflict_approval_requires_explicit_override() -> None:
+def test_hard_conflict__approval_requires__explicit_override() -> None:
     with pytest.raises(PolicyViolationError, match="override"):
         require_calendar_conflict_acknowledgement(
             risk=conflict_risk("HARD_CONFLICT", "event-1"), acknowledged=False
@@ -252,7 +252,7 @@ def test_hard_conflict_approval_requires_explicit_override() -> None:
     )
 
 
-def test_server_owned_approval_snapshot_contains_risk_and_boolean_only() -> None:
+def test_server_owned_approval__snapshot_contains_risk__and_boolean_only() -> None:
     snapshot = approval_source_snapshot_for_calendar_conflict(
         risk=conflict_risk("HARD_CONFLICT", "event-1"), acknowledged=True
     )
@@ -272,7 +272,7 @@ def test_server_owned_approval_snapshot_contains_risk_and_boolean_only() -> None
         (("HARD_CONFLICT", ("a",)), ("HARD_CONFLICT", ("b",)), True),
     ],
 )
-def test_changed_decision_or_match_set_requires_reapproval(
+def test_changed_decision__or_match__set_requires_reapproval(
     approved: tuple[str, tuple[str, ...]],
     current: tuple[str, tuple[str, ...]],
     expected: bool,

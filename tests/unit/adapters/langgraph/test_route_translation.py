@@ -34,7 +34,7 @@ from google_work_agent.adapters.langgraph.registry.resume_target_registry import
         ),
     ],
 )
-def test_profile_topology_is_preserved(
+def test_profile_topology__is__preserved(
     profile: GraphProfile,
     topology: tuple[str, ...],
 ) -> None:
@@ -88,7 +88,7 @@ def test_profile_topology_is_preserved(
         ),
     ],
 )
-def test_profile_route_translation_is_preserved(
+def test_profile_route__translation_is__preserved(
     profile: GraphProfile,
     target: SupervisorTarget,
     logical_target: str,
@@ -107,7 +107,7 @@ def test_profile_route_translation_is_preserved(
         "NOT_A_REAL_TARGET",
     ],
 )
-def test_translate_fails_closed_for_unmapped_target(target: str) -> None:
+def test_translate_fails__closed_for__unmapped_target(target: str) -> None:
     with pytest.raises(UnroutableSupervisorTargetError):
         GraphRouteTranslator(GraphProfile.SIX_ROLE_BASELINE).translate(target)
 
@@ -119,11 +119,11 @@ def _resume_registry() -> ResumeTargetRegistry:
     )
 
 
-def test_node_registry_contains_exact_canonical_runtime_nodes() -> None:
+def test_node_registry__contains_exact__canonical_runtime_nodes() -> None:
     assert len(RUNTIME_NODE_OWNERS) == 35
 
 
-def test_resume_target_registry_issues_profile_bound_same_owner_target() -> None:
+def test_resume_target_registry__issues_profile_bound__same_owner_target() -> None:
     registry = _resume_registry()
     target = registry.issue_agent_node(
         "SIX_ROLE_BASELINE",
@@ -145,7 +145,7 @@ def test_resume_target_registry_issues_profile_bound_same_owner_target() -> None
         ("SIX_ROLE_BASELINE", "PLANNING", "retrieval.finalize", RESUME_CONTRACT_VERSION),
     ],
 )
-def test_resume_target_registry_rejects_unregistered_or_wrong_version(
+def test_resume_target__registry_rejects_unregistered__or_wrong_version(
     target: tuple[str, str, str, str],
 ) -> None:
     registry = _resume_registry()

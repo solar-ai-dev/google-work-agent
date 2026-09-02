@@ -50,7 +50,7 @@ def _request_body(request: Request) -> dict[str, object]:
     return cast(dict[str, object], json.loads(request.data.decode("utf-8")))
 
 
-def test_probe_uses_get_for_version_and_tags(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_uses__get_for__version_and_tags(monkeypatch: pytest.MonkeyPatch) -> None:
     requests: list[Request] = []
     responses = [
         json.dumps({"version": "0.32.6"}).encode("utf-8"),
@@ -80,7 +80,7 @@ def test_probe_uses_get_for_version_and_tags(monkeypatch: pytest.MonkeyPatch) ->
     assert result.metadata["model_digest"] == "sha256:" + "a" * 64
 
 
-def test_probe_reports_model_not_found_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_reports__model_not__found_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     responses = [
         json.dumps({"version": "0.32.6"}).encode("utf-8"),
         json.dumps({"models": [{"name": "other-model"}]}).encode("utf-8"),
@@ -98,7 +98,7 @@ def test_probe_reports_model_not_found_when_absent(monkeypatch: pytest.MonkeyPat
     assert result.safe_error_code == "MODEL_NOT_FOUND"
 
 
-def test_probe_reports_unavailable_on_real_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_probe_reports__unavailable_on__real_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def raise_405(request: Request, *, timeout: int) -> _HTTPResponse:
         del request, timeout
         raise HTTPError(
@@ -119,7 +119,7 @@ def test_probe_reports_unavailable_on_real_http_error(monkeypatch: pytest.Monkey
     assert result.safe_error_code == "OLLAMA_UNAVAILABLE"
 
 
-def test_invoke_structured_still_posts_to_generate(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_structured__still_posts__to_generate(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -174,7 +174,7 @@ def _prompt_ref_for_sampling_tests() -> PromptReference:
     )
 
 
-def test_invoke_structured_omits_options_when_sampling_is_unset(
+def test_invoke_structured__omits_options_when__sampling_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """docs/15 section 9.5: production dispatch (sampling_temperature/seed
@@ -203,7 +203,7 @@ def test_invoke_structured_omits_options_when_sampling_is_unset(
     assert "options" not in sent_body
 
 
-def test_invoke_structured_sends_fixed_temperature_when_set(
+def test_invoke_structured__sends_fixed__temperature_when_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Request] = []
@@ -230,7 +230,7 @@ def test_invoke_structured_sends_fixed_temperature_when_set(
     assert sent_body["options"] == {"temperature": 0.0}
 
 
-def test_invoke_structured_sends_fixed_seed_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invoke_structured__sends_fixed__seed_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -256,7 +256,7 @@ def test_invoke_structured_sends_fixed_seed_when_set(monkeypatch: pytest.MonkeyP
     assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
 
 
-def test_provider_forwards_runtime_policy_sampling_fields_to_transport(
+def test_provider_forwards__runtime_policy_sampling__fields_to_transport(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: list[Request] = []
@@ -287,7 +287,7 @@ def test_provider_forwards_runtime_policy_sampling_fields_to_transport(
     assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
 
 
-def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
+def test_provider_omits_options__when_runtime_policy__leaves_sampling_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Pins the production path: a bare ``RuntimePolicy()`` (what
@@ -320,7 +320,7 @@ def test_provider_omits_options_when_runtime_policy_leaves_sampling_unset(
     assert "options" not in sent_body
 
 
-def test_provider_assembles_instruction_text_only_as_a_local_call_boundary(
+def test_provider_assembles_instruction__text_only_as__a_local_call_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """``PromptReference`` must never carry instruction text.

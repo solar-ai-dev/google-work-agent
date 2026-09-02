@@ -10,7 +10,7 @@ from google_work_agent.adapters.langgraph.profiles.profile_registry import (
 )
 
 
-def test_registry_closes_the_exact_three_profile_builder_set() -> None:
+def test_registry_closes__the_exact_three__profile_builder_set() -> None:
     profiles = supported_graph_profiles()
 
     assert profiles == tuple(GraphProfile)
@@ -21,12 +21,12 @@ def test_registry_closes_the_exact_three_profile_builder_set() -> None:
     ]
 
 
-def test_registry_fails_closed_without_profile_fallback() -> None:
+def test_registry_fails__closed_without__profile_fallback() -> None:
     with pytest.raises(ValueError, match="unknown graph profile"):
         get_graph_profile_builder("UNKNOWN")  # type: ignore[arg-type]
 
 
-def test_every_profile_preserves_all_six_semantic_owners() -> None:
+def test_every_profile__preserves_all__six_semantic_owners() -> None:
     expected = {
         "REQUEST_UNDERSTANDING",
         "TOOL_ROUTE",

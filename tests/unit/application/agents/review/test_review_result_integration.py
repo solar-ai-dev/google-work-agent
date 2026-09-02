@@ -25,7 +25,7 @@ def _finding(kind: str) -> dict[str, object]:
     }
 
 
-def test_aggregate_and_validate_close_all_six_result_variants() -> None:
+def test_aggregate_and__validate_close_all__six_result_variants() -> None:
     expected = {
         None: ("PASS", "summary"),
         "ISSUE": ("REVISE", "issues"),
@@ -45,7 +45,7 @@ def test_aggregate_and_validate_close_all_six_result_variants() -> None:
         assert payload in result
 
 
-def test_closed_precedence_is_safety_first_and_deterministic() -> None:
+def test_closed_precedence__is_safety__first_and_deterministic() -> None:
     result = aggregate_review_findings(
         [
             _finding("ISSUE"),
@@ -59,7 +59,7 @@ def test_closed_precedence_is_safety_first_and_deterministic() -> None:
     assert result["status"] == "BLOCK"
 
 
-def test_nonlocal_dispositions_project_typed_signals_and_pass_revise_do_not() -> None:
+def test_nonlocal_dispositions_project__typed_signals_and__pass_revise_do_not() -> None:
     pass_result = aggregate_review_findings([], artifact_id="review-pass", revision=1)
     revise = aggregate_review_findings([_finding("ISSUE")], artifact_id="review-revise", revision=1)
     assert project_review_signals_projection.project_review_workflow_signal_v2(pass_result) is None

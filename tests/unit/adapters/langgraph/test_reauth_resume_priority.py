@@ -62,7 +62,7 @@ def _coordinator(
     )
 
 
-def test_preclaim_reauth_checkpoint_resumes_action_execution() -> None:
+def test_preclaim_reauth__checkpoint_resumes__action_execution() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls)
 
@@ -72,7 +72,7 @@ def test_preclaim_reauth_checkpoint_resumes_action_execution() -> None:
     assert calls == ["action_execution"]
 
 
-def test_unknown_result_recovery_wins_over_reauth_checkpoint() -> None:
+def test_unknown_result__recovery_wins__over_reauth_checkpoint() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls, unknown=True)
 
@@ -81,7 +81,7 @@ def test_unknown_result_recovery_wins_over_reauth_checkpoint() -> None:
     assert calls == ["recovery"]
 
 
-def test_executed_verification_wins_over_reauth_checkpoint() -> None:
+def test_executed_verification__wins_over__reauth_checkpoint() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls, executed=True)
 
@@ -90,7 +90,7 @@ def test_executed_verification_wins_over_reauth_checkpoint() -> None:
     assert calls == ["verify"]
 
 
-def test_stalled_claim_becomes_unknown_before_reauth_checkpoint_resume() -> None:
+def test_stalled_claim__becomes_unknown_before__reauth_checkpoint_resume() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls, stalled=True)
 
@@ -99,7 +99,7 @@ def test_stalled_claim_becomes_unknown_before_reauth_checkpoint_resume() -> None
     assert calls == ["recovery"]
 
 
-def test_reauth_resume_requires_explicit_checkpoint_proof() -> None:
+def test_reauth_resume__requires_explicit__checkpoint_proof() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls)
     state = _state()
@@ -111,7 +111,7 @@ def test_reauth_resume_requires_explicit_checkpoint_proof() -> None:
     assert calls == []
 
 
-def test_reauth_checkpoint_does_not_resume_when_domain_status_is_not_reauth() -> None:
+def test_reauth_checkpoint_does__not_resume_when_domain__status_is_not_reauth() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls, run_status=RunStatusV1.EXECUTING.value)
 
@@ -121,7 +121,7 @@ def test_reauth_checkpoint_does_not_resume_when_domain_status_is_not_reauth() ->
     assert calls == []
 
 
-def test_startup_recovery_does_not_resume_preclaim_reauth_checkpoint() -> None:
+def test_startup_recovery__does_not_resume__preclaim_reauth_checkpoint() -> None:
     calls: list[str] = []
     coordinator = _coordinator(calls)
 
@@ -135,7 +135,7 @@ def test_startup_recovery_does_not_resume_preclaim_reauth_checkpoint() -> None:
     assert calls == []
 
 
-def test_read_execution_checkpoint_resumes_at_action_execution() -> None:
+def test_read_execution__checkpoint_resumes__at_action_execution() -> None:
     runtime = cast(ResumeCheckpointMixin, object.__new__(ResumeCheckpointMixin))
     runtime._topology = ("request_understanding",)
 
@@ -146,7 +146,7 @@ def test_read_execution_checkpoint_resumes_at_action_execution() -> None:
     assert target == "action_execution"
 
 
-def test_not_sent_reauth_checkpoint_resumes_at_safe_action_reconciliation() -> None:
+def test_not_sent_reauth__checkpoint_resumes_at__safe_action_reconciliation() -> None:
     runtime = cast(ResumeCheckpointMixin, object.__new__(ResumeCheckpointMixin))
     runtime._topology = ("request_understanding",)
 

@@ -7,7 +7,7 @@ from google_work_agent.domain.action.transitions.prepare_write_retry import (
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_prepare_write_retry_preserves_the_stronger_write_only_guard() -> None:
+def test_prepare_write_retry__preserves_the_stronger__write_only_guard() -> None:
     result = transition_prepare_write_retry(
         ActionStatusV1.FAILED,
         current_version=2,
@@ -22,7 +22,7 @@ def test_prepare_write_retry_preserves_the_stronger_write_only_guard() -> None:
 
 
 @pytest.mark.parametrize("plan_status", list(PlanStatusV1))
-def test_prepare_write_retry_requires_current_waiting_write_plan(
+def test_prepare_write__retry_requires_current__waiting_write_plan(
     plan_status: PlanStatusV1,
 ) -> None:
     result = transition_prepare_write_retry(

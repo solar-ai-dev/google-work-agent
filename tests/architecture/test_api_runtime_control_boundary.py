@@ -166,7 +166,7 @@ def _matches_module(module: str, prefix: str) -> bool:
     return normalized == prefix or normalized.startswith(f"{prefix}.")
 
 
-def test_all_runtime_control_routes_bind_expected_application_handlers() -> None:
+def test_all_runtime__control_routes_bind__expected_application_handlers() -> None:
     """VAPI4-001: route endpoint -> canonical Handler -> handle(...) must remain exact."""
     assert len(RUNTIME_CONTROL_BINDINGS) == 15
     for route_name, endpoint_name, handler_name in RUNTIME_CONTROL_BINDINGS:
@@ -183,7 +183,7 @@ def test_all_runtime_control_routes_bind_expected_application_handlers() -> None
         )
 
 
-def test_runtime_control_route_surface_is_exact_and_has_no_legacy_alternative() -> None:
+def test_runtime_control_route__surface_is_exact_and__has_no_legacy_alternative() -> None:
     actual: set[tuple[str, str]] = set()
     for route_name in {item[0] for item in RUNTIME_CONTROL_BINDINGS}:
         tree = _parse(ROUTES / route_name)
@@ -218,7 +218,7 @@ def test_runtime_control_route_surface_is_exact_and_has_no_legacy_alternative() 
     assert actual == RUNTIME_CONTROL_ROUTES
 
 
-def test_runtime_control_mutations_use_payload_command_identity_and_no_legacy_test_authority() -> (
+def test_runtime_control_mutations__with_command_identity__have_no_legacy_authority() -> (
     None
 ):
     route_source = "\n".join(
@@ -234,14 +234,14 @@ def test_runtime_control_mutations_use_payload_command_identity_and_no_legacy_te
     assert not legacy_schema.exists()
 
 
-def test_runtime_and_identity_routes_do_not_call_broad_query_service_semantics() -> None:
+def test_runtime_and_identity__routes_do_not_call__broad_query_service_semantics() -> None:
     runtime = (ROUTES / "runtime_summaries.py").read_text(encoding="utf-8")
     identity = (ROUTES / "identities.py").read_text(encoding="utf-8")
     assert ".query_service().get_runtime_summary()" not in runtime
     assert ".query_service().get_current_google_account()" not in identity
 
 
-def test_runtime_control_application_has_no_api_or_http_reverse_dependency() -> None:
+def test_runtime_control_application__has_no_api__or_http_reverse_dependency() -> None:
     """VAPI4-002: Application cannot depend back on API/FastAPI/HTTP transport types."""
     prohibited_prefixes = ("google_work_agent.api", "api", "fastapi", "starlette")
     violations: list[str] = []
@@ -254,7 +254,7 @@ def test_runtime_control_application_has_no_api_or_http_reverse_dependency() -> 
     )
 
 
-def test_runtime_control_routes_and_application_do_not_import_provider_or_concrete_adapters() -> (
+def test_runtime_control_routes_and__application_do_not_import__provider_or_concrete_adapters() -> (
     None
 ):
     """Keep runtime-control paths on Ports and away from concrete providers."""
@@ -282,14 +282,14 @@ def test_runtime_control_routes_and_application_do_not_import_provider_or_concre
     )
 
 
-def test_application_use_cases_do_not_depend_on_api_schemas() -> None:
+def test_application_use_cases__do_not_depend__on_api_schemas() -> None:
     """Keep the pre-existing schema-specific gate as an explicit regression check."""
     for path in _runtime_control_application_files():
         source = path.read_text(encoding="utf-8")
         assert "google_work_agent.api.schemas" not in source
 
 
-def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
+def test_target_routes__do_not_bypass__locked_dependency_boundary() -> None:
     prohibited = ("google_work_agent.api.container", "google_work_agent.api.route_dependencies")
     for route_name in (
         "runtime_summaries.py",
@@ -304,7 +304,7 @@ def test_target_routes_do_not_bypass_locked_dependency_boundary() -> None:
             assert dependency not in source
 
 
-def test_session_bootstrap_stays_transport_security_owned() -> None:
+def test_session_bootstrap__stays_transport__security_owned() -> None:
     route = (ROUTES / "session.py").read_text(encoding="utf-8")
     bootstrap = (ROOT / "src/google_work_agent/api/security/bootstrap_session.py").read_text(
         encoding="utf-8"
@@ -326,7 +326,7 @@ def test_session_bootstrap_stays_transport_security_owned() -> None:
     assert not (ROUTES / "health_checks.py").exists()
 
 
-def test_every_local_api_route_has_an_explicit_access_guard() -> None:
+def test_every_local_api__route_has_an__explicit_access_guard() -> None:
     offenders: list[str] = []
     for path in ROUTES.glob("*.py"):
         if path.name in {"__init__.py", "frontend_assets.py"}:
@@ -344,7 +344,7 @@ def test_every_local_api_route_has_an_explicit_access_guard() -> None:
     assert offenders == []
 
 
-def test_local_security_has_no_wildcard_cors_or_secret_response_projection() -> None:
+def test_local_security_has__no_wildcard_cors__or_secret_response_projection() -> None:
     api_root = ROOT / "src/google_work_agent/api"
     source = "\n".join(path.read_text(encoding="utf-8") for path in api_root.rglob("*.py"))
     response_schema = (

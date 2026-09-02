@@ -7,13 +7,12 @@ from google_work_agent.adapters.langgraph.main.graph import (
     GraphNodeBindings,
     MainControlNodeBindings,
 )
-from google_work_agent.adapters.langgraph.main.state import GraphState
 
 
 def profile_build_arguments() -> tuple[
     GraphNodeBindings,
     MainControlNodeBindings,
-    Callable[[GraphState], str],
+    Callable[[str], bool],
     Any,
     set[str],
 ]:
@@ -50,7 +49,7 @@ def profile_build_arguments() -> tuple[
     return (
         bindings,
         controls,
-        lambda _state: "end",
+        lambda _run_id: False,
         None,
         {
             "REQUEST_UNDERSTANDING",

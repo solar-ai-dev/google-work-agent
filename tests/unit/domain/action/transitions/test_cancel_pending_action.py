@@ -7,7 +7,7 @@ from google_work_agent.domain.action.transitions.cancel_pending_action import (
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_cancel_pending_action_closes_expired_action() -> None:
+def test_cancel_pending__action_closes__expired_action() -> None:
     result = transition_cancel_pending_action(
         ActionStatusV1.EXPIRED,
         4,
@@ -21,7 +21,7 @@ def test_cancel_pending_action_closes_expired_action() -> None:
 
 @pytest.mark.parametrize("effect_type", [EffectType.CREATE, EffectType.READ])
 @pytest.mark.parametrize("plan_status", list(PlanStatusV1))
-def test_cancel_pending_action_exact_effect_plan_matrix(
+def test_cancel_pending__action_exact__effect_plan_matrix(
     effect_type: EffectType, plan_status: PlanStatusV1
 ) -> None:
     result = transition_cancel_pending_action(

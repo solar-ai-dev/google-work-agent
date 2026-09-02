@@ -53,7 +53,7 @@ class _UnitOfWork:
         return None
 
 
-def test_application_build_is_the_single_final_claim_signing_authority() -> None:
+def test_application_build_is__the_single_final__claim_signing_authority() -> None:
     signed_payloads: list[dict[str, object]] = []
 
     def sign(payload: dict[str, object]) -> str:

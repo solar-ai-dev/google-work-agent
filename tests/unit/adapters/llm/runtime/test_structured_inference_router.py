@@ -20,10 +20,10 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
+from google_work_agent.ports.system.contracts.application_settings import AppSettings
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
-from google_work_agent.ports.system.contracts.runtime import AppSettings
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 PROMPT = PromptReference(
@@ -131,7 +131,7 @@ def _router(
 
 
 @pytest.mark.parametrize("published", [None, _scope(scope_hash="different")])
-def test_api_provider_is_not_called_without_exact_published_scope(
+def test_api_provider_is__not_called_without__exact_published_scope(
     published: ExternalLlmTransferScopeV1 | None,
 ) -> None:
     checkpoint = ExternalScopeCheckpoint(scope=published)
@@ -143,7 +143,7 @@ def test_api_provider_is_not_called_without_exact_published_scope(
     assert provider.calls == 0
 
 
-def test_exact_published_scope_allows_one_api_call() -> None:
+def test_exact_published__scope_allows__one_api_call() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider()
@@ -154,7 +154,7 @@ def test_exact_published_scope_allows_one_api_call() -> None:
     assert provider.calls == 1
 
 
-def test_runtime_circuit_callbacks_guard_and_record_the_selected_leaf() -> None:
+def test_runtime_circuit_callbacks__guard_and_record__the_selected_leaf() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider()
@@ -171,7 +171,7 @@ def test_runtime_circuit_callbacks_guard_and_record_the_selected_leaf() -> None:
     ]
 
 
-def test_runtime_circuit_guard_blocks_before_provider_dispatch() -> None:
+def test_runtime_circuit__guard_blocks__before_provider_dispatch() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider()
@@ -188,7 +188,7 @@ def test_runtime_circuit_guard_blocks_before_provider_dispatch() -> None:
     assert provider.calls == 0
 
 
-def test_consent_revoke_blocks_api_call_even_with_exact_scope() -> None:
+def test_consent_revoke_blocks__api_call_even__with_exact_scope() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider()
@@ -200,7 +200,7 @@ def test_consent_revoke_blocks_api_call_even_with_exact_scope() -> None:
     assert provider.calls == 0
 
 
-def test_scope_is_rechecked_before_api_schema_repair_call() -> None:
+def test_scope_is__rechecked_before_api__schema_repair_call() -> None:
     scope = _scope()
     checkpoint = ExternalScopeCheckpoint(scope=scope)
     provider = _Provider(checkpoint_to_stale=checkpoint)
@@ -213,7 +213,7 @@ def test_scope_is_rechecked_before_api_schema_repair_call() -> None:
     assert repairer.calls == 0
 
 
-def test_auto_fallback_does_not_call_api_without_published_scope() -> None:
+def test_auto_fallback_does__not_call_api__without_published_scope() -> None:
     checkpoint = ExternalScopeCheckpoint()
     api = _Provider()
     local = _Provider(

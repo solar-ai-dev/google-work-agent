@@ -53,7 +53,7 @@ def _resume_request() -> WorkflowResumeRequest:
     )
 
 
-def test_save_only_publish_failure_is_typed_and_leaves_run_nonterminal(
+def test_save_only_publish__failure_is_typed__and_leaves_run_nonterminal(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "corrective-production-reachability.db"
@@ -110,7 +110,7 @@ class _SafeResumeHarness:
         )
 
 
-def test_runtime_projects_only_typed_corrective_condition_as_existing_accepted_outcome() -> None:
+def test_runtime_projects_only__typed_corrective_condition__as_existing_accepted_outcome() -> None:
     result = LangGraphWorkflowRuntime._resume_corrective_plan_safely(
         cast(Any, _SafeResumeHarness(generic_failure=False)),
         _resume_request(),
@@ -120,7 +120,7 @@ def test_runtime_projects_only_typed_corrective_condition_as_existing_accepted_o
     assert result.payload == {"phase": "SOLUTION_PLANNING"}
 
 
-def test_runtime_does_not_swallow_generic_workflow_exception() -> None:
+def test_runtime_does__not_swallow__generic_workflow_exception() -> None:
     with pytest.raises(RuntimeError, match="ordinary workflow failure"):
         LangGraphWorkflowRuntime._resume_corrective_plan_safely(
             cast(Any, _SafeResumeHarness(generic_failure=True)),
@@ -164,7 +164,7 @@ class _StartupRecoveryHarness:
         )
 
 
-def test_startup_open_run_recovery_routes_checkpoint_marker_to_corrective_resume() -> None:
+def test_startup_open_run__recovery_routes_checkpoint__marker_to_corrective_resume() -> None:
     harness = _StartupRecoveryHarness()
     recovery = WorkflowRecoveryRequest(
         run_id="run-1",
@@ -186,7 +186,7 @@ def test_startup_open_run_recovery_routes_checkpoint_marker_to_corrective_resume
     assert harness.resume_request.correlation == recovery.correlation
 
 
-def test_resolve_recovery_command_replay_returns_original_reserved_plan(
+def test_resolve_recovery__command_replay_returns__original_reserved_plan(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "corrective-command-replay.db"
@@ -214,7 +214,7 @@ def test_resolve_recovery_command_replay_returns_original_reserved_plan(
     assert replay.plan_id == "reserved-plan-2"
 
 
-def test_production_recovery_exposes_real_retry_triggers() -> None:
+def test_production_recovery__exposes_real__retry_triggers() -> None:
     recovery_handler_source = inspect.getsource(ResolveRecoveryHandler._apply_resolution_effects)
     recovery_source = inspect.getsource(LangGraphWorkflowRuntime.recover_open_run)
 

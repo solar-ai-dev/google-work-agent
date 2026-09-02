@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 from pathlib import Path
@@ -270,7 +271,7 @@ def clean(errors: list[str]) -> None:
     assert not errors, "\n" + "\n".join(f"- {e}" for e in errors)
 
 
-def test_immediate_canonical_filename_grammar() -> None:
+def test_immediate_canonical__filename__grammar() -> None:
     clean(
         [
             f"forbidden canonical filename: {rel(p)}"
@@ -280,7 +281,7 @@ def test_immediate_canonical_filename_grammar() -> None:
     )
 
 
-def test_immediate_module_package_authority_is_unique() -> None:
+def test_immediate_module__package_authority__is_unique() -> None:
     clean(
         [
             f"module/package authority collision: {rel(path)}"
@@ -290,7 +291,7 @@ def test_immediate_module_package_authority_is_unique() -> None:
     )
 
 
-def test_immediate_domain_operation_per_file() -> None:
+def test_immediate_domain__operation_per__file() -> None:
     errors: list[str] = []
     for owner in DOMAIN_OWNERS:
         base = SRC / "domain" / owner
@@ -315,7 +316,7 @@ def test_immediate_domain_operation_per_file() -> None:
     clean(errors)
 
 
-def test_immediate_application_use_case_grammar_from_current_canonical() -> None:
+def test_immediate_application__use_case_grammar__from_current_canonical() -> None:
     errors: list[str] = []
     for relative_path, expected_symbols in application_canonical_contracts().items():
         path = SRC / relative_path
@@ -328,7 +329,7 @@ def test_immediate_application_use_case_grammar_from_current_canonical() -> None
     clean(errors)
 
 
-def test_immediate_agent_atomic_grammar() -> None:
+def test_immediate_agent__atomic__grammar() -> None:
     errors: list[str] = []
     base = SRC / "application" / "agents"
     if not base.exists():
@@ -352,7 +353,7 @@ def test_immediate_agent_atomic_grammar() -> None:
     clean(errors)
 
 
-def test_immediate_persistence_port_sqlite_mirror() -> None:
+def test_immediate_persistence__port_sqlite__mirror() -> None:
     ports = SRC / "ports" / "persistence"
     sqlite = SRC / "adapters" / "persistence" / "sqlite" / "repositories"
     left = {p.name for p in ports.glob("*_repository.py")} if ports.exists() else set()
@@ -365,7 +366,7 @@ def test_immediate_persistence_port_sqlite_mirror() -> None:
     )
 
 
-def test_immediate_api_and_langgraph_target_grammar() -> None:
+def test_immediate_api__and_langgraph__target_grammar() -> None:
     errors: list[str] = []
     schemas = SRC / "api" / "schemas"
     canonical_shared_schemas = {("runs", "recovery.py")}
@@ -398,7 +399,7 @@ def test_immediate_api_and_langgraph_target_grammar() -> None:
     clean(errors)
 
 
-def test_immediate_dependency_and_provider_boundary() -> None:
+def test_immediate_dependency__and_provider__boundary() -> None:
     errors: list[str] = []
     for path in (p for p in pyfiles() if canonical(p)):
         p = parts(path)
@@ -428,7 +429,7 @@ def test_immediate_dependency_and_provider_boundary() -> None:
     clean(errors)
 
 
-def test_immediate_concrete_barrel_authority() -> None:
+def test_immediate_concrete__barrel__authority() -> None:
     errors: list[str] = []
     for path in (p for p in pyfiles() if canonical(p) and p.name == "__init__.py"):
         if "contracts" in parts(path):
@@ -438,7 +439,7 @@ def test_immediate_concrete_barrel_authority() -> None:
     clean(errors)
 
 
-def test_immediate_public_alias_reexport_and_duplicate_definition_zero() -> None:
+def test_immediate_public__alias_reexport_and__duplicate_definition_zero() -> None:
     errors: list[str] = []
     definitions: dict[tuple[type[ast.AST], str], list[Path]] = {}
     for path in pyfiles():
@@ -487,7 +488,7 @@ def test_immediate_public_alias_reexport_and_duplicate_definition_zero() -> None
     clean(errors)
 
 
-def test_test_modules_import_only_support_not_peer_tests() -> None:
+def test_test_modules__import_only_support__not_peer_tests() -> None:
     tests_root = ROOT / "tests"
     errors: list[str] = []
     for path in tests_root.rglob("*.py"):
@@ -511,8 +512,48 @@ def test_test_modules_import_only_support_not_peer_tests() -> None:
     clean(errors)
 
 
+def test_python_test_functions__across_repository__match_canonical_naming_grammar() -> None:
+    pattern = re.compile(r"^test_[a-z][a-z0-9_]*__[a-z][a-z0-9_]*__[a-z][a-z0-9_]*$")
+    errors: list[str] = []
+    for path in (ROOT / "tests").rglob("*.py"):
+        for node in ast.walk(tree(path)):
+            if (
+                isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and node.name.startswith("test_")
+                and pattern.fullmatch(node.name) is None
+            ):
+                errors.append(
+                    f"invalid Python test function name: {rel(path)}:{node.lineno}:{node.name}"
+                )
+    clean(errors)
+
+
+def test_static_fixture_data__under_provider_resource_root__uses_strict_json_grammar() -> None:
+    fixtures = ROOT / "tests" / "fixtures"
+    data = fixtures / "data"
+    errors: list[str] = []
+    if (fixtures / "product").exists():
+        errors.append("legacy generic fixture root remains: tests/fixtures/product")
+    for path in data.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(data)
+        if len(relative.parts) != 3 or path.suffix != ".json":
+            errors.append(f"invalid static fixture path: {rel(path)}")
+            continue
+        if not all(re.fullmatch(r"[a-z][a-z0-9_]*", part) for part in relative.parts[:-1]):
+            errors.append(f"invalid fixture provider/resource: {rel(path)}")
+        if re.fullmatch(r"[a-z][a-z0-9_]*\.json", path.name) is None:
+            errors.append(f"invalid fixture scenario name: {rel(path)}")
+        try:
+            json.loads(path.read_text(encoding="utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            errors.append(f"invalid strict UTF-8 JSON fixture: {rel(path)}: {error}")
+    clean(errors)
+
+
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
-def test_final_top_level_ownership() -> None:
+def test_final_top__level__ownership() -> None:
     allowed = {"domain", "application", "ports", "adapters", "api", "launcher", "__pycache__"}
     clean(
         [
@@ -524,10 +565,10 @@ def test_final_top_level_ownership() -> None:
 
 
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
-def test_final_forbidden_names_and_compat_zero() -> None:
+def test_final_forbidden__names_and__compat_zero() -> None:
     errors: list[str] = []
     for path in pyfiles():
-        if bad_name(path) and parts(path) != ("ports", "system", "contracts", "runtime.py"):
+        if bad_name(path):
             errors.append(f"forbidden final filename: {rel(path)}")
         if "_compat" in path.parts:
             errors.append(f"_compat remains: {rel(path)}")
@@ -535,7 +576,7 @@ def test_final_forbidden_names_and_compat_zero() -> None:
 
 
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
-def test_final_legacy_authorities_retired() -> None:
+def test_final_legacy__authorities__retired() -> None:
     forbidden = [
         SRC / "domain" / "commands.py",
         SRC / "domain" / "transitions.py",
@@ -562,7 +603,7 @@ def test_final_legacy_authorities_retired() -> None:
 
 
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
-def test_final_agent_one_capability_one_authority() -> None:
+def test_final_agent__one_capability__one_authority() -> None:
     errors: list[str] = []
     base = SRC / "application" / "agents"
     for role, capabilities in ROLES.items():
@@ -578,7 +619,7 @@ def test_final_agent_one_capability_one_authority() -> None:
 
 
 @pytest.mark.skipif(not FINAL, reason="final cutover only: GWA_ARCHITECTURE_FINAL_CUTOVER=1")
-def test_final_repo_wide_dependency_and_provider_boundary() -> None:
+def test_final_repo__wide_dependency__and_provider_boundary() -> None:
     errors: list[str] = []
     for path in pyfiles():
         p = parts(path)

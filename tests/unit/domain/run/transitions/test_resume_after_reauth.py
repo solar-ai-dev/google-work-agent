@@ -8,7 +8,7 @@ from google_work_agent.domain.run.transitions.resume_after_reauth import (
 )
 
 
-def test_resume_after_reauth_restores_persisted_safe_phase() -> None:
+def test_resume_after__reauth_restores__persisted_safe_phase() -> None:
     assert (
         transition_resume_after_reauth(
             RunStatusV1.REAUTH_REQUIRED,
@@ -25,7 +25,7 @@ def test_resume_after_reauth_restores_persisted_safe_phase() -> None:
     )
 
 
-def test_resume_after_reauth_rejects_non_reauth_source() -> None:
+def test_resume_after__reauth_rejects__non_reauth_source() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_resume_after_reauth(
             RunStatusV1.PLANNING,
@@ -40,7 +40,7 @@ def test_resume_after_reauth_rejects_non_reauth_source() -> None:
         )
 
 
-def test_resume_after_reauth_restores_cancel_resolution_authority() -> None:
+def test_resume_after__reauth_restores__cancel_resolution_authority() -> None:
     assert (
         transition_resume_after_reauth(
             RunStatusV1.REAUTH_REQUIRED,

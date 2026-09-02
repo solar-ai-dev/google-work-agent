@@ -7,7 +7,7 @@ from google_work_agent.application.agents.review.recheck_affected_dimensions imp
 )
 
 
-def test_recheck_affected_dimensions_uses_one_prompt_and_bounded_selector() -> None:
+def test_recheck_affected_dimensions__uses_one_prompt__and_bounded_selector() -> None:
     calls: list[tuple[str, Mapping[str, object]]] = []
 
     def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:

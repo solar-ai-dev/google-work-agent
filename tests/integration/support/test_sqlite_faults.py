@@ -59,7 +59,7 @@ def answer_only_database(tmp_path: Path) -> Path:
         SQLiteFaultStage.BEFORE_RECEIPT_FINALIZE,
     ],
 )
-def test_sqlite_fault_injection_rolls_back_answer_only_write_set(
+def test_sqlite_fault_injection__rolls_back_answer__only_write_set(
     answer_only_database: Path,
     stage: SQLiteFaultStage,
 ) -> None:
@@ -98,7 +98,7 @@ def test_sqlite_fault_injection_rolls_back_answer_only_write_set(
         connection.close()
 
 
-def test_sqlite_fault_injection_normal_path_leaves_existing_answer_only_behavior_unchanged(
+def test_sqlite_fault_injection__normal_path_leaves_existing__answer_only_behavior_unchanged(
     answer_only_database: Path,
 ) -> None:
     service = CompleteAnswerOnlyRunHandler(

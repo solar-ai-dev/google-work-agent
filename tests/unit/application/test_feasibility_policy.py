@@ -74,7 +74,7 @@ def _input_risk() -> dict[str, object]:
     }
 
 
-def test_check1_uses_complete_evidence_horizon() -> None:
+def test_check1_uses__complete_evidence__horizon() -> None:
     risk = evidence_feasibility_risk(
         arguments=_arguments(),
         analysis_result=_analysis(),
@@ -104,7 +104,7 @@ def test_check1_uses_complete_evidence_horizon() -> None:
     assert risk["feasibility"]["freshness"] == "EVIDENCE_ONLY"  # type: ignore[index]
 
 
-def test_check1_incomplete_calendar_coverage_never_fakes_feasible() -> None:
+def test_check1_incomplete__calendar_coverage__never_fakes_feasible() -> None:
     risk = evidence_feasibility_risk(
         arguments=_arguments(),
         analysis_result=_analysis(),
@@ -116,7 +116,7 @@ def test_check1_incomplete_calendar_coverage_never_fakes_feasible() -> None:
     assert "feasibility" not in risk
 
 
-def test_event_interval_is_the_only_deterministic_duration_fallback() -> None:
+def test_event_interval__is_the_only__deterministic_duration_fallback() -> None:
     analysis = _analysis(duration=None)
     constraints = analysis["schedule_constraints"]
     assert isinstance(constraints, dict)
@@ -131,7 +131,7 @@ def test_event_interval_is_the_only_deterministic_duration_fallback() -> None:
     assert risk["feasibility_input"]["required_duration_minutes"] == 120  # type: ignore[index]
 
 
-def test_v2_work_analysis_deadline_projects_to_action_owned_feasibility() -> None:
+def test_v2_work_analysis__deadline_projects_to__action_owned_feasibility() -> None:
     analysis = {
         "work_facts": [
             {
@@ -156,7 +156,7 @@ def test_v2_work_analysis_deadline_projects_to_action_owned_feasibility() -> Non
     }
 
 
-def test_v2_work_analysis_multiple_deadlines_fail_closed() -> None:
+def test_v2_work__analysis_multiple__deadlines_fail_closed() -> None:
     analysis = {
         "work_facts": [
             {"kind": "DEADLINE", "value": "2026-08-12", "evidence_refs": []},
@@ -168,7 +168,7 @@ def test_v2_work_analysis_multiple_deadlines_fail_closed() -> None:
         build_feasibility_input(analysis_result=analysis, arguments=_arguments())
 
 
-def test_fresh_check_reads_exact_deadline_horizon() -> None:
+def test_fresh_check__reads_exact__deadline_horizon() -> None:
     gateway = Gateway()
     risk = FeasibilityValidator(
         gateway=gateway,
@@ -180,7 +180,7 @@ def test_fresh_check_reads_exact_deadline_horizon() -> None:
     assert gateway.calls[0]["time_max"] == "2026-08-12T18:00:00+09:00"
 
 
-def test_pagination_cycle_and_read_failure_fail_closed() -> None:
+def test_pagination_cycle__and_read__failure_fail_closed() -> None:
     gateway = Gateway()
     gateway.pages = [ResourcePage(items=(), next_page_token="repeat")] * 2
     validator = FeasibilityValidator(
@@ -193,7 +193,7 @@ def test_pagination_cycle_and_read_failure_fail_closed() -> None:
 
 
 @pytest.mark.parametrize("failure_point", ["events", "freebusy"])
-def test_each_fresh_calendar_read_failure_is_propagated(failure_point: str) -> None:
+def test_each_fresh__calendar_read__failure_is_propagated(failure_point: str) -> None:
     gateway = Gateway()
     if failure_point == "events":
 
@@ -220,7 +220,7 @@ def test_each_fresh_calendar_read_failure_is_propagated(failure_point: str) -> N
         validator.fresh_risk(arguments=_arguments(), risk=_input_risk())
 
 
-def test_infeasible_blocks_approval_and_changed_authority_requires_reapproval() -> None:
+def test_infeasible_blocks__approval_and_changed__authority_requires_reapproval() -> None:
     risk = {
         "feasibility": {
             "decision": "INFEASIBLE",
@@ -237,7 +237,7 @@ def test_infeasible_blocks_approval_and_changed_authority_requires_reapproval() 
     assert feasibility_change_requires_reapproval(approved=("FEASIBLE",), current=("RISK",))
 
 
-def test_modify_rederives_event_duration_and_preserves_other_server_risks() -> None:
+def test_modify_rederives_event__duration_and_preserves__other_server_risks() -> None:
     current = {
         "duplicate": {"decision": "NOT_DUPLICATE"},
         "calendar_conflict": {"decision": "NO_CONFLICT"},

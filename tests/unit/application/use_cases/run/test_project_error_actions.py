@@ -95,7 +95,7 @@ def _project(path: Path):  # type: ignore[no-untyped-def]
     )(ProjectErrorActionsQueryV1("run-1"))
 
 
-def test_retry_is_available_only_for_latest_not_sent_failure(tmp_path: Path) -> None:
+def test_retry_is_available__only_for_latest__not_sent_failure(tmp_path: Path) -> None:
     retryable = _project(_database(tmp_path, delivery_certainty="NOT_SENT"))
     unsafe = _project(_database(tmp_path, delivery_certainty="UNKNOWN_RESULT"))
 
@@ -109,7 +109,7 @@ def test_retry_is_available_only_for_latest_not_sent_failure(tmp_path: Path) -> 
     assert [item.kind for item in unsafe.actions] == ["OPEN_DIAGNOSTICS"]
 
 
-def test_run_snapshot_projects_latest_delivery_certainty(tmp_path: Path) -> None:
+def test_run_snapshot__projects_latest__delivery_certainty(tmp_path: Path) -> None:
     result = GetRunSnapshotHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(
             _database(tmp_path, delivery_certainty="NOT_SENT")

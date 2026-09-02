@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.conversation.list_conversations imp
 )
 
 
-def test_list_conversations_is_account_scoped(tmp_path: Path) -> None:
+def test_list_conversations__is_account__scoped(tmp_path: Path) -> None:
     database_path = tmp_path / "list.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)
@@ -36,7 +36,7 @@ def test_list_conversations_is_account_scoped(tmp_path: Path) -> None:
     assert result.items[0].schema_version == 1
 
 
-def test_list_conversations_searches_title_and_message_and_projects_latest_open_run(
+def test_list_conversations_searches__title_and_message_and__projects_latest_open_run(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "search.db"
@@ -75,7 +75,7 @@ def test_list_conversations_searches_title_and_message_and_projects_latest_open_
     assert result.items[1].open_run_id == "r-1"
 
 
-def test_list_conversations_rejects_noncanonical_bounds(tmp_path: Path) -> None:
+def test_list_conversations__rejects_noncanonical__bounds(tmp_path: Path) -> None:
     handler = ListConversationsHandler(
         unit_of_work_factory=sqlite_unit_of_work_factory(tmp_path / "unused.db")
     )

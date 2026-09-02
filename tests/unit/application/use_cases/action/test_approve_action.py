@@ -124,7 +124,7 @@ def _command(**changes: object) -> ApproveActionCommand:
 
 
 @pytest.mark.parametrize("status", (ActionStatusV1.PROPOSED, ActionStatusV1.MODIFIED))
-def test_approve_persists_action_active_snapshot_receipt_and_exact_audit(
+def test_approve_persists_action__active_snapshot_receipt__and_exact_audit(
     monkeypatch: pytest.MonkeyPatch, status: ActionStatusV1
 ) -> None:
     action = _action(status=status)
@@ -169,7 +169,7 @@ def test_approve_persists_action_active_snapshot_receipt_and_exact_audit(
         ),
     ),
 )
-def test_approve_rejects_stale_version_and_read_action(
+def test_approve_rejects__stale_version__and_read_action(
     action: SimpleNamespace, command: ApproveActionCommand
 ) -> None:
     unit_of_work = _unit_of_work(action=action)
@@ -182,7 +182,7 @@ def test_approve_rejects_stale_version_and_read_action(
 
 
 @pytest.mark.parametrize("reason", ("superseded", "noncurrent", "review"))
-def test_approve_requires_current_waiting_plan_and_passed_review(reason: str) -> None:
+def test_approve_requires__current_waiting_plan__and_passed_review(reason: str) -> None:
     plan = _plan(
         status=PlanStatusV1.SUPERSEDED if reason == "superseded" else PlanStatusV1.WAITING_APPROVAL,
         review_status=PlanReviewStatus.REQUIRED if reason == "review" else PlanReviewStatus.PASSED,
@@ -201,7 +201,7 @@ def test_approve_requires_current_waiting_plan_and_passed_review(reason: str) ->
 
 
 @pytest.mark.parametrize("run_status", list(RunStatusV1))
-def test_approve_application_matches_exact_parent_run_matrix(run_status: RunStatusV1) -> None:
+def test_approve_application__matches_exact__parent_run_matrix(run_status: RunStatusV1) -> None:
     unit_of_work = _unit_of_work(run_status=run_status)
     id_generator = MagicMock()
     id_generator.new_uuid.side_effect = ["approval-1", "handoff-1"]
@@ -212,7 +212,7 @@ def test_approve_application_matches_exact_parent_run_matrix(run_status: RunStat
 
 
 @pytest.mark.parametrize("repository", ("approvals", "audits"))
-def test_approve_required_effect_failure_does_not_commit(repository: str) -> None:
+def test_approve_required__effect_failure__does_not_commit(repository: str) -> None:
     unit_of_work = _unit_of_work()
     if repository == "approvals":
         unit_of_work.approvals.insert_active_snapshot.side_effect = RuntimeError("approval failure")

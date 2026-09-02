@@ -65,7 +65,7 @@ def _arguments(*, due: str | None = None) -> dict[str, object]:
     return {"task_list_id": "list-1", "payload": payload}
 
 
-def test_fresh_check_reads_every_page_and_finds_later_duplicate() -> None:
+def test_fresh_check_reads__every_page_and__finds_later_duplicate() -> None:
     gateway = _PagedGateway(
         {
             None: ResourcePage(items=(_task("other", title="Other"),), next_page_token="p2"),
@@ -82,7 +82,7 @@ def test_fresh_check_reads_every_page_and_finds_later_duplicate() -> None:
     ]
 
 
-def test_completed_task_is_excluded_from_fresh_check() -> None:
+def test_completed_task__is_excluded__from_fresh_check() -> None:
     gateway = _PagedGateway(
         {None: ResourcePage(items=(_task("done", status="completed"),), next_page_token=None)}
     )
@@ -92,7 +92,7 @@ def test_completed_task_is_excluded_from_fresh_check() -> None:
     assert risk["duplicate"]["decision"] == "NOT_DUPLICATE"  # type: ignore[index]
 
 
-def test_fresh_check_has_no_date_window() -> None:
+def test_fresh_check__has_no__date_window() -> None:
     gateway = _PagedGateway(
         {
             None: ResourcePage(
@@ -109,7 +109,7 @@ def test_fresh_check_has_no_date_window() -> None:
     assert risk["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
 
 
-def test_fresh_check_detects_page_token_cycle() -> None:
+def test_fresh_check__detects_page__token_cycle() -> None:
     gateway = _PagedGateway(
         {
             None: ResourcePage(items=(), next_page_token="p2"),
@@ -145,7 +145,7 @@ def test_fresh_check_detects_page_token_cycle() -> None:
         TimeoutError("source unavailable"),
     ],
 )
-def test_fresh_check_propagates_source_failure(source_error: Exception) -> None:
+def test_fresh_check__propagates_source__failure(source_error: Exception) -> None:
     class _FailingGateway:
         def list_tasks(self, **_: object) -> ResourcePage:
             raise source_error
@@ -156,7 +156,7 @@ def test_fresh_check_propagates_source_failure(source_error: Exception) -> None:
         )
 
 
-def test_evidence_check_does_not_invent_a_result_without_tasks_source() -> None:
+def test_evidence_check_does__not_invent_a__result_without_tasks_source() -> None:
     assert (
         evidence_duplicate_risk(
             arguments=_arguments(),
@@ -167,7 +167,7 @@ def test_evidence_check_does_not_invent_a_result_without_tasks_source() -> None:
     )
 
 
-def test_evidence_check_uses_only_same_list_current_run_resources() -> None:
+def test_evidence_check_uses__only_same_list__current_run_resources() -> None:
     resource = {
         "resource_type": "task",
         "resource_id": "other-list-task",

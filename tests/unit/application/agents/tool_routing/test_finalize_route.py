@@ -19,7 +19,7 @@ def _catalog() -> SignedToolRegistry:
     return load_signed_tool_registry()
 
 
-def test_finalize_route__freezes_prebound_v2_plan_without_reowning_preconditions() -> None:
+def test_finalize_route_freezes__prebound_v2_plan__without_reowning_preconditions() -> None:
     catalog = _catalog()
     ids = iter(f"id-{index}" for index in range(30))
     binding = bind_registry_candidates(

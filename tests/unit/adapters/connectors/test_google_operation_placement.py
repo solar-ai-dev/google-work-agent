@@ -93,7 +93,7 @@ import pytest
         ),
     ],
 )
-def test_canonical_operation_module_exposes_exact_operation_symbol(
+def test_canonical_operation__module_exposes__exact_operation_symbol(
     module_name: str, symbol: str
 ) -> None:
     module = importlib.import_module(module_name)

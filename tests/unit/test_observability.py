@@ -25,7 +25,7 @@ def _secret(prefix: str) -> str:
     return f"{prefix}-{token_urlsafe(24)}"
 
 
-def test_sanitize_event_attributes_removes_secret_keys_independent_of_value() -> None:
+def test_sanitize_event_attributes__removes_secret_keys__independent_of_value() -> None:
     access_token = _secret("access")
     refresh_token = _secret("refresh")
     authorization = f"Bearer {_secret('auth')}"
@@ -63,7 +63,7 @@ def test_sanitize_event_attributes_removes_secret_keys_independent_of_value() ->
     assert sanitized.removed_fields
 
 
-def test_sanitize_event_attributes_preserves_bounded_non_secret_metadata() -> None:
+def test_sanitize_event__attributes_preserves_bounded__non_secret_metadata() -> None:
     allowed = {
         "credential_state": "READY",
         "token_expired": True,
@@ -78,7 +78,7 @@ def test_sanitize_event_attributes_preserves_bounded_non_secret_metadata() -> No
     assert sanitized.removed_fields == ()
 
 
-def test_sanitize_event_attributes_redacts_email_and_home_path() -> None:
+def test_sanitize_event__attributes_redacts_email__and_home_path() -> None:
     sanitized = sanitize_event_attributes(
         {
             "nested": {
@@ -93,7 +93,7 @@ def test_sanitize_event_attributes_redacts_email_and_home_path() -> None:
     assert nested["path"] == r"C:\Users\<redacted-user>\project"
 
 
-def test_create_event_envelope_rejects_negative_time() -> None:
+def test_create_event__envelope_rejects__negative_time() -> None:
     with pytest.raises(EventValidationError):
         create_event_envelope(
             event_name="COMMAND_APPLIED",
@@ -108,7 +108,7 @@ def test_create_event_envelope_rejects_negative_time() -> None:
         )
 
 
-def test_jsonl_sink_scrubs_direct_raw_secret_payload(tmp_path: Path) -> None:
+def test_jsonl_sink__scrubs_direct__raw_secret_payload(tmp_path: Path) -> None:
     access_token = _secret("access")
     refresh_token = _secret("refresh")
     authorization = f"Bearer {_secret('authorization')}"
@@ -146,7 +146,7 @@ def test_jsonl_sink_scrubs_direct_raw_secret_payload(tmp_path: Path) -> None:
     assert persisted_json["provider_status_code"] == 401
 
 
-def test_jsonl_sink_rejects_invalid_json_instead_of_persisting_raw_text(tmp_path: Path) -> None:
+def test_jsonl_sink_rejects__invalid_json_instead__of_persisting_raw_text(tmp_path: Path) -> None:
     sink = SanitizedJsonlLogSink(
         directory=tmp_path,
         filename_prefix="service",
@@ -159,7 +159,7 @@ def test_jsonl_sink_rejects_invalid_json_instead_of_persisting_raw_text(tmp_path
     assert not (tmp_path / "service.jsonl").exists()
 
 
-def test_jsonl_sink_rotates_and_applies_retention(tmp_path: Path) -> None:
+def test_jsonl_sink__rotates_and__applies_retention(tmp_path: Path) -> None:
     now_state = {"value": 1_000}
     sink = SanitizedJsonlLogSink(
         directory=tmp_path,

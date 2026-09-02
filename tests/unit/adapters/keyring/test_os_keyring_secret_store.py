@@ -8,7 +8,7 @@ from google_work_agent.adapters.keyring.os_keyring_secret_store import (
 )
 
 
-def test_os_keyring_secret_store_round_trips_bytes_without_exposing_secret(
+def test_os_keyring_secret__store_round_trips__bytes_without_exposing_secret(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     values: dict[tuple[str, str], str] = {}
@@ -32,7 +32,7 @@ def test_os_keyring_secret_store_round_trips_bytes_without_exposing_secret(
     assert store.get("provider") is None
 
 
-def test_keyring_namespace_is_closed_by_environment_and_credential_type() -> None:
+def test_keyring_namespace_is__closed_by_environment__and_credential_type() -> None:
     assert (
         keyring_service_name(environment="PRODUCTION", credential_type="google-oauth")
         == "GoogleWorkAgent/production/google-oauth"
@@ -45,7 +45,7 @@ def test_keyring_namespace_is_closed_by_environment_and_credential_type() -> Non
         keyring_service_name(environment="personal", credential_type="llm-api-key")
 
 
-def test_keyring_unavailable_has_no_plaintext_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_keyring_unavailable__has_no__plaintext_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = SimpleNamespace(get_keyring=lambda: SimpleNamespace(priority=0))
     monkeypatch.setitem(__import__("sys").modules, "keyring", fake)
 

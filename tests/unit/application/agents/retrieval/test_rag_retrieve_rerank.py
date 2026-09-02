@@ -7,7 +7,7 @@ from google_work_agent.application.agents.retrieval.normalize_segments import So
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import rag_retrieve_rerank
 
 
-def test_rag_ranking_is_deterministic_and_prompt_free() -> None:
+def test_rag_ranking__is_deterministic__and_prompt_free() -> None:
     intent = cast(
         RequestIntentV2,
         {

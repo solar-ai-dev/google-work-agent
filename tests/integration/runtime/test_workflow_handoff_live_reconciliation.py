@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.run.redrive_workflow_handoffs impor
 )
 
 
-def test_live_loop_only_drives_injected_application_reconciler() -> None:
+def test_live_loop__only_drives__injected_application_reconciler() -> None:
     called = Event()
     commands: list[RedriveWorkflowHandoffsCommand] = []
 

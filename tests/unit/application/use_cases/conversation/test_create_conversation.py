@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.conversation.create_conversation im
 )
 
 
-def test_create_conversation_persists_through_unit_of_work(tmp_path: Path) -> None:
+def test_create_conversation__persists_through__unit_of_work(tmp_path: Path) -> None:
     database_path = tmp_path / "create.db"
     with connect_sqlite(database_path) as connection:
         apply_migrations(connection)

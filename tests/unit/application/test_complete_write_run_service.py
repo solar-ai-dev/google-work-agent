@@ -146,7 +146,7 @@ class _Uow:
         self.commits += 1
 
 
-def test_complete_write_run_mismatch_guard_has_zero_run_and_plan_completion_mutations() -> None:
+def test_complete_write_run_mismatch__guard_has_zero_run__and_plan_completion_mutations() -> None:
     uow = _Uow()
     service = CompleteWriteRunHandler(
         unit_of_work_factory=lambda: cast(UnitOfWork, uow),

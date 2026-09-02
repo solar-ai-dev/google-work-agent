@@ -10,7 +10,7 @@ from google_work_agent.application.use_cases.resource_ref.persist_resource_ref i
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 
 
-def test_persists_connector_bound_resource_ref(tmp_path: Path) -> None:
+def test_persists_connector__bound_resource__ref(tmp_path: Path) -> None:
     path = tmp_path / "persist.db"
     with connect_sqlite(path) as connection:
         apply_migrations(connection)

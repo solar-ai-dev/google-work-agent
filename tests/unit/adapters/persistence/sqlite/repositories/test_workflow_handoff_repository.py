@@ -13,7 +13,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 )
 
 
-def test_stage_pending_is_command_idempotent_and_allocates_same_run_sequence(
+def test_stage_pending_is__command_idempotent_and__allocates_same_run_sequence(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -29,7 +29,7 @@ def test_stage_pending_is_command_idempotent_and_allocates_same_run_sequence(
     assert first.status == "PENDING"
 
 
-def test_admission_claim_precedes_settlement_and_clears_one_shot_body(tmp_path: Path) -> None:
+def test_admission_claim_precedes__settlement_and_clears__one_shot_body(tmp_path: Path) -> None:
     database_path = _database(tmp_path)
     factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
     with factory() as unit_of_work:
@@ -51,7 +51,7 @@ def test_admission_claim_precedes_settlement_and_clears_one_shot_body(tmp_path: 
     assert settled.handoff.applied_checkpoint_id == "cp-1"
 
 
-def test_stale_run_epoch_retires_normal_admission_without_resurrecting_head(
+def test_stale_run_epoch__retires_normal_admission__without_resurrecting_head(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -81,7 +81,7 @@ def test_stale_run_epoch_retires_normal_admission_without_resurrecting_head(
     assert head is None
 
 
-def test_binding_mismatch_release_of_normal_admission_writes_blocked_binding(
+def test_binding_mismatch_release__of_normal_admission__writes_blocked_binding(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -112,7 +112,7 @@ def test_binding_mismatch_release_of_normal_admission_writes_blocked_binding(
     assert head is not None and head.handoff_id == "h-1"
 
 
-def test_redrive_prefers_latest_active_consumed_lineage_over_historical_consumed(
+def test_redrive_prefers_latest__active_consumed_lineage__over_historical_consumed(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)
@@ -144,7 +144,7 @@ def test_redrive_prefers_latest_active_consumed_lineage_over_historical_consumed
     assert [item.handoff_id for item in candidates] == ["h-2"]
 
 
-def test_redrive_prefers_pending_dispatch_head_over_consumed_continuation(
+def test_redrive_prefers__pending_dispatch_head__over_consumed_continuation(
     tmp_path: Path,
 ) -> None:
     database_path = _database(tmp_path)

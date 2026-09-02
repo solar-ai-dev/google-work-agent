@@ -20,7 +20,7 @@ def _class_definitions(symbol: str) -> list[Path]:
     return definitions
 
 
-def test_resource_routes_only_call_composition_injected_exact_handlers() -> None:
+def test_resource_routes__only_call_composition__injected_exact_handlers() -> None:
     route = _read(SRC / "api" / "routes" / "resources.py")
     dependencies = _read(SRC / "api" / "dependencies" / "resources.py")
     composition = _read(SRC / "api" / "composition.py")
@@ -41,7 +41,7 @@ def test_resource_routes_only_call_composition_injected_exact_handlers() -> None
     assert "execute_read(" not in route
 
 
-def test_resource_continuations_are_local_session_account_bound_and_expiring() -> None:
+def test_resource_continuations_are__local_session_account__bound_and_expiring() -> None:
     query = _read(SRC / "application" / "use_cases" / "resource" / "list_resources.py")
     containers = _read(
         SRC / "application" / "use_cases" / "resource" / "list_task_lists.py"
@@ -55,7 +55,7 @@ def test_resource_continuations_are_local_session_account_bound_and_expiring() -
     assert "LocalResourceContinuationStore" in containers
 
 
-def test_selection_handle_has_one_issuer_and_resolver_authority() -> None:
+def test_selection_handle__has_one_issuer__and_resolver_authority() -> None:
     assert _class_definitions("IssueSelectionHandle") == [
         SRC / "application" / "use_cases" / "resource" / "issue_selection_handle.py"
     ]
@@ -76,7 +76,7 @@ def test_selection_handle_has_one_issuer_and_resolver_authority() -> None:
         assert field in issuer
 
 
-def test_attachment_route_is_singular_multipart_transport_only() -> None:
+def test_attachment_route__is_singular__multipart_transport_only() -> None:
     route = _read(SRC / "api" / "routes" / "attachments.py")
     dependencies = _read(SRC / "api" / "dependencies" / "attachments.py")
     frontend = _read(

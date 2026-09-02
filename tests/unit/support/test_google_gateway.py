@@ -7,15 +7,17 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
 from tests.support.fakes import FakeGoogleGateway, GoogleGatewayFault, GoogleGatewayFaultKind
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
-FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "google"
 
 
 def _gateway() -> FakeGoogleGateway:
-    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+    snapshot = ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot(
+        "workspace/product_fixture_v1.json"
+    )
     return FakeGoogleGateway(snapshot)
 
 
-def test_fake_google_gateway_returns_deterministic_reads_and_pagination() -> None:
+def test_fake_google__gateway_returns_deterministic__reads_and_pagination() -> None:
     gateway = _gateway()
 
     first = gateway.search_gmail_threads(query="", page_token=None, page_size=1)
@@ -32,7 +34,7 @@ def test_fake_google_gateway_returns_deterministic_reads_and_pagination() -> Non
     assert page_two.items[0].resource_id == "thread-project"
 
 
-def test_fake_google_gateway_create_and_update_support_followup_get() -> None:
+def test_fake_google_gateway__create_and_update__support_followup_get() -> None:
     gateway = _gateway()
 
     created_task = gateway.create_task(
@@ -53,7 +55,7 @@ def test_fake_google_gateway_create_and_update_support_followup_get() -> None:
     assert fetched_updated_task.payload["notes"] == "Include blockers"
 
 
-def test_fake_google_gateway_before_delivery_fault_does_not_mutate() -> None:
+def test_fake_google_gateway__before_delivery_fault__does_not_mutate() -> None:
     gateway = _gateway()
     gateway.queue_fault(
         operation="create_gmail_draft",
@@ -76,7 +78,7 @@ def test_fake_google_gateway_before_delivery_fault_does_not_mutate() -> None:
         raise AssertionError("draft should not have been created")
 
 
-def test_fake_google_gateway_after_delivery_fault_mutates_and_supports_recovery() -> None:
+def test_fake_google_gateway__after_delivery_fault__mutates_and_supports_recovery() -> None:
     gateway = _gateway()
     gateway.queue_fault(
         operation="create_calendar_event",
@@ -108,7 +110,7 @@ def test_fake_google_gateway_after_delivery_fault_mutates_and_supports_recovery(
     assert [item.resource_id for item in matches] == ["event-created"]
 
 
-def test_fake_google_gateway_can_emit_verification_mismatch_and_version_change() -> None:
+def test_fake_google_gateway__can_emit_verification__mismatch_and_version_change() -> None:
     gateway = _gateway()
     gateway.queue_fault(
         operation="get_calendar_event",
@@ -126,7 +128,7 @@ def test_fake_google_gateway_can_emit_verification_mismatch_and_version_change()
     assert changed.version == "8"
 
 
-def test_fake_google_gateway_recovery_duplicate_and_no_candidate_faults() -> None:
+def test_fake_google_gateway__recovery_duplicate_and__no_candidate_faults() -> None:
     gateway = _gateway()
     gateway.queue_fault(
         operation="search_by_recovery_fingerprint",

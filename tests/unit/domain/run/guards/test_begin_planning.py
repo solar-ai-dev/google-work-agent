@@ -5,7 +5,7 @@ from google_work_agent.domain.run.guards.begin_planning import guard_begin_plann
 from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejected
 
 
-def test_begin_planning_covers_pre_publish_review_and_user_adjustment_branches() -> None:
+def test_begin_planning_covers__pre_publish_review__and_user_adjustment_branches() -> None:
     guard_begin_planning(RunStatusV1.ANALYZING)
     guard_begin_planning(
         RunStatusV1.VERIFYING,

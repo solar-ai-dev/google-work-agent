@@ -30,7 +30,7 @@ CANONICAL_ACTIVATION_STATUSES = frozenset(
 )
 
 
-def test_prompt_registry_loads_exact_canonical_slot_set() -> None:
+def test_prompt_registry__loads_exact__canonical_slot_set() -> None:
     registry = PromptRegistry()
 
     assert registry.slot_ids == REQUIRED_PROMPT_SLOT_IDS
@@ -41,7 +41,7 @@ def test_prompt_registry_loads_exact_canonical_slot_set() -> None:
     } == REQUIRED_PROMPT_SLOT_IDS
 
 
-def test_prompt_registry_rejects_draft_product_selection(tmp_path: Path) -> None:
+def test_prompt_registry__rejects_draft__product_selection(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     deactivate_prompt_slot(manifest_path, "planning.compose_answer")
     registry = PromptRegistry(manifest_path, contract_path)
@@ -50,7 +50,7 @@ def test_prompt_registry_rejects_draft_product_selection(tmp_path: Path) -> None
         registry.lookup_by_id("planning.compose_answer")
 
 
-def test_all_product_prompts_have_complete_release_evidence() -> None:
+def test_all_product__prompts_have__complete_release_evidence() -> None:
     registry = PromptRegistry()
 
     manifest = cast(
@@ -75,11 +75,11 @@ def test_all_product_prompts_have_complete_release_evidence() -> None:
         ]
 
 
-def test_prompt_registry_accepts_exact_canonical_activation_status_vocabulary() -> None:
+def test_prompt_registry__accepts_exact_canonical__activation_status_vocabulary() -> None:
     assert prompt_registry_module._ACTIVATION_STATUSES == CANONICAL_ACTIVATION_STATUSES
 
 
-def test_prompt_registry_rejects_safety_gate_as_activation_status(tmp_path: Path) -> None:
+def test_prompt_registry__rejects_safety_gate__as_activation_status(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
     slots = cast(list[dict[str, object]], manifest["slots"])
@@ -90,7 +90,7 @@ def test_prompt_registry_rejects_safety_gate_as_activation_status(tmp_path: Path
         PromptRegistry(manifest_path, contract_path)
 
 
-def test_prompt_registry_selects_only_gate_complete_active_slot(tmp_path: Path) -> None:
+def test_prompt_registry__selects_only_gate__complete_active_slot(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     activate_prompt_slot(manifest_path, "planning.compose_answer")
     registry = PromptRegistry(manifest_path, contract_path)
@@ -110,7 +110,7 @@ def test_prompt_registry_selects_only_gate_complete_active_slot(tmp_path: Path) 
     assert prompt_ref.prompt_id == "planning.compose_answer"
 
 
-def test_runtime_active_label_without_gate_evidence_fails_closed(tmp_path: Path) -> None:
+def test_runtime_active__label_without_gate__evidence_fails_closed(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     manifest = cast(dict[str, object], json.loads(manifest_path.read_text(encoding="utf-8")))
     slot = next(
@@ -141,7 +141,7 @@ def test_runtime_active_label_without_gate_evidence_fails_closed(tmp_path: Path)
         ("RETIRED", (True, True, True, False), "requires complete release evidence"),
     ],
 )
-def test_prompt_registry_rejects_illegal_activation_lifecycle(
+def test_prompt_registry__rejects_illegal__activation_lifecycle(
     tmp_path: Path,
     activation_status: str,
     evidence: tuple[bool, bool, bool, bool],
@@ -163,7 +163,7 @@ def test_prompt_registry_rejects_illegal_activation_lifecycle(
         PromptRegistry(manifest_path, contract_path)
 
 
-def test_prompt_registry_rejects_source_hash_drift(tmp_path: Path) -> None:
+def test_prompt_registry__rejects_source__hash_drift(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     source = manifest_path.parent / "sources" / "planning.compose_answer.md"
     source.write_text(source.read_text(encoding="utf-8") + "drift", encoding="utf-8")
@@ -172,7 +172,7 @@ def test_prompt_registry_rejects_source_hash_drift(tmp_path: Path) -> None:
         PromptRegistry(manifest_path, contract_path)
 
 
-def test_prompt_registry_rejects_duplicate_json_field(tmp_path: Path) -> None:
+def test_prompt_registry__rejects_duplicate__json_field(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     manifest_path.write_text(
         manifest_path.read_text(encoding="utf-8").replace(
@@ -187,7 +187,7 @@ def test_prompt_registry_rejects_duplicate_json_field(tmp_path: Path) -> None:
         PromptRegistry(manifest_path, contract_path)
 
 
-def test_all_21_prompt_sources_are_lf_pinned_and_manifest_hash_exact() -> None:
+def test_all_21_prompt__sources_are_lf_pinned__and_manifest_hash_exact() -> None:
     manifest_path = default_prompt_manifest_path()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     source_root = manifest_path.parent
@@ -206,7 +206,7 @@ def test_all_21_prompt_sources_are_lf_pinned_and_manifest_hash_exact() -> None:
         assert attribute.endswith("eol: lf")
 
 
-def test_crlf_rewrite_is_rejected_instead_of_reusing_stale_evidence(tmp_path: Path) -> None:
+def test_crlf_rewrite_is__rejected_instead_of__reusing_stale_evidence(tmp_path: Path) -> None:
     manifest_path, contract_path = copy_prompt_runtime_artifacts(tmp_path)
     source = manifest_path.parent / "sources" / "planning.compose_answer.md"
     source.write_bytes(source.read_bytes().replace(b"\n", b"\r\n"))

@@ -2,7 +2,7 @@ from google_work_agent.adapters.llm.gemini.credential import GeminiLlmCredential
 from google_work_agent.adapters.llm.runtime.llm_credential_router import SessionMemorySecretStore
 
 
-def test_gemini_credential_leaf_replays_same_operation_without_secret_projection() -> None:
+def test_gemini_credential_leaf__replays_same_operation__without_secret_projection() -> None:
     store = SessionMemorySecretStore()
     adapter = GeminiLlmCredentialAdapter("gemini", "TEST", None, store)
 

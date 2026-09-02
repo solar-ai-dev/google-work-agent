@@ -41,7 +41,7 @@ class _Events:
             raise RuntimeError("SSE_UNAVAILABLE")
 
 
-def test_external_llm_transfer_scope_uses_exact_canonical_list_contract() -> None:
+def test_external_llm_transfer__scope_uses_exact__canonical_list_contract() -> None:
     annotations = get_type_hints(ExternalLlmTransferScopeV1)
 
     assert annotations["source_kinds"] == list[str]
@@ -66,7 +66,7 @@ def test_external_llm_transfer_scope_uses_exact_canonical_list_contract() -> Non
         )
 
 
-def test_project_external_llm_transfer_scope_publishes_bounded_metadata_and_replays() -> None:
+def test_project_external_llm__transfer_scope_publishes__bounded_metadata_and_replays() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(checkpoint)  # type: ignore[arg-type]
     query = ProjectExternalLlmTransferScopeQueryV1(
@@ -87,7 +87,7 @@ def test_project_external_llm_transfer_scope_publishes_bounded_metadata_and_repl
     assert checkpoint.calls == ["store", "flush"]
 
 
-def test_project_external_llm_transfer_scope_changes_hash_and_revision() -> None:
+def test_project_external_llm__transfer_scope_changes__hash_and_revision() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(checkpoint)  # type: ignore[arg-type]
     first = handler(
@@ -104,7 +104,7 @@ def test_project_external_llm_transfer_scope_changes_hash_and_revision() -> None
     assert second.scope_hash != first.scope_hash
 
 
-def test_scope_checkpoint_remains_durable_when_sse_append_fails() -> None:
+def test_scope_checkpoint__remains_durable_when__sse_append_fails() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
@@ -126,7 +126,7 @@ def test_scope_checkpoint_remains_durable_when_sse_append_fails() -> None:
     assert checkpoint.scope is not None
 
 
-def test_scope_checkpoint_is_flushed_before_sse_append() -> None:
+def test_scope_checkpoint__is_flushed__before_sse_append() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
@@ -146,7 +146,7 @@ def test_scope_checkpoint_is_flushed_before_sse_append() -> None:
     assert checkpoint.calls == ["store", "flush", "event"]
 
 
-def test_scope_event_is_retried_after_checkpoint_first_crash_without_rewriting_scope() -> None:
+def test_scope_event_is__retried_after_checkpoint_first__crash_without_rewriting_scope() -> None:
     checkpoint = _Checkpoint()
     failing_handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]

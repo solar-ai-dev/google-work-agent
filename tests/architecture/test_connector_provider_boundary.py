@@ -48,7 +48,7 @@ def _is_provider_module(module_name: str) -> bool:
     )
 
 
-def test_core_has_zero_direct_google_provider_sdk_imports() -> None:
+def test_core_has__zero_direct_google__provider_sdk_imports() -> None:
     violations: list[str] = []
     for root in _CORE_ROOTS:
         for path in _python_files(root):
@@ -59,7 +59,7 @@ def test_core_has_zero_direct_google_provider_sdk_imports() -> None:
     assert violations == []
 
 
-def test_core_has_zero_direct_google_provider_http_endpoints() -> None:
+def test_core_has__zero_direct_google__provider_http_endpoints() -> None:
     violations: list[str] = []
     for root in _CORE_ROOTS:
         for path in _python_files(root):
@@ -70,7 +70,7 @@ def test_core_has_zero_direct_google_provider_http_endpoints() -> None:
     assert violations == []
 
 
-def test_google_connector_operations_do_not_import_provider_sdk() -> None:
+def test_google_connector__operations_do_not__import_provider_sdk() -> None:
     operation_root = SRC / "adapters" / "connectors" / "google"
     violations: list[str] = []
     for path in _python_files(operation_root):
@@ -81,7 +81,7 @@ def test_google_connector_operations_do_not_import_provider_sdk() -> None:
     assert violations == []
 
 
-def test_connector_runtime_uses_canonical_subject_specific_module() -> None:
+def test_connector_runtime__uses_canonical__subject_specific_module() -> None:
     connector_root = SRC / "adapters" / "connectors"
     assert not (connector_root / "runtime.py").exists()
     assert not (connector_root / "connector_mcp_runtime.py").exists()
@@ -89,7 +89,7 @@ def test_connector_runtime_uses_canonical_subject_specific_module() -> None:
     assert (connector_root / "runtime" / "stdio_mcp_client.py").is_file()
 
 
-def test_connector_adapter_package_does_not_reexport_owner_implementations() -> None:
+def test_connector_adapter__package_does_not__reexport_owner_implementations() -> None:
     package_init = SRC / "adapters" / "connectors" / "__init__.py"
     tree = ast.parse(package_init.read_text(encoding="utf-8"), filename=str(package_init))
     violations: list[str] = []
@@ -104,7 +104,7 @@ def test_connector_adapter_package_does_not_reexport_owner_implementations() -> 
     assert violations == []
 
 
-def test_production_callers_do_not_import_connector_adapter_barrel() -> None:
+def test_production_callers__do_not_import__connector_adapter_barrel() -> None:
     package_name = "google_work_agent.adapters.connectors"
     package_init = SRC / "adapters" / "connectors" / "__init__.py"
     violations: list[str] = []
@@ -124,7 +124,7 @@ def test_production_callers_do_not_import_connector_adapter_barrel() -> None:
     assert violations == []
 
 
-def test_connector_port_boundary_does_not_depend_on_adapters() -> None:
+def test_connector_port__boundary_does_not__depend_on_adapters() -> None:
     port_root = SRC / "ports" / "connector"
     assert port_root.is_dir()
     violations: list[str] = []

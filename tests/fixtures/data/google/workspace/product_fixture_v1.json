@@ -1,0 +1,20 @@
+{
+  "snapshot_id": "product-fixture-v1",
+  "resources": [
+    { "path": "gmail/thread_project.json" },
+    { "path": "gmail/message_project_1.json" },
+    { "path": "gmail/message_project_2.json" },
+    { "path": "gmail/thread_finance.json" },
+    { "path": "gmail/draft_followup.json" },
+    { "path": "tasks/task_list_default.json" },
+    { "path": "tasks/task_followup.json" },
+    { "path": "tasks/task_billing.json" },
+    { "path": "calendar/calendar_primary.json" },
+    { "path": "calendar/event_focus.json" },
+    { "path": "calendar/event_review.json" },
+    { "path": "calendar/freebusy_primary.json" }
+  ],
+  "faults": [
+    { "path": "workspace/connector_faults.json" }
+  ]
+}

@@ -29,7 +29,7 @@ RELEASE_FILES = {
 }
 
 
-def test_canonical_installer_release_files_and_symbols_exist_exactly_once() -> None:
+def test_canonical_installer_release__files_and_symbols__exist_exactly_once() -> None:
     for relative, symbols in {**INSTALLER_FILES, **RELEASE_FILES}.items():
         path = REPO_ROOT / relative
         assert path.is_file(), relative
@@ -42,7 +42,7 @@ def test_canonical_installer_release_files_and_symbols_exist_exactly_once() -> N
         assert symbols <= found
 
 
-def test_legacy_release_authority_and_product_runtime_imports_are_absent() -> None:
+def test_legacy_release_authority__and_product_runtime__imports_are_absent() -> None:
     assert not (REPO_ROOT / "src/google_work_agent/adapters/runtime/build_manifest.py").exists()
     assert not (REPO_ROOT / "src/google_work_agent/adapters/runtime/paths.py").exists()
     script_tree = ast.parse((REPO_ROOT / "scripts/build_release.py").read_text(encoding="utf-8"))
@@ -56,7 +56,7 @@ def test_legacy_release_authority_and_product_runtime_imports_are_absent() -> No
         assert "from installer" not in content
 
 
-def test_release_cli_uses_only_the_launcher_embedded_manifest_trust_root() -> None:
+def test_release_cli_uses__only_the_launcher__embedded_manifest_trust_root() -> None:
     source = (REPO_ROOT / "scripts/build_release.py").read_text(encoding="utf-8")
 
     assert "EMBEDDED_RELEASE_PUBLIC_KEY_PEM" in source

@@ -4,7 +4,7 @@ from google_work_agent.domain.action.guards.current_plan_authority import (
 from google_work_agent.domain.plan.model import PlanStatusV1
 
 
-def test_current_plan_authority_rejects_superseded_and_noncurrent_children() -> None:
+def test_current_plan__authority_rejects_superseded__and_noncurrent_children() -> None:
     assert (
         guard_current_plan_authority(
             plan_status=PlanStatusV1.WAITING_APPROVAL,
@@ -31,7 +31,7 @@ def test_current_plan_authority_rejects_superseded_and_noncurrent_children() -> 
     )
 
 
-def test_current_plan_authority_rejects_current_but_disallowed_status() -> None:
+def test_current_plan__authority_rejects_current__but_disallowed_status() -> None:
     assert (
         guard_current_plan_authority(
             plan_status=PlanStatusV1.DRAFT,

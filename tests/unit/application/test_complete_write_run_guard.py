@@ -200,7 +200,7 @@ def _conflict(
         (ActionStatusV1.APPROVED, "not VERIFIED"),
     ],
 )
-def test_complete_write_run_rejects_unresolved_action_states(
+def test_complete_write__run_rejects__unresolved_action_states(
     status: ActionStatusV1,
     expected_fragment: str,
 ) -> None:
@@ -210,11 +210,11 @@ def test_complete_write_run_rejects_unresolved_action_states(
     assert expected_fragment in detail
 
 
-def test_complete_write_run_rejects_durable_cancel_intent() -> None:
+def test_complete_write__run_rejects__durable_cancel_intent() -> None:
     assert "cancel intent" in cast(str, _conflict(cancel=True))
 
 
-def test_complete_write_run_rejects_illegal_active_approval() -> None:
+def test_complete_write__run_rejects__illegal_active_approval() -> None:
     detail = _conflict(approval=replace(_approval(), status=ApprovalStatusV1.ACTIVE))
 
     assert detail is not None
@@ -229,29 +229,29 @@ def test_complete_write_run_rejects_illegal_active_approval() -> None:
         ExecutionAttemptStatusV1.UNKNOWN_RESULT,
     ],
 )
-def test_complete_write_run_rejects_unresolved_attempt(status: ExecutionAttemptStatusV1) -> None:
+def test_complete_write__run_rejects__unresolved_attempt(status: ExecutionAttemptStatusV1) -> None:
     detail = _conflict(attempt=replace(_attempt(), status=status))
 
     assert detail is not None
     assert "unresolved execution attempt" in detail
 
 
-def test_complete_write_run_rejects_unverified_verification() -> None:
+def test_complete_write__run_rejects__unverified_verification() -> None:
     detail = _conflict(verification=replace(_verification(), status=VerificationStatus.MISMATCH))
 
     assert detail is not None
     assert "verification is unresolved" in detail
 
 
-def test_complete_write_run_accepts_only_fully_verified_resolved_aggregate() -> None:
+def test_complete_write_run__accepts_only_fully__verified_resolved_aggregate() -> None:
     assert _conflict() is None
 
 
-def test_complete_write_run_rejects_legacy_read_active_plan() -> None:
+def test_complete_write__run_rejects_legacy__read_active_plan() -> None:
     assert "WAITING_APPROVAL" in cast(str, _conflict(plan=_plan(PlanStatusV1.ACTIVE)))
 
 
-def test_complete_write_run_rejects_multiple_non_superseded_plans() -> None:
+def test_complete_write__run_rejects_multiple__non_superseded_plans() -> None:
     plan = _plan()
     uow = _GuardUow(
         approvals=(_approval(),),

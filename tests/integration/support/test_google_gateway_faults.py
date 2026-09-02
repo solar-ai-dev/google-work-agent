@@ -4,12 +4,14 @@ from google_work_agent.ports.connector.contracts.google_workspace import GoogleW
 from tests.support.fakes import FakeGoogleGateway, GoogleGatewayFault, GoogleGatewayFaultKind
 from tests.support.fixtures import ProductFixtureSnapshotLoader
 
-FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "product"
+FIXTURE_ROOT = Path(__file__).resolve().parents[2] / "fixtures" / "data" / "google"
 
 
-def test_gateway_after_delivery_update_persists_state_even_when_response_is_lost() -> None:
+def test_gateway_after_delivery__update_persists_state_even__when_response_is_lost() -> None:
     gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot(
+            "workspace/product_fixture_v1.json"
+        )
     )
     gateway.queue_fault(
         operation="update_gmail_draft",
@@ -31,9 +33,11 @@ def test_gateway_after_delivery_update_persists_state_even_when_response_is_lost
     assert draft.payload["body"] == "Updated body that should still persist."
 
 
-def test_gateway_before_delivery_timeout_keeps_state_unchanged() -> None:
+def test_gateway_before__delivery_timeout__keeps_state_unchanged() -> None:
     gateway = FakeGoogleGateway(
-        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot("manifest.json")
+        ProductFixtureSnapshotLoader(FIXTURE_ROOT).load_snapshot(
+            "workspace/product_fixture_v1.json"
+        )
     )
     original = gateway.get_task(task_list_id="task-list-default", task_id="task-followup")
     gateway.queue_fault(

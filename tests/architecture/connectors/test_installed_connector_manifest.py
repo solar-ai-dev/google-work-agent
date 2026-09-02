@@ -10,7 +10,7 @@ from google_work_agent.adapters.connectors.runtime.load_installed_connector_mani
 )
 
 
-def test_installed_manifest_has_one_canonical_google_workspace_binding() -> None:
+def test_installed_manifest__has_one_canonical__google_workspace_binding() -> None:
     entry = load_installed_connector_manifest().get_required("google_workspace")
 
     assert entry.provider_namespace == "google"
@@ -18,7 +18,7 @@ def test_installed_manifest_has_one_canonical_google_workspace_binding() -> None
     assert entry.tool_projection_path.endswith("tool-descriptor-projection-v1.json")
 
 
-def test_installed_manifest_rejects_duplicate_and_unsafe_paths(tmp_path: Path) -> None:
+def test_installed_manifest__rejects_duplicate__and_unsafe_paths(tmp_path: Path) -> None:
     source = load_installed_connector_manifest.__globals__["_IMPLEMENTATION_MANIFEST"]
     payload = json.loads(source.read_text(encoding="utf-8"))
     payload["connectors"][0]["executable_path"] = "../escape.exe"

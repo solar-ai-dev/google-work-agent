@@ -9,7 +9,7 @@ from google_work_agent.adapters.langgraph.main.workflow import (
 )
 
 
-def test_runtime_transient_hook_cleans_exact_run_scoped_owners() -> None:
+def test_runtime_transient__hook_cleans_exact__run_scoped_owners() -> None:
     source = inspect.getsource(LangGraphWorkflowRuntime.discard_run_transients)
 
     assert "_evidence_store.discard_run" in source

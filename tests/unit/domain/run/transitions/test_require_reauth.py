@@ -6,7 +6,7 @@ from google_work_agent.domain.run.model import RunStatusV1, RunTransitionRejecte
 from google_work_agent.domain.run.transitions.require_reauth import transition_require_reauth
 
 
-def test_require_reauth_applies_canonical_transition() -> None:
+def test_require_reauth__applies_canonical__transition() -> None:
     assert (
         transition_require_reauth(
             RunStatusV1.ANALYZING,
@@ -22,7 +22,7 @@ def test_require_reauth_applies_canonical_transition() -> None:
     )
 
 
-def test_require_reauth_rejects_preflight_after_dispatch() -> None:
+def test_require_reauth__rejects_preflight__after_dispatch() -> None:
     with pytest.raises(RunTransitionRejected):
         transition_require_reauth(
             RunStatusV1.WAITING_APPROVAL,

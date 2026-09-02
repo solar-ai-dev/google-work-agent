@@ -27,7 +27,7 @@ from google_work_agent.ports.system.contracts.workflow_handoff import (
 )
 
 
-def test_same_admission_replay_is_idempotently_accepted_without_second_worker_entry(
+def test_same_admission_replay__is_idempotently_accepted__without_second_worker_entry(
     tmp_path: Path,
 ) -> None:
     executed: list[str] = []
@@ -50,7 +50,7 @@ def test_same_admission_replay_is_idempotently_accepted_without_second_worker_en
         checkpoint.close()
 
 
-def test_different_admission_for_active_run_is_not_accepted(tmp_path: Path) -> None:
+def test_different_admission__for_active_run__is_not_accepted(tmp_path: Path) -> None:
     release = Event()
     started = Event()
 
@@ -71,7 +71,7 @@ def test_different_admission_for_active_run_is_not_accepted(tmp_path: Path) -> N
         checkpoint.close()
 
 
-def test_failed_pre_settlement_admission_can_be_redriven_in_same_process(
+def test_failed_pre_settlement__admission_can_be__redriven_in_same_process(
     tmp_path: Path,
 ) -> None:
     executed = Event()
@@ -94,7 +94,7 @@ def test_failed_pre_settlement_admission_can_be_redriven_in_same_process(
         checkpoint.close()
 
 
-def test_stale_admission_is_retired_before_semantic_owner_io(tmp_path: Path) -> None:
+def test_stale_admission__is_retired_before__semantic_owner_io(tmp_path: Path) -> None:
     owner_io = Event()
     adapter, database_path, checkpoint = _adapter(
         tmp_path,

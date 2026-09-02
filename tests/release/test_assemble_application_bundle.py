@@ -12,7 +12,7 @@ from release.profiles import DeploymentProfile
 from tests.support.bundle_fixture import create_bundle_inputs
 
 
-def test_api_only_bundle_materializes_exact_connector_tool_artifacts(tmp_path: Path) -> None:
+def test_api_only__bundle_materializes_exact__connector_tool_artifacts(tmp_path: Path) -> None:
     inputs = create_bundle_inputs(tmp_path / "inputs")
     output = tmp_path / "bundle"
 
@@ -44,7 +44,7 @@ def test_api_only_bundle_materializes_exact_connector_tool_artifacts(tmp_path: P
     assert not any(path.endswith((".py", ".pyc", ".map")) for path in paths)
 
 
-def test_local_capable_bundle_requires_and_includes_generated_model_manifest(
+def test_local_capable_bundle__requires_and_includes__generated_model_manifest(
     tmp_path: Path,
 ) -> None:
     model_manifest = tmp_path / "model-manifest-v1.json"
@@ -70,7 +70,7 @@ def test_local_capable_bundle_requires_and_includes_generated_model_manifest(
     assert not any("ollama.exe" in path.lower() for path in paths)
 
 
-def test_bundle_rejects_sensitive_or_source_artifacts(tmp_path: Path) -> None:
+def test_bundle_rejects__sensitive_or__source_artifacts(tmp_path: Path) -> None:
     inputs = create_bundle_inputs(tmp_path / "inputs")
     (inputs.frontend_distribution / ".env").write_text("SECRET=value", encoding="utf-8")
 
@@ -82,7 +82,7 @@ def test_bundle_rejects_sensitive_or_source_artifacts(tmp_path: Path) -> None:
         )
 
 
-def test_local_capable_rejects_noncanonical_model_manifest(tmp_path: Path) -> None:
+def test_local_capable__rejects_noncanonical__model_manifest(tmp_path: Path) -> None:
     model_manifest = tmp_path / "model-manifest-v1.json"
     model_manifest.write_text(
         '{"schema_version":1,"minimum_ollama_version":"0.6.0","approved_models":'

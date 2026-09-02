@@ -1,7 +1,7 @@
 from pathlib import Path
 
 
-def test_plan_query_is_the_only_product_prompt_owner_in_retrieval_core() -> None:
+def test_plan_query_is__the_only_product_prompt__owner_in_retrieval_core() -> None:
     owner = (
         Path(__file__).resolve().parents[5] / "src/google_work_agent/application/agents/retrieval"
     )

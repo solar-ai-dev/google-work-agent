@@ -12,7 +12,7 @@ from google_work_agent.ports.system.component_circuit_state_port import Componen
 KEY = ComponentCircuitKey(1, "LLM_RUNTIME", None, "API_LLM")
 
 
-def test_record_component_call_result_opens_and_success_resets_circuit() -> None:
+def test_record_component_call__result_opens_and__success_resets_circuit() -> None:
     port = ProcessComponentCircuitStateAdapter(failure_threshold=2, open_duration_ms=50)
     handler = RecordComponentCallResultHandler(port)
 
@@ -34,7 +34,7 @@ def test_record_component_call_result_opens_and_success_resets_circuit() -> None
         RecordComponentCallResultCommandV1(1, KEY, "TECHNICAL_FAILURE", None, 1),
     ],
 )
-def test_record_component_call_result_rejects_invalid_outcome_shape(
+def test_record_component__call_result_rejects__invalid_outcome_shape(
     command: RecordComponentCallResultCommandV1,
 ) -> None:
     handler = RecordComponentCallResultHandler(ProcessComponentCircuitStateAdapter())

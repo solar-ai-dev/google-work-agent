@@ -40,7 +40,7 @@ def _release_files() -> list[dict[str, object]]:
     ]
 
 
-def test_service_composition_projects_closed_signed_launcher_handoff(tmp_path: Path) -> None:
+def test_service_composition__projects_closed__signed_launcher_handoff(tmp_path: Path) -> None:
     config = ProductionRuntimeConfig.from_signed_build_config(
         _signed_payload(),
         runtime_root=tmp_path / "data",
@@ -56,7 +56,7 @@ def test_service_composition_projects_closed_signed_launcher_handoff(tmp_path: P
     assert config.configuration_source == "SIGNED_RELEASE_MANIFEST"
 
 
-def test_service_composition_rejects_unknown_or_secret_signed_handoff_field(
+def test_service_composition_rejects__unknown_or_secret__signed_handoff_field(
     tmp_path: Path,
 ) -> None:
     payload = _signed_payload()
@@ -72,7 +72,7 @@ def test_service_composition_rejects_unknown_or_secret_signed_handoff_field(
         )
 
 
-def test_local_capable_projects_only_release_verified_model_allowlist(
+def test_local_capable__projects_only_release__verified_model_allowlist(
     tmp_path: Path,
 ) -> None:
     relative = "manifests/model-manifest-v1.json"
@@ -106,7 +106,7 @@ def test_local_capable_projects_only_release_verified_model_allowlist(
     assert models["qwen2.5:7b"].minimum_runtime_version == "0.6.0"
 
 
-def test_api_only_rejects_accidental_local_model_manifest(tmp_path: Path) -> None:
+def test_api_only__rejects_accidental__local_model_manifest(tmp_path: Path) -> None:
     relative = "manifests/model-manifest-v1.json"
     release_file = _VerifiedReleaseFile(
         file_path=relative,
@@ -131,7 +131,7 @@ def _release_row(root: Path, relative: str) -> dict[str, object]:
     }
 
 
-def test_signed_deferred_app_serves_only_release_indexed_frontend_assets(
+def test_signed_deferred_app__serves_only_release__indexed_frontend_assets(
     tmp_path: Path,
 ) -> None:
     install = tmp_path / "install"
@@ -172,7 +172,7 @@ def test_signed_deferred_app_serves_only_release_indexed_frontend_assets(
     assert site.resolve_asset("") is None
 
 
-def test_installed_service_entrypoint_consumes_launcher_handoff_and_runs_uvicorn(
+def test_installed_service_entrypoint__consumes_launcher_handoff__and_runs_uvicorn(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -217,7 +217,7 @@ def test_installed_service_entrypoint_consumes_launcher_handoff_and_runs_uvicorn
 
 
 @pytest.mark.parametrize("port", ["0", "65536"])
-def test_installed_service_entrypoint_rejects_out_of_range_port(port: str) -> None:
+def test_installed_service__entrypoint_rejects_out__of_range_port(port: str) -> None:
     assert (
         _run_installed_service(
             [

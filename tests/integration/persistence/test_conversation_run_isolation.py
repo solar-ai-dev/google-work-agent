@@ -86,7 +86,7 @@ def _command(*, command_id: str, request_hash: str, request_text: str) -> StartR
     )
 
 
-def test_new_run_in_continuing_conversation_gets_fresh_run_and_thread_id(
+def test_new_run_in__continuing_conversation_gets_fresh__run_and_thread_id(
     tmp_path: Path,
 ) -> None:
     """Case A: Run A completes (terminal) -> an independent new request in the
@@ -121,7 +121,7 @@ def test_new_run_in_continuing_conversation_gets_fresh_run_and_thread_id(
     assert thread_ids[0]["langgraph_thread_id"] != thread_ids[1]["langgraph_thread_id"]
 
 
-def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) -> None:
+def test_new_run__execution_context_excludes__prior_run_content(tmp_path: Path) -> None:
     """Case B: Run B's RunExecutionContext (the source of its LLM prompt
     input) is built strictly from Run B's own run_id-scoped rows -- it must
     not surface Run A's request_text, even though both runs share the same
@@ -150,7 +150,7 @@ def test_new_run_execution_context_excludes_prior_run_content(tmp_path: Path) ->
     assert "일정" not in context_b.request_text
 
 
-def test_start_run_rejects_second_open_run_in_same_conversation(tmp_path: Path) -> None:
+def test_start_run_rejects__second_open_run__in_same_conversation(tmp_path: Path) -> None:
     """Case C boundary: while Run A is still open (non-terminal), a second
     StartRun in the same conversation is rejected as STATE_CONFLICT rather
     than silently creating a second concurrent Run -- this is the

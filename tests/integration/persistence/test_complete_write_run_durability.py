@@ -135,7 +135,7 @@ def _complete(
     ("action_status", "expected_kind"),
     (("VERIFIED", "SUCCESS"), ("REJECTED", "PARTIAL")),
 )
-def test_complete_write_run_message_and_result_survive_restart(
+def test_complete_write__run_message_and__result_survive_restart(
     tmp_path: Path, action_status: str, expected_kind: str
 ) -> None:
     database_path = tmp_path / f"complete-{expected_kind.lower()}.db"
@@ -220,7 +220,7 @@ class _FailingPostCommitTraceUow(SqliteUnitOfWork):
 
 
 @pytest.mark.parametrize("uow_type", (_FailingMessageUow, _FailingAuditUow))
-def test_complete_write_run_required_effect_failure_rolls_back_everything(
+def test_complete_write_run__required_effect_failure__rolls_back_everything(
     tmp_path: Path, uow_type: type[SqliteUnitOfWork]
 ) -> None:
     database_path = tmp_path / f"rollback-{uow_type.__name__}.db"
@@ -247,7 +247,7 @@ def test_complete_write_run_required_effect_failure_rolls_back_everything(
         connection.close()
 
 
-def test_post_commit_trace_failure_does_not_roll_back_terminal_truth(tmp_path: Path) -> None:
+def test_post_commit_trace__failure_does_not__roll_back_terminal_truth(tmp_path: Path) -> None:
     database_path = tmp_path / "post-commit-trace-failure.db"
     _seed(database_path, action_status="VERIFIED")
 

@@ -11,7 +11,7 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
 )
 
 
-def test_fake_api_provider_transport_obeys_structured_contract() -> None:
+def test_fake_api__provider_transport__obeys_structured_contract() -> None:
     transport = FakeAPIProviderTransport()
     transport.queued_payloads.append(
         ProviderResponsePayload(

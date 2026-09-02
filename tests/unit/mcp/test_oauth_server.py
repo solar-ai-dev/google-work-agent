@@ -26,38 +26,38 @@ def _fake_id_token(claims: dict[str, object]) -> str:
     return f"{header}.{payload}.unverified-signature"
 
 
-def test_pkce_s256_matches_rfc_7636_vector() -> None:
+def test_pkce_s256__matches_rfc__rfc_7636_vector() -> None:
     verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
     assert server._pkce_s256(verifier) == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
 
 
-def test_required_scopes_include_openid_and_email() -> None:
+def test_required_scopes__include_openid__and_email() -> None:
     assert "openid" in server.REQUIRED_SCOPES
     assert "https://www.googleapis.com/auth/userinfo.email" in server.REQUIRED_SCOPES
 
 
-def test_verified_email_from_id_token_extracts_verified_email() -> None:
+def test_verified_email__from_id_token__extracts_verified_email() -> None:
     token = _fake_id_token({"email": "user@example.com", "email_verified": True})
     assert server._verified_email_from_id_token(token) == "user@example.com"
 
 
-def test_verified_email_from_id_token_rejects_unverified_email() -> None:
+def test_verified_email__from_id_token__rejects_unverified_email() -> None:
     token = _fake_id_token({"email": "user@example.com", "email_verified": False})
     assert server._verified_email_from_id_token(token) is None
 
 
-def test_verified_email_from_id_token_rejects_missing_email_verified_claim() -> None:
+def test_verified_email_from__id_token_rejects__missing_email_verified_claim() -> None:
     token = _fake_id_token({"email": "user@example.com"})
     assert server._verified_email_from_id_token(token) is None
 
 
-def test_verified_email_from_id_token_rejects_malformed_token() -> None:
+def test_verified_email__from_id_token__rejects_malformed_token() -> None:
     assert server._verified_email_from_id_token("not-a-jwt") is None
     assert server._verified_email_from_id_token("a.b") is None
     assert server._verified_email_from_id_token("a.!!!not-base64!!!.c") is None
 
 
-def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redacted_errors(
+def test_authorization_code_grant_binds__the_callback_uri_and__reports_only_redacted_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = server._OAuthFlow(
@@ -129,7 +129,7 @@ def test_authorization_code_grant_binds_the_callback_uri_and_reports_only_redact
     assert "compatibility-client-secret" not in str(error_info.value)
 
 
-def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
+def test_callback_consumes_a__flow_before_token_exchange__to_block_code_reuse(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({}))
@@ -179,7 +179,7 @@ def test_callback_consumes_a_flow_before_token_exchange_to_block_code_reuse(
     assert state.active_flow is None
 
 
-def test_callback_exposes_only_redacted_token_exchange_diagnostic(
+def test_callback_exposes__only_redacted__token_exchange_diagnostic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({}))
@@ -218,7 +218,7 @@ def test_callback_exposes_only_redacted_token_exchange_diagnostic(
     assert flow.verifier not in repr(payload)
 
 
-def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
+def test_refresh_grant_rotates__keyring_and_keeps_access__token_in_mcp_memory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     store = _MemorySecretStorePort({"refresh": "stored-value"})
@@ -240,7 +240,7 @@ def test_refresh_grant_rotates_keyring_and_keeps_access_token_in_mcp_memory(
     assert "compatibility-client-secret" not in repr(state.connection_payload())
 
 
-def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
+def test_ensure_access_token__self_heals_account_email__from_refresh_id_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Access tokens (and any id_token that arrives with them) are process-
@@ -271,7 +271,7 @@ def test_ensure_access_token_self_heals_account_email_from_refresh_id_token(
     assert state.account_id == "google-subject"
 
 
-def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
+def test_ensure_access_token__resolves_verified_email__from_userinfo_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -298,7 +298,7 @@ def test_ensure_access_token_resolves_verified_email_from_userinfo_fallback(
     assert state.account_id == "google-subject"
 
 
-def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
+def test_valid_access_token__with_resolved_identity__skips_refresh_and_userinfo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -322,7 +322,7 @@ def test_valid_access_token_with_resolved_identity_skips_refresh_and_userinfo(
     assert state.account_email == "user@example.com"
 
 
-def test_valid_access_token_resolves_missing_identity_without_refresh(
+def test_valid_access__token_resolves_missing__identity_without_refresh(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -352,7 +352,7 @@ def test_valid_access_token_resolves_missing_identity_without_refresh(
     assert state.account_email == "user@example.com"
 
 
-def test_valid_access_token_with_unverified_userinfo_keeps_oauth_connected(
+def test_valid_access_token__with_unverified_userinfo__keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -384,7 +384,7 @@ def test_valid_access_token_with_unverified_userinfo_keeps_oauth_connected(
     assert state.account_email is None
 
 
-def test_valid_access_token_userinfo_failure_keeps_oauth_connected(
+def test_valid_access__token_userinfo_failure__keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -407,7 +407,7 @@ def test_valid_access_token_userinfo_failure_keeps_oauth_connected(
     assert state.account_email is None
 
 
-def test_valid_token_userinfo_401_refreshes_once_and_retries_userinfo(
+def test_valid_token_userinfo__http_401_refreshes_once__and_retries_userinfo(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -440,7 +440,7 @@ def test_valid_token_userinfo_401_refreshes_once_and_retries_userinfo(
     assert state.account_email == "user@example.com"
 
 
-def test_userinfo_401_refresh_id_token_email_skips_retry(
+def test_userinfo_401__refresh_id_token__email_skips_retry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -475,7 +475,7 @@ def test_userinfo_401_refresh_id_token_email_skips_retry(
     assert state.account_id == "google-subject"
 
 
-def test_userinfo_401_refresh_failure_requires_reauthentication(
+def test_userinfo_401__refresh_failure__requires_reauthentication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -498,7 +498,7 @@ def test_userinfo_401_refresh_failure_requires_reauthentication(
     assert state.account_email is None
 
 
-def test_userinfo_401_retry_401_does_not_refresh_again(
+def test_userinfo_401__retry_401_does__not_refresh_again(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -544,7 +544,7 @@ def test_userinfo_401_retry_401_does_not_refresh_again(
         server._UserInfoIdentityResolution(email=None, http_status=200),
     ),
 )
-def test_non_401_userinfo_failure_does_not_refresh(
+def test_non_401__userinfo_failure__does_not_refresh(
     monkeypatch: pytest.MonkeyPatch,
     resolution: server._UserInfoIdentityResolution,
 ) -> None:
@@ -566,7 +566,7 @@ def test_non_401_userinfo_failure_does_not_refresh(
     assert state.account_email is None
 
 
-def test_userinfo_requires_sub_and_verified_email(
+def test_userinfo_requires__sub_and__verified_email(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: Request | None = None
@@ -602,7 +602,7 @@ def test_userinfo_requires_sub_and_verified_email(
     )
 
 
-def test_expired_access_token_userinfo_failure_keeps_oauth_connected(
+def test_expired_access__token_userinfo_failure__keeps_oauth_connected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
@@ -623,7 +623,9 @@ def test_expired_access_token_userinfo_failure_keeps_oauth_connected(
     assert state.account_email is None
 
 
-def test_refresh_access_token_decodes_email_from_id_token(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_refresh_access__token_decodes_email__from_id_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     token = _fake_id_token({"email": "user@example.com", "email_verified": True})
     body = json.dumps(
         {"access_token": "access-value", "expires_in": 3600, "id_token": token}
@@ -639,7 +641,7 @@ def test_refresh_access_token_decodes_email_from_id_token(monkeypatch: pytest.Mo
     assert email == "user@example.com"
 
 
-def test_exchange_authorization_code_decodes_email_from_id_token(
+def test_exchange_authorization__code_decodes_email__from_id_token(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     flow = server._OAuthFlow(
@@ -666,7 +668,7 @@ def test_exchange_authorization_code_decodes_email_from_id_token(
     assert email == "user@example.com"
 
 
-def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
+def test_refresh_grant_uses__form_encoded_mcp__only_client_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: Request | None = None
@@ -701,7 +703,7 @@ def test_refresh_grant_uses_form_encoded_mcp_only_client_credentials(
     assert parse_qs(request_body.decode("ascii"))["grant_type"] == ["refresh_token"]
 
 
-def test_desktop_oauth_starts_with_public_client_id_only() -> None:
+def test_desktop_oauth__starts_with_public__client_id_only() -> None:
     state = server.GoogleWorkspaceCredentialProvider(keyring=_MemorySecretStorePort({}))
     state.oauth_settings = GoogleOAuthSettings(google_oauth_client_id="desktop-client")
 
@@ -712,7 +714,7 @@ def test_desktop_oauth_starts_with_public_client_id_only() -> None:
     assert state.active_flow is not None
 
 
-def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_concurrent_expired__access_token__refreshes_once(monkeypatch: pytest.MonkeyPatch) -> None:
     store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
     entered = threading.Barrier(4)
@@ -750,7 +752,7 @@ def test_concurrent_expired_access_token_refreshes_once(monkeypatch: pytest.Monk
     assert calls == 1
 
 
-def test_invalid_grant_requires_reauthentication(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_grant__requires__reauthentication(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
 
     def invalid(value: str, client_id: str | None) -> tuple[str, int, str | None]:
@@ -763,7 +765,7 @@ def test_invalid_grant_requires_reauthentication(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.parametrize("revoke_result", (True, False))
-def test_disconnect_always_cleans_local_credential_and_memory(
+def test_disconnect_always__cleans_local__credential_and_memory(
     monkeypatch: pytest.MonkeyPatch,
     revoke_result: bool,
 ) -> None:

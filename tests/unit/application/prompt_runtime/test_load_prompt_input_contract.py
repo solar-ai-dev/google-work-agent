@@ -29,14 +29,14 @@ def _write(tmp_path: Path, payload: dict[str, object]) -> Path:
     return path
 
 
-def test_load_prompt_input_contract_closes_exact_slot_set() -> None:
+def test_load_prompt__input_contract_closes__exact_slot_set() -> None:
     contract = load_prompt_input_contract()
 
     assert contract.schema_version == 1
     assert contract.slot_ids == REQUIRED_PROMPT_SLOT_IDS
 
 
-def test_sufficiency_contract_matches_the_live_typed_projection() -> None:
+def test_sufficiency_contract__matches_the__live_typed_projection() -> None:
     contract = load_prompt_input_contract()
 
     contract.validate_projection(
@@ -53,7 +53,7 @@ def test_sufficiency_contract_matches_the_live_typed_projection() -> None:
     )
 
 
-def test_load_prompt_input_contract_rejects_schema_version(tmp_path: Path) -> None:
+def test_load_prompt__input_contract__rejects_schema_version(tmp_path: Path) -> None:
     payload = _payload()
     payload["schema_version"] = 2
 
@@ -61,7 +61,7 @@ def test_load_prompt_input_contract_rejects_schema_version(tmp_path: Path) -> No
         load_prompt_input_contract(_write(tmp_path, payload))
 
 
-def test_load_prompt_input_contract_rejects_missing_unknown_and_duplicate_slots(
+def test_load_prompt_input__contract_rejects_missing__unknown_and_duplicate_slots(
     tmp_path: Path,
 ) -> None:
     payload = _payload()
@@ -81,7 +81,7 @@ def test_load_prompt_input_contract_rejects_missing_unknown_and_duplicate_slots(
         load_prompt_input_contract(_write(tmp_path, payload))
 
 
-def test_load_prompt_input_contract_rejects_duplicate_json_field(tmp_path: Path) -> None:
+def test_load_prompt__input_contract_rejects__duplicate_json_field(tmp_path: Path) -> None:
     path = tmp_path / "prompt_runtime_input_contract_v1.json"
     path.write_text('{"schema_version":1,"schema_version":1}', encoding="utf-8")
 

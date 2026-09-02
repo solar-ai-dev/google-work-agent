@@ -11,7 +11,7 @@ from google_work_agent.adapters.langgraph.subgraphs.planning.routing import (
 )
 
 
-def test_compose_exact_node_projection_and_router() -> None:
+def test_compose_exact__node_projection__and_router() -> None:
     assert callable(compose_answer_node)
     projected = compose_answer_projection.project_compose_answer_input(
         {
@@ -32,7 +32,7 @@ def test_compose_exact_node_projection_and_router() -> None:
     assert compose_answer_routing.route_after_compose_answer({"answer_draft": {}}) == "end"
 
 
-def test_outline_and_compose_prompt_inputs_are_not_interchangeable() -> None:
+def test_outline_and__compose_prompt_inputs__are_not_interchangeable() -> None:
     outline = {"user_request", "request_intent", "evidence"}
     compose = set(
         compose_answer_projection.project_compose_answer_input(

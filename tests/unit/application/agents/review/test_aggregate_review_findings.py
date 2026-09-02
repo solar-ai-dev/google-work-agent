@@ -18,7 +18,7 @@ def _finding(kind: str) -> dict[str, object]:
     }
 
 
-def test_aggregate_review_findings_closes_all_six_exact_variants() -> None:
+def test_aggregate_review__findings_closes_all__six_exact_variants() -> None:
     expected = {
         None: "PASS",
         "ISSUE": "REVISE",
@@ -37,7 +37,7 @@ def test_aggregate_review_findings_closes_all_six_exact_variants() -> None:
         assert result["status"] == status
 
 
-def test_aggregate_review_findings_uses_closed_safety_precedence() -> None:
+def test_aggregate_review__findings_uses__closed_safety_precedence() -> None:
     result = aggregate_review_findings(
         [_finding("ISSUE"), _finding("CONFIRMATION"), _finding("BLOCKER")],
         artifact_id="review-1",

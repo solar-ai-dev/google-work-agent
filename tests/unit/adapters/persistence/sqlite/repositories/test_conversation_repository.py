@@ -28,7 +28,7 @@ def _repository() -> SqliteConversationRepository:
     return SqliteConversationRepository(connection)
 
 
-def test_conversation_repository_implements_exact_keyset_surface() -> None:
+def test_conversation_repository__implements_exact__keyset_surface() -> None:
     repository = _repository()
     for conversation_id, updated_at_ms in (("c-1", 10), ("c-2", 20), ("c-3", 30)):
         repository.create(

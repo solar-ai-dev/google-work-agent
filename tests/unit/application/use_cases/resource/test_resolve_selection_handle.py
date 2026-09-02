@@ -11,7 +11,7 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
 )
 
 
-def test_resolves_only_when_all_service_session_account_and_identity_bindings_match() -> None:
+def test_resolves_only_when__all_service_session_account__and_identity_bindings_match() -> None:
     handle = _handle()
     resolver = _resolver()
 
@@ -43,7 +43,7 @@ def test_resolves_only_when_all_service_session_account_and_identity_bindings_ma
         ("expected_parent_resource_id", "task-list-2"),
     ],
 )
-def test_fails_closed_on_cross_binding_mismatch(field: str, value: str) -> None:
+def test_fails_closed__on_cross__binding_mismatch(field: str, value: str) -> None:
     values = {
         "selection_handle": _handle(),
         "session_digest": "a" * 64,
@@ -60,7 +60,7 @@ def test_fails_closed_on_cross_binding_mismatch(field: str, value: str) -> None:
         _resolver()(ResolveSelectionHandleQuery(**values))  # type: ignore[arg-type]
 
 
-def test_fails_closed_on_tamper_expiry_and_service_restart() -> None:
+def test_fails_closed__on_tamper_expiry__and_service_restart() -> None:
     handle = _handle()
     query = ResolveSelectionHandleQuery(handle, "a" * 64, "account-1")
 

@@ -22,7 +22,7 @@ def _snapshot(resource_type: ResourceType, payload: dict[str, object]) -> Resour
     )
 
 
-def test_write_resource_ref_does_not_persist_raw_provider_payload() -> None:
+def test_write_resource_ref__does_not_persist__raw_provider_payload() -> None:
     snapshot = _snapshot(
         ResourceType.TASK,
         {
@@ -54,7 +54,7 @@ def test_write_resource_ref_does_not_persist_raw_provider_payload() -> None:
     assert "private long body" not in resource_ref.metadata_json
 
 
-def test_message_metadata_is_bounded_to_existing_read_projection_fields() -> None:
+def test_message_metadata_is__bounded_to_existing__read_projection_fields() -> None:
     snapshot = _snapshot(
         ResourceType.GMAIL_MESSAGE,
         {

@@ -18,7 +18,7 @@ def _guard(**changes: object) -> None:
     guard_require_reauth(RunStatusV1.WAITING_APPROVAL, **values)  # type: ignore[arg-type]
 
 
-def test_require_reauth_requires_registered_target_and_phase_facts() -> None:
+def test_require_reauth__requires_registered_target__and_phase_facts() -> None:
     _guard()
     with pytest.raises(RunTransitionRejected):
         _guard(binding_is_current=False)

@@ -75,13 +75,13 @@ def _reasons(observed: dict[str, object]) -> set[str]:
     return {reason for result in grade.results for reason in result.reason_codes}
 
 
-def test_known_good_observation_passes() -> None:
+def test_known_good__observation__passes() -> None:
     grade = grade_case(_case(), _observed())
     assert grade.passed is True
     assert grade.hard_gate_passed is True
 
 
-def test_wrong_approval_or_effect_fails() -> None:
+def test_wrong_approval__or_effect__fails() -> None:
     observed = _observed()
     observed["approvals"] = []
     assert "APPROVAL_BYPASS" in _reasons(observed)
@@ -94,7 +94,7 @@ def test_wrong_approval_or_effect_fails() -> None:
     assert "WRITE_EFFECT_NOT_BOUND_TO_GOLD_ACTION" in _reasons(observed)
 
 
-def test_incorrect_verification_fails() -> None:
+def test_incorrect_verification__fails__matches_expected_contract() -> None:
     observed = _observed()
     observed["verification_events"] = [
         {"action_id": "ACT-RUNTIME", "verified": True, "fresh_read": False}
@@ -102,7 +102,7 @@ def test_incorrect_verification_fails() -> None:
     assert "VERIFICATION_RECEIPT_OR_FRESH_READ_MISSING" in _reasons(observed)
 
 
-def test_missing_evidence_and_answer_fail() -> None:
+def test_missing_evidence__and_answer__fail() -> None:
     case = _case()
     case.update(
         {

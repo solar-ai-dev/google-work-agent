@@ -203,7 +203,7 @@ FORBIDDEN_REPOSITORY_METHODS = {
 
 
 @pytest.mark.parametrize(("module_name", "symbols"), MODEL_AUTHORITIES.items())
-def test_all_fifteen_models_have_owner_local_authority(
+def test_all_fifteen__models_have__owner_local_authority(
     module_name: str, symbols: tuple[str, ...]
 ) -> None:
     module = import_module(f"google_work_agent.domain.{module_name}")
@@ -211,7 +211,7 @@ def test_all_fifteen_models_have_owner_local_authority(
         assert getattr(module, symbol).__module__ == module.__name__
 
 
-def test_closed_owner_vocabularies_have_no_legacy_family_or_observation_values() -> None:
+def test_closed_owner_vocabularies__have_no_legacy__family_or_observation_values() -> None:
     resource_ref = import_module("google_work_agent.domain.resource_ref.model")
     verification = import_module("google_work_agent.domain.verification.model")
     assert not hasattr(resource_ref, "StoredResourceType")
@@ -221,7 +221,7 @@ def test_closed_owner_vocabularies_have_no_legacy_family_or_observation_values()
     }
 
 
-def test_all_six_closed_vocabularies_use_exact_versioned_symbols() -> None:
+def test_all_six__closed_vocabularies_use__exact_versioned_symbols() -> None:
     for module_name, symbol in VOCABULARY_AUTHORITIES.items():
         module = import_module(f"google_work_agent.domain.{module_name}")
         vocabulary = getattr(module, symbol)
@@ -229,7 +229,7 @@ def test_all_six_closed_vocabularies_use_exact_versioned_symbols() -> None:
         assert not hasattr(module, symbol.removesuffix("V1"))
 
 
-def test_exact_transition_tree_has_current_mirrored_operations() -> None:
+def test_exact_transition__tree_has__current_mirrored_operations() -> None:
     sources = sorted(
         path
         for path in DOMAIN.glob("*/transitions/*.py")
@@ -243,7 +243,7 @@ def test_exact_transition_tree_has_current_mirrored_operations() -> None:
     assert actual_authorities == TRANSITION_AUTHORITIES
 
 
-def test_required_guard_tree_has_exact_current_owners() -> None:
+def test_required_guard__tree_has__exact_current_owners() -> None:
     sources = sorted(path for path in DOMAIN.glob("*/guards/*.py") if path.name != "__init__.py")
     assert len(sources) == 40
     actual_authorities = {
@@ -253,7 +253,7 @@ def test_required_guard_tree_has_exact_current_owners() -> None:
     assert actual_authorities == GUARD_AUTHORITIES
 
 
-def test_formal_domain_ledger_universe_is_current_exact_set() -> None:
+def test_formal_domain__ledger_universe_is__current_exact_set() -> None:
     assert (
         1
         + sum(map(len, MODEL_AUTHORITIES.values()))
@@ -265,16 +265,16 @@ def test_formal_domain_ledger_universe_is_current_exact_set() -> None:
 
 
 @pytest.mark.parametrize(("owner", "handler"), APPLICATION_OWNER_AUTHORITIES.items())
-def test_corrected_domain_callers_have_exact_application_owner(owner: str, handler: str) -> None:
+def test_corrected_domain__callers_have__exact_application_owner(owner: str, handler: str) -> None:
     module = import_module(f"google_work_agent.application.use_cases.{owner}")
     assert getattr(module, handler).__module__ == module.__name__
 
 
-def test_removed_lifecycle_authorities_are_absent() -> None:
+def test_removed_lifecycle__authorities_are__absent() -> None:
     assert all(not path.exists() for path in REMOVED_AUTHORITIES)
 
 
-def test_corrected_action_commands_have_no_legacy_production_caller_or_export() -> None:
+def test_corrected_action_commands__have_no_legacy__production_caller_or_export() -> None:
     forbidden_symbols = {
         "ApproveWriteActionService",
         "ModifyWriteActionService",
@@ -291,7 +291,7 @@ def test_corrected_action_commands_have_no_legacy_production_caller_or_export() 
     assert violations == []
 
 
-def test_every_domain_transition_authority_is_owner_local_and_exact() -> None:
+def test_every_domain_transition__authority_is_owner__local_and_exact() -> None:
     violations = []
     for path in DOMAIN.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -318,7 +318,7 @@ def test_every_domain_transition_authority_is_owner_local_and_exact() -> None:
         "approval.transitions.expire_approval",
     ),
 )
-def test_child_mutations_require_explicit_current_plan_facts(module_name: str) -> None:
+def test_child_mutations__require_explicit__current_plan_facts(module_name: str) -> None:
     module = import_module(f"google_work_agent.domain.{module_name}")
     operation = next(
         value
@@ -337,7 +337,7 @@ def test_child_mutations_require_explicit_current_plan_facts(module_name: str) -
     assert parameters["plan_is_current"].default is Parameter.empty
 
 
-def test_domain_has_no_outward_layer_imports() -> None:
+def test_domain_has__no_outward__layer_imports() -> None:
     violations: list[str] = []
     for path in DOMAIN.rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"))
@@ -354,14 +354,14 @@ def test_domain_has_no_outward_layer_imports() -> None:
     assert violations == []
 
 
-def test_domain_package_barrel_exports_no_concrete_authority() -> None:
+def test_domain_package__barrel_exports__no_concrete_authority() -> None:
     module = import_module("google_work_agent.domain")
     assert module.__all__ == ()
     tree = ast.parse((DOMAIN / "__init__.py").read_text(encoding="utf-8"))
     assert not any(isinstance(node, ast.Import | ast.ImportFrom) for node in tree.body)
 
 
-def test_lifecycle_repositories_expose_only_query_persistence_and_cas() -> None:
+def test_lifecycle_repositories__expose_only_query__persistence_and_cas() -> None:
     repository_files = (
         SRC / "ports" / "persistence" / "run_repository.py",
         SRC / "ports" / "persistence" / "action_repository.py",

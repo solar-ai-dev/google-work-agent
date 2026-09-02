@@ -67,7 +67,7 @@ def _intent(
     }
 
 
-def test_determinism_same_input_produces_same_scores_and_order() -> None:
+def test_determinism_same__input_produces_same__scores_and_order() -> None:
     segments = [
         _segment(segment_id="seg-1", resource_id="thread-a", text="project follow-up meeting"),
         _segment(segment_id="seg-2", resource_id="thread-b", text="unrelated lunch order"),
@@ -80,7 +80,7 @@ def test_determinism_same_input_produces_same_scores_and_order() -> None:
     assert first == second
 
 
-def test_lexical_relevance_ranks_matching_segment_above_unrelated_one() -> None:
+def test_lexical_relevance__ranks_matching_segment__above_unrelated_one() -> None:
     relevant = _segment(
         segment_id="seg-1", resource_id="thread-a", text="project follow-up meeting notes"
     )
@@ -96,7 +96,7 @@ def test_lexical_relevance_ranks_matching_segment_above_unrelated_one() -> None:
     assert KEYWORD_MATCH_REASON in candidates[0]["reason_codes"]
 
 
-def test_exact_resource_match_scores_highest_and_is_labeled() -> None:
+def test_exact_resource__match_scores_highest__and_is_labeled() -> None:
     exact = _segment(segment_id="seg-1", resource_id="thread-selected", text="unrelated text")
     other = _segment(
         segment_id="seg-2", resource_id="thread-other", text="project follow-up meeting"
@@ -112,7 +112,7 @@ def test_exact_resource_match_scores_highest_and_is_labeled() -> None:
     assert candidates["seg-1"]["retrieval_score"] > candidates["seg-2"]["retrieval_score"]
 
 
-def test_related_resource_child_segment_scores_via_parent_link() -> None:
+def test_related_resource__child_segment_scores__via_parent_link() -> None:
     message = _segment(
         segment_id="seg-2", resource_id="message-1", parent_id="thread-selected", text="reply"
     )
@@ -124,7 +124,7 @@ def test_related_resource_child_segment_scores_via_parent_link() -> None:
     assert candidates[0]["retrieval_score"] == RagScoringConfig().related_resource_score
 
 
-def test_resource_selected_segments_are_never_dropped_by_budget() -> None:
+def test_resource_selected__segments_are_never__dropped_by_budget() -> None:
     """docs/05-context-retrieval.md section 7 (RESOURCE_SELECTED): the user's
     explicitly selected resources are force-included regardless of score, so
     a tight top_k must not silently drop one."""
@@ -144,7 +144,7 @@ def test_resource_selected_segments_are_never_dropped_by_budget() -> None:
     assert forced_count == 1
 
 
-def test_budget_bounds_result_to_top_k_when_no_resource_is_selected() -> None:
+def test_budget_bounds_result__to_top_k_when__no_resource_is_selected() -> None:
     segments = [
         _segment(segment_id=f"seg-{i}", resource_id=f"thread-{i}", text="project follow-up")
         for i in range(10)
@@ -156,7 +156,7 @@ def test_budget_bounds_result_to_top_k_when_no_resource_is_selected() -> None:
     assert len(candidates) == 3
 
 
-def test_no_query_terms_or_resource_match_scores_zero_with_no_reason_codes() -> None:
+def test_no_query_terms_or__resource_match_scores_zero__with_no_reason_codes() -> None:
     segment = _segment(segment_id="seg-1", resource_id="thread-a", text="")
     intent = _intent(goal="")
 
@@ -166,7 +166,7 @@ def test_no_query_terms_or_resource_match_scores_zero_with_no_reason_codes() -> 
     assert candidates[0]["reason_codes"] == []
 
 
-def test_duplicate_segment_id_is_deduplicated() -> None:
+def test_duplicate_segment__id_is__deduplicated() -> None:
     segments = [
         _segment(segment_id="seg-1", resource_id="thread-a", text="duplicate"),
         _segment(segment_id="seg-1", resource_id="thread-a", text="duplicate"),

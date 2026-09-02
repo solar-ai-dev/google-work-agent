@@ -19,7 +19,7 @@ def _guard(**changes: object) -> None:
     guard_block_run(RunStatusV1.WAITING_APPROVAL, **values)  # type: ignore[arg-type]
 
 
-def test_block_run_requires_current_authority_and_resolved_effects() -> None:
+def test_block_run__requires_current_authority__and_resolved_effects() -> None:
     _guard()
     for change in (
         {"plan_is_current": False},

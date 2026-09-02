@@ -124,7 +124,7 @@ def _compile_graph(
     return graph.compile(checkpointer=checkpointer)
 
 
-def test_handled_primary_timeout_fallback_budget_survives_sqlite_checkpoint_reopen(
+def test_handled_primary_timeout__fallback_budget_survives__sqlite_checkpoint_reopen(
     tmp_path: Path,
 ) -> None:
     checkpoint_path = tmp_path / "provider-budget-checkpoint.db"

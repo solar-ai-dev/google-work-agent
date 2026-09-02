@@ -18,7 +18,7 @@ from google_work_agent.application.agents.retrieval.assess_sufficiency import (
 )
 
 
-def test_assess_sufficiency_emits_a_typed_bounded_disposition() -> None:
+def test_assess_sufficiency__emits_a__typed_bounded_disposition() -> None:
     runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
     result = assess_sufficiency(
         llm_runtime=runtime,

@@ -3,7 +3,7 @@ from google_work_agent.adapters.system.sqlite_checkpoint import (
 )
 
 
-def test_retrieval_cache_requirements_project_only_bounded_bindings() -> None:
+def test_retrieval_cache__requirements_project__only_bounded_bindings() -> None:
     requirements = _retrieval_requirements_from_checkpoint(
         {
             "channel_values": {
