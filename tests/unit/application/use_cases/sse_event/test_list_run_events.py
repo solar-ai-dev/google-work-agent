@@ -8,7 +8,10 @@ from google_work_agent.application.use_cases.sse_event.list_run_events import (
     ListRunEventsHandler,
     ListRunEventsQuery,
 )
-from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    RunStatusSsePayloadV1,
+)
 
 
 def _event(run_id: str, occurred_at_ms: int) -> RunSseEventV1:
@@ -19,7 +22,9 @@ def _event(run_id: str, occurred_at_ms: int) -> RunSseEventV1:
         action_id=None,
         occurred_at_ms=occurred_at_ms,
         event_type="run_status",
-        payload={"status": "ANALYZING", "snapshot_version": occurred_at_ms},
+        payload=RunStatusSsePayloadV1(
+            status="ANALYZING", snapshot_version=occurred_at_ms
+        ),
         projection_version=1,
     )
 

@@ -13,6 +13,7 @@ from google_work_agent.ports.system.sse_event_buffer_port import (
     SSE_PAYLOAD_TYPE_BY_EVENT_V1,
     RunSseEventTypeV1,
     RunSseEventV1,
+    SseEventPageV1,
     SsePayloadV1,
 )
 
@@ -51,7 +52,9 @@ class _Buffer:
     def append(self, event: RunSseEventV1) -> None:
         self.events.append(event)
 
-    def list_after(self, run_id: str, last_event_id: str | None, limit: int) -> object:
+    def list_after(
+        self, run_id: str, last_event_id: str | None, limit: int
+    ) -> SseEventPageV1:
         raise NotImplementedError
 
     def clear_run(self, run_id: str) -> None:

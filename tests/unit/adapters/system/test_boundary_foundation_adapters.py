@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -35,7 +36,10 @@ from google_work_agent.ports.system.contracts.external_llm_transfer_scope import
     ExternalLlmTransferScopeV1,
 )
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCacheEntryV1
-from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    RunStatusSsePayloadV1,
+)
 
 
 @dataclass(frozen=True)
@@ -150,14 +154,17 @@ def test_sse_buffer__preserves_typed_events_replays_expires__cursor_and_clears()
                 action_id=None,
                 occurred_at_ms=index,
                 event_type="run_status",
-                payload={"status": "ANALYZING", "snapshot_version": index},
+                payload=RunStatusSsePayloadV1(
+                    status="ANALYZING", snapshot_version=index
+                ),
                 projection_version=1,
             )
         )
 
     page = buffer.list_after("run-1", None, 10)
     assert [event.event_id for event in page.events] == ["service-1:2", "service-1:3"]
-    assert page.events[0].payload.snapshot_version == 1
+    payload = cast(RunStatusSsePayloadV1, page.events[0].payload)
+    assert payload.snapshot_version == 1
     assert buffer.list_after("run-1", "service-1:1", 10).cursor_status == "OK"
     assert buffer.list_after("run-1", "other:1", 10).cursor_status == "CURSOR_EXPIRED"
     buffer.clear_run("run-1")
