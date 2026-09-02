@@ -11,6 +11,7 @@ prompts/agent/r8.6/** text eol=lf
 
 # Current Prompt Registry verifies source bytes against manifest SHA-256.
 src/google_work_agent/application/prompt_runtime/sources/*.md text eol=lf
+evaluation/prompt_candidates/** text eol=lf
 
 # Current Evaluation source artifacts use deterministic UTF-8 LF serialization.
 evaluation/datasets/*.jsonl text eol=lf

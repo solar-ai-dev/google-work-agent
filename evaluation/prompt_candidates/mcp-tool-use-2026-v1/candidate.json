@@ -1,10 +1,14 @@
 {
   "schema_version": 1,
   "candidate_id": "mcp-tool-use-research-2026-v1",
+  "candidate_version": "1.0.0",
   "status": "DRAFT",
+  "base_product_sha": "21e8e8cc26a5c5fe985f05525ee04bef50d0af9e",
+  "base_prompt_bundle_version": "canonical-prompt-runtime-v1",
   "base_prompt_manifest": "src/google_work_agent/application/prompt_runtime/prompt_manifest.json",
   "base_input_contract": "src/google_work_agent/application/prompt_runtime/prompt_runtime_input_contract_v1.json",
   "candidate_prompt_version": "1.1.0-draft.1",
+  "prompt_slot_count": 21,
   "activation_evidence": {
     "node_dev_pass": false,
     "node_holdout_pass": false,
@@ -97,5 +101,7 @@
       "content_hash": "3a8661a6fd844225a293f57d4c90325c0519ce2f5a3ca226e9ade5e6c83cfbf9"
     }
   },
-  "research_basis": "research-basis.md"
+  "research_basis": "research-basis.md",
+  "research_basis_sha256": "c34e5271799f35d5b1215440d46b91cde9258c6b1800ef878328f728f6bbec09",
+  "candidate_bundle_hash": "c8dac65c279a24874ed868a5d42aea89ad0f4fd8bbb9c168533004dd5d5a3af8"
 }

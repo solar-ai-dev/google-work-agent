@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "experiment_id": "prompt-baseline-smoke-template",
+  "experiment_kind": "PROMPT",
+  "product_sha": "21e8e8cc26a5c5fe985f05525ee04bef50d0af9e",
+  "dataset": {
+    "path": "evaluation/datasets/e2e/canonical_cases_v7.jsonl",
+    "sha256": "3b66eedced512e16f1ba7c669ee0891c35f981f067277c7a192853ca4a61a981",
+    "case_ids": [
+      "CASE-CORE-001",
+      "CASE-CORE-002",
+      "CASE-CORE-003"
+    ]
+  },
+  "candidate_config": {
+    "path": "evaluation/configs/candidates/candidate-e01-finalist-prompt-baseline.template.json",
+    "sha256": "2ac1c508184932e7ec1dffeeb5c08692e0599ee3f3327e2778c271c4f4086ec2"
+  },
+  "prompt_candidate": {
+    "kind": "CURRENT_PRODUCT_BASELINE",
+    "candidate_id": "current-product-baseline",
+    "path": "src/google_work_agent/application/prompt_runtime/prompt_manifest.json",
+    "bundle_hash": "a5e83af25d2194f42be01f7408c98dae1db4f7f36dc01c0e319dec66475d961e",
+    "product_binding_status": "CURRENT_PRODUCT_BASELINE"
+  },
+  "repetitions": 3,
+  "randomization_policy": "CASE_MAJOR",
+  "trial_failure_policy": "CONTINUE",
+  "grader": {
+    "path": "evaluation/grader.py",
+    "sha256": "f6bbc4709d9fee3d2f732a3d4868ffe9d1f188dbee5b4050a424e7b63695d8c1"
+  },
+  "comparison_group": "prompt-mcp-research-smoke-v1",
+  "results_root": "evaluation/results",
+  "notes": "Template only; resolve the final Model candidate before execution."
+}
