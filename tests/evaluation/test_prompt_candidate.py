@@ -16,9 +16,7 @@ from google_work_agent.application.prompt_runtime.prompt_registry import (
 )
 
 ROOT = Path(__file__).parents[2]
-CANDIDATE = (
-    ROOT / "evaluation/prompt_candidates/mcp-tool-use-2026-v1/candidate.json"
-)
+CANDIDATE = ROOT / "evaluation/prompt_candidates/mcp-tool-use-2026-v1/candidate.json"
 ACTIVE_PROMPT_ROOT = ROOT / "src/google_work_agent/application/prompt_runtime"
 
 
@@ -41,7 +39,7 @@ def test_mcp_candidate_has__exact_current_slots_hashes_and_draft__lifecycle() ->
     }
 
 
-def test_materialization_is__deterministic_evaluation_loadable_and_product_inactive(
+def test_materialization__is_deterministic_and_evaluation_loadable__while_product_inactive(
     tmp_path: Path,
 ) -> None:
     first = materialize_prompt_candidate(
@@ -93,7 +91,7 @@ def test_materializer_refuses__candidate_or_product_source__overwrite(tmp_path: 
         )
 
 
-def test_candidate_hash_tampering_is_rejected(tmp_path: Path) -> None:
+def test_candidate_hash__tampering_is__rejected(tmp_path: Path) -> None:
     candidate_dir = tmp_path / "candidate"
     candidate_dir.mkdir()
     payload = json.loads(CANDIDATE.read_text(encoding="utf-8"))

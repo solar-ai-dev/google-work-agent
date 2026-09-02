@@ -88,9 +88,7 @@ def compare_experiment_results(
         "consistency_delta": _summary_float(candidate_summary, "pass_power_k")
         - _summary_float(baseline_summary, "pass_power_k"),
         "promotion_status": (
-            "NOT_PROMOTABLE"
-            if hard_gate_regressions
-            else "REQUIRES_SEPARATE_PRODUCT_DECISION"
+            "NOT_PROMOTABLE" if hard_gate_regressions else "REQUIRES_SEPARATE_PRODUCT_DECISION"
         ),
     }
     return result

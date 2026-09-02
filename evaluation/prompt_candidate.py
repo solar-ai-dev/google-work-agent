@@ -63,9 +63,7 @@ class MaterializedPromptCandidate:
     candidate_bundle_hash: str
 
 
-def load_prompt_candidate(
-    candidate_path: Path, *, repository_root: Path
-) -> PromptCandidateBundle:
+def load_prompt_candidate(candidate_path: Path, *, repository_root: Path) -> PromptCandidateBundle:
     """Load one exact DRAFT candidate without importing Product runtime code."""
 
     root = repository_root.resolve()
@@ -123,9 +121,7 @@ def load_prompt_candidate(
     if not research_path.is_file() or file_sha256(research_path) != research_hash:
         raise PromptCandidateError("research basis hash mismatch")
 
-    expected_bundle_hash = _required_sha256_or_git_sha(
-        payload, "candidate_bundle_hash", length=64
-    )
+    expected_bundle_hash = _required_sha256_or_git_sha(payload, "candidate_bundle_hash", length=64)
     actual_bundle_hash = calculate_candidate_bundle_hash(payload)
     if actual_bundle_hash != expected_bundle_hash:
         raise PromptCandidateError("candidate bundle hash mismatch")
@@ -303,9 +299,7 @@ def _required_int(payload: dict[str, object], field: str) -> int:
     return value
 
 
-def _required_sha256_or_git_sha(
-    payload: dict[str, object], field: str, *, length: int
-) -> str:
+def _required_sha256_or_git_sha(payload: dict[str, object], field: str, *, length: int) -> str:
     value = _required_string(payload, field)
     if len(value) != length or any(character not in "0123456789abcdef" for character in value):
         raise PromptCandidateError(f"{field} must be a lowercase {length}-character hex digest")

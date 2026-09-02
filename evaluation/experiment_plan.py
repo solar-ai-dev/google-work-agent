@@ -152,9 +152,7 @@ class ValidatedExperimentPlan:
         }
 
 
-def load_experiment_plan(
-    plan_path: Path, *, repository_root: Path
-) -> ValidatedExperimentPlan:
+def load_experiment_plan(plan_path: Path, *, repository_root: Path) -> ValidatedExperimentPlan:
     """Validate one plan and every referenced immutable artifact."""
 
     root = repository_root.resolve()
@@ -164,9 +162,7 @@ def load_experiment_plan(
     if payload.get("schema_version") != 1:
         raise ExperimentPlanError("ExperimentPlanV1 schema_version must be 1")
     experiment_id = _required_string(payload, "experiment_id")
-    experiment_kind = _choice(
-        payload, "experiment_kind", _EXPERIMENT_KINDS, "experiment kind"
-    )
+    experiment_kind = _choice(payload, "experiment_kind", _EXPERIMENT_KINDS, "experiment kind")
     product_sha = _required_string(payload, "product_sha")
     if _HEX_40.fullmatch(product_sha) is None:
         raise ExperimentPlanError("product_sha must be a lowercase 40-character Git SHA")
@@ -231,9 +227,7 @@ def load_experiment_plan(
         unresolved_bindings.append("prompt_candidate.product_binding")
     unresolved_bindings = sorted(set(unresolved_bindings))
     fixed_configuration_hash = _fixed_configuration_hash(candidate_payload)
-    split_values = {
-        row.get("split") for row in selected_cases if isinstance(row.get("split"), str)
-    }
+    split_values = {row.get("split") for row in selected_cases if isinstance(row.get("split"), str)}
     dev_status = "AVAILABLE" if "DEV" in split_values else "NEEDS_DATASET_DECISION"
     holdout_status = "AVAILABLE" if "HOLDOUT" in split_values else "NEEDS_DATASET_DECISION"
 
@@ -287,9 +281,7 @@ def validate_only_report(plan: ValidatedExperimentPlan) -> dict[str, object]:
     }
 
 
-def _prompt_candidate_identity(
-    payload: dict[str, object], root: Path
-) -> PromptCandidateIdentity:
+def _prompt_candidate_identity(payload: dict[str, object], root: Path) -> PromptCandidateIdentity:
     _require_exact_fields(payload, _PROMPT_FIELDS, "prompt_candidate")
     kind = _choice(payload, "kind", _PROMPT_KINDS, "Prompt candidate kind")
     candidate_id = _required_string(payload, "candidate_id")
@@ -347,9 +339,7 @@ def _fixed_configuration_hash(payload: dict[str, object]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _artifact_identity(
-    payload: dict[str, object], root: Path, label: str
-) -> ArtifactIdentity:
+def _artifact_identity(payload: dict[str, object], root: Path, label: str) -> ArtifactIdentity:
     repository_path = _required_string(payload, "path")
     path = _repository_path(root, repository_path, label)
     expected_hash = _required_digest(payload, "sha256")
@@ -446,9 +436,7 @@ def _optional_string_list(payload: dict[str, object], field: str) -> list[str]:
     return cast(list[str], value)
 
 
-def _choice(
-    payload: dict[str, object], field: str, choices: set[str], label: str
-) -> str:
+def _choice(payload: dict[str, object], field: str, choices: set[str], label: str) -> str:
     value = _required_string(payload, field)
     if value not in choices:
         raise ExperimentPlanError(f"unknown {label}: {value}")

@@ -29,9 +29,7 @@ def _result(case_id: str, *, passed: bool, hard_gate_passed: bool) -> dict[str, 
     }
 
 
-def _plan(
-    tmp_path: Path, experiment_id: str, prompt_id: str
-) -> ValidatedExperimentPlan:
+def _plan(tmp_path: Path, experiment_id: str, prompt_id: str) -> ValidatedExperimentPlan:
     loaded = load_experiment_plan(BASELINE_PLAN, repository_root=ROOT)
     prompt = replace(loaded.prompt_candidate, candidate_id=prompt_id)
     return replace(
@@ -47,7 +45,7 @@ def _plan(
     )
 
 
-def test_comparison_classifies_delta_and_blocks__new_hard_gate_failure(
+def test_comparison__classifies_delta_and_blocks__new_hard_gate_failure(
     tmp_path: Path,
 ) -> None:
     baseline = _plan(tmp_path, "baseline", "prompt-a")
@@ -85,13 +83,11 @@ def test_comparison_classifies_delta_and_blocks__new_hard_gate_failure(
     assert comparison["aggregate_pass_delta"] == -0.25
 
 
-def test_comparison_rejects__different_product_or_fixed_model_profile(
+def test_comparison__rejects__different_product_or_fixed_model_profile(
     tmp_path: Path,
 ) -> None:
     baseline = _plan(tmp_path, "baseline", "prompt-a")
-    candidate = replace(
-        _plan(tmp_path, "candidate", "prompt-b"), product_sha="b" * 40
-    )
+    candidate = replace(_plan(tmp_path, "candidate", "prompt-b"), product_sha="b" * 40)
 
     def executor(*_args: object, **kwargs: object) -> dict[str, object]:
         case = kwargs["case"]
@@ -103,9 +99,7 @@ def test_comparison_rejects__different_product_or_fixed_model_profile(
     run_experiment(candidate, client, execute_case=executor)
 
     with pytest.raises(ExperimentComparisonError, match="product_sha"):
-        compare_experiment_results(
-            baseline.result_directory(), candidate.result_directory()
-        )
+        compare_experiment_results(baseline.result_directory(), candidate.result_directory())
 
 
 @pytest.mark.parametrize(
@@ -115,7 +109,7 @@ def test_comparison_rejects__different_product_or_fixed_model_profile(
         ("dataset_hash", "Prompt comparison artifact differs: dataset"),
     ],
 )
-def test_comparison_rejects__different_fixed_control(
+def test_comparison__rejects__different_fixed_control(
     tmp_path: Path, field: str, expected_message: str
 ) -> None:
     baseline = _plan(tmp_path, "baseline", "prompt-a")
@@ -138,12 +132,10 @@ def test_comparison_rejects__different_fixed_control(
     run_experiment(candidate, client, execute_case=executor)
 
     with pytest.raises(ExperimentComparisonError, match=expected_message):
-        compare_experiment_results(
-            baseline.result_directory(), candidate.result_directory()
-        )
+        compare_experiment_results(baseline.result_directory(), candidate.result_directory())
 
 
-def test_comparison_rejects__missing_trial(tmp_path: Path) -> None:
+def test_comparison__rejects__missing_trial(tmp_path: Path) -> None:
     baseline = _plan(tmp_path, "baseline", "prompt-a")
     candidate = _plan(tmp_path, "candidate", "prompt-b")
 
@@ -158,6 +150,4 @@ def test_comparison_rejects__missing_trial(tmp_path: Path) -> None:
     (candidate.result_directory() / "cases/CASE-1/trial-001.json").unlink()
 
     with pytest.raises(ExperimentComparisonError, match="trial set mismatch"):
-        compare_experiment_results(
-            baseline.result_directory(), candidate.result_directory()
-        )
+        compare_experiment_results(baseline.result_directory(), candidate.result_directory())

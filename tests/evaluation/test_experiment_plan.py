@@ -28,9 +28,7 @@ def test_prompt_plan_templates_lock__same_controls_and_only_prompt__candidate() 
     assert baseline.repetitions == candidate.repetitions == 3
     assert baseline.prompt_candidate.candidate_id == "current-product-baseline"
     assert candidate.prompt_candidate.candidate_id == "mcp-tool-use-research-2026-v1"
-    assert candidate.prompt_candidate.product_binding_status == (
-        "PENDING_DEV_LAUNCH_INTEGRATION"
-    )
+    assert candidate.prompt_candidate.product_binding_status == ("PENDING_DEV_LAUNCH_INTEGRATION")
 
 
 def test_validate_only_reports__unresolved_model_prompt_and_split__without_execution() -> None:
@@ -39,9 +37,7 @@ def test_validate_only_reports__unresolved_model_prompt_and_split__without_execu
 
     assert report["experiment_plan_validation"] == "PASS"
     assert report["runtime_binding_status"] == "PENDING"
-    assert report["prompt_candidate_product_binding"] == (
-        "PENDING_DEV_LAUNCH_INTEGRATION"
-    )
+    assert report["prompt_candidate_product_binding"] == ("PENDING_DEV_LAUNCH_INTEGRATION")
     assert report["model_binding_status"] == "PENDING"
     assert report["dev_split_status"] == "NEEDS_DATASET_DECISION"
     assert report["holdout_split_status"] == "NEEDS_DATASET_DECISION"

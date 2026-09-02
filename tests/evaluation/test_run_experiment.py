@@ -92,7 +92,7 @@ def test_batch_runner_executes__exact_n_times_k_and_preserves__provenance(
     assert not list(plan.result_directory().rglob("*.tmp"))
 
 
-def test_continue_policy_preserves_failure_and_runs__remaining_trials(tmp_path: Path) -> None:
+def test_continue_policy__preserves_failure_and_runs__remaining_trials(tmp_path: Path) -> None:
     plan = _runnable_plan(tmp_path)
     calls = 0
 
@@ -118,8 +118,6 @@ def test_continue_policy_preserves_failure_and_runs__remaining_trials(tmp_path: 
     assert calls == 4
     assert summary["total_trials"] == 4
     assert summary["passed_trials"] == 3
-    failed = (plan.result_directory() / "cases/CASE-1/trial-001.json").read_text(
-        encoding="utf-8"
-    )
+    failed = (plan.result_directory() / "cases/CASE-1/trial-001.json").read_text(encoding="utf-8")
     assert "TRIAL_EXECUTION_FAILED" in failed
     assert "simulated public boundary failure" not in failed

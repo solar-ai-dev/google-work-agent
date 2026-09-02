@@ -90,9 +90,7 @@ def run_experiment(
                     error_type=type(error).__name__,
                 )
                 stop = plan.trial_failure_policy == "STOP"
-            trial_path = (
-                output_root / "cases" / case_id / f"trial-{trial_number:03d}.json"
-            )
+            trial_path = output_root / "cases" / case_id / f"trial-{trial_number:03d}.json"
             write_result(trial_path, result)
             trials.append(result)
             if stop:
@@ -239,9 +237,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--validate-only", action="store_true")
     arguments = parser.parse_args(argv)
     try:
-        plan = load_experiment_plan(
-            arguments.plan, repository_root=arguments.repository_root
-        )
+        plan = load_experiment_plan(arguments.plan, repository_root=arguments.repository_root)
         if arguments.validate_only:
             print(json.dumps(validate_only_report(plan), indent=2, sort_keys=True))
             return 0
