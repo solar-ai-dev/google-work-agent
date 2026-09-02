@@ -83,6 +83,14 @@ def test_top_level_config__is_retained_by__current_install_consumers() -> None:
     assert "-r requirements-cpu.txt" in gpu_requirements.read_text(encoding="utf-8")
 
 
+def test_byte_hashed_prompt_artifacts__pin_checkout_bytes__across_platforms() -> None:
+    attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
+
+    assert "src/google_work_agent/application/prompt_runtime/*.json text eol=lf" in attributes
+    assert "src/google_work_agent/application/prompt_runtime/sources/*.md text eol=lf" in attributes
+    assert "evaluation/prompt_candidates/** text eol=lf" in attributes
+
+
 def test_production_packages__are_nonempty_and_have__no_alias_only_modules() -> None:
     tracked = _tracked_files()
     production_python = {
