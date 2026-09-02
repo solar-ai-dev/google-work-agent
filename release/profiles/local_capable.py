@@ -17,6 +17,7 @@ def build_local_capable_profile() -> ReleaseArtifactProfile:
         deployment_profile=DeploymentProfile.LOCAL_CAPABLE,
         runtime_modes=("API_LLM", "LOCAL_GPU", "AUTO"),
         requires_model_manifest=True,
+        requires_local_model_product_decision=True,
     )
 
 

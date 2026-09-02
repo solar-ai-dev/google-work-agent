@@ -9,6 +9,7 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     HardwareCapability,
     HardwareCapabilityStatus,
     LLMCredentialState,
+    LLMErrorCode,
     ProbeResult,
     RequestedRuntimeMode,
     RouteDecisionInput,
@@ -65,7 +66,7 @@ def test_api_only__blocks_local__gpu_request() -> None:
         )
     )
     assert decision.primary_runtime is ActualRuntime.API_LLM
-    assert decision.safe_reason_code == "API_ONLY_MODE_BLOCKED"
+    assert decision.safe_reason_code == LLMErrorCode.RUNTIME_MODE_BLOCKED.value
 
 
 def test_auto_allows_one_api__fallback_when_local_is__unavailable_and_consent_exists() -> None:

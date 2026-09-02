@@ -12,6 +12,7 @@ import sys
 import uuid
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, cast
 
@@ -426,10 +427,19 @@ from google_work_agent.ports.connector.oauth_credential_port import (
     OAuthEnvironment,
 )
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
+from google_work_agent.ports.llm.approved_model_manifest import ModelManifestV1
 from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
 from google_work_agent.ports.llm.llm_runtime_status_port import (
     LlmProviderRuntimeStatus,
     LlmRuntimeStatusPort,
+)
+from google_work_agent.ports.llm.local_model_product_decision import (
+    LocalModelProductDecisionV1,
+)
+from google_work_agent.ports.llm.runtime_selection import (
+    LlmRuntimeSelectionV1,
+    LocalRuntimeActivationStatus,
+    LocalRuntimeRequirementsV1,
 )
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
@@ -450,9 +460,8 @@ from google_work_agent.ports.system.component_circuit_state_port import (
     ComponentCircuitKey,
     ComponentCircuitStatePort,
 )
-from google_work_agent.ports.system.contracts.application_settings import (
-    AppSettings,
-    WorkHours,
+from google_work_agent.ports.system.contracts.approval_policy_config import (
+    ApprovalPolicyConfigV1,
 )
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
@@ -487,7 +496,7 @@ from google_work_agent.ports.system.readiness_port import (
 )
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCachePort
 from google_work_agent.ports.system.runtime_mode_port import RuntimeModePort
-from google_work_agent.ports.system.settings_port import SettingsPort, SettingsViewV1
+from google_work_agent.ports.system.settings_port import SettingsPort
 from google_work_agent.ports.system.shutdown_port import ShutdownPort
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
 from google_work_agent.ports.system.uuid_port import UUIDPort
@@ -904,8 +913,6 @@ class _CallableUuidPort:
 
 
 _SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
-_VERSION_PATTERN = re.compile(r"\d+(?:\.\d+){1,3}")
-_PLACEHOLDER_MODEL_IDS = {"approved-model", "model", "placeholder", "todo"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1236,74 +1243,88 @@ def _verify_installed_runtime_path(
     _required_release_file(release_files, relative).resolve_verified(install_root)
 
 
-def _load_installed_approved_models(
+def _load_installed_llm_runtime_selection(
     *,
     deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
+    release_version: str,
     install_root: Path,
     release_files: Mapping[str, _VerifiedReleaseFile],
-) -> dict[str, ApprovedModelInfo]:
-    relative = "manifests/model-manifest-v1.json"
+) -> LlmRuntimeSelectionV1:
+    manifest_relative = "manifests/model-manifest-v1.json"
+    decision_relative = "manifests/local-model-product-decision-v1.json"
     if deployment_profile == "API_ONLY":
-        if relative in release_files:
-            raise CoreInitializationError("API_ONLY_MODEL_MANIFEST_FORBIDDEN")
-        return {}
-    binding = _required_release_file(release_files, relative)
-    manifest_path = binding.resolve_verified(install_root)
-    try:
-        decoded = json.loads(
-            manifest_path.read_text(encoding="utf-8"),
-            object_pairs_hook=_unique_runtime_object,
+        if manifest_relative in release_files or decision_relative in release_files:
+            raise CoreInitializationError("API_ONLY_LOCAL_RELEASE_ARTIFACT_FORBIDDEN")
+        return LlmRuntimeSelectionV1(
+            schema_version=1,
+            deployment_profile="API_ONLY",
+            selected_model=None,
+            ollama_endpoint_policy="FIXED_LOOPBACK_OLLAMA_V1",
+            model_manifest_hash=None,
+            product_decision_hash=None,
+            local_runtime_activation_status=(
+                LocalRuntimeActivationStatus.DISABLED_BY_DEPLOYMENT_PROFILE
+            ),
+            requirements=None,
+            release_version=release_version,
         )
+    try:
+        manifest_binding = release_files[manifest_relative]
+    except KeyError as error:
+        raise CoreInitializationError("MODEL_MANIFEST_MISSING") from error
+    try:
+        decision_binding = release_files[decision_relative]
+    except KeyError as error:
+        raise CoreInitializationError("PRODUCT_DECISION_MISSING") from error
+    manifest_path = manifest_binding.resolve_verified(install_root)
+    decision_path = decision_binding.resolve_verified(install_root)
+    try:
+        manifest = ModelManifestV1.from_bytes(manifest_path.read_bytes())
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
         raise CoreInitializationError("MODEL_MANIFEST_INVALID") from error
-    if not isinstance(decoded, dict) or set(decoded) != {
-        "schema_version",
-        "minimum_ollama_version",
-        "approved_models",
-    }:
-        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
-    minimum_version = decoded.get("minimum_ollama_version")
-    raw_models = decoded.get("approved_models")
-    if (
-        decoded.get("schema_version") != 1
-        or not isinstance(minimum_version, str)
-        or _VERSION_PATTERN.fullmatch(minimum_version) is None
-        or not isinstance(raw_models, list)
-        or not raw_models
-    ):
-        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
-    models: dict[str, ApprovedModelInfo] = {}
-    ordered_ids: list[str] = []
-    for raw_model in raw_models:
-        if not isinstance(raw_model, dict) or set(raw_model) != {
-            "model_id",
-            "model_hash",
-        }:
-            raise CoreInitializationError("MODEL_MANIFEST_INVALID")
-        model_id = raw_model.get("model_id")
-        model_hash = raw_model.get("model_hash")
-        if (
-            not isinstance(model_id, str)
-            or not model_id.strip()
-            or model_id.lower() in _PLACEHOLDER_MODEL_IDS
-            or not isinstance(model_hash, str)
-            or _SHA256_PATTERN.fullmatch(model_hash) is None
-            or len(set(model_hash)) == 1
-            or model_id in models
-        ):
-            raise CoreInitializationError("MODEL_MANIFEST_INVALID")
-        ordered_ids.append(model_id)
-        models[model_id] = ApprovedModelInfo(
-            model_id=model_id,
+    try:
+        decision = LocalModelProductDecisionV1.from_bytes(decision_path.read_bytes())
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        raise CoreInitializationError("PRODUCT_DECISION_INVALID") from error
+    manifest_hash = sha256(manifest.to_canonical_bytes()).hexdigest()
+    if decision.model_manifest_hash != manifest_hash:
+        raise CoreInitializationError("PRODUCT_DECISION_MANIFEST_MISMATCH")
+    if decision.release_version != release_version:
+        raise CoreInitializationError("PRODUCT_DECISION_STALE")
+    selected = next(
+        (
+            entry
+            for entry in manifest.approved_models
+            if entry.model_id == decision.selected_model_id
+        ),
+        None,
+    )
+    if selected is None:
+        raise CoreInitializationError("PRODUCT_DECISION_MODEL_NOT_APPROVED")
+    return LlmRuntimeSelectionV1(
+        schema_version=1,
+        deployment_profile="LOCAL_CAPABLE",
+        selected_model=ApprovedModelInfo(
+            model_id=selected.model_id,
             runtime="OLLAMA",
             manifest_version="1",
             schema_version="1",
-            minimum_runtime_version=minimum_version,
-            digest=model_hash,
-        )
-    if ordered_ids != sorted(ordered_ids):
-        raise CoreInitializationError("MODEL_MANIFEST_INVALID")
-    return models
+            minimum_runtime_version=manifest.minimum_ollama_version,
+            digest=selected.model_hash,
+        ),
+        ollama_endpoint_policy="FIXED_LOOPBACK_OLLAMA_V1",
+        model_manifest_hash=manifest_hash,
+        product_decision_hash=decision_binding.sha256,
+        local_runtime_activation_status=LocalRuntimeActivationStatus.ACTIVE,
+        requirements=LocalRuntimeRequirementsV1(
+            minimum_cpu_logical_cores=decision.minimum_cpu_logical_cores,
+            minimum_ram_bytes=decision.minimum_ram_bytes,
+            minimum_vram_bytes=decision.minimum_vram_bytes,
+            supported_os=decision.supported_os,
+            supported_architecture=decision.supported_architecture,
+        ),
+        release_version=release_version,
+    )
 
 
 def _build_verified_frontend_site(
@@ -1316,15 +1337,6 @@ def _build_verified_frontend_site(
         root=install_root / "frontend",
         allowed_files=dict(release_files),
     )
-
-
-def _unique_runtime_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
-    result: dict[str, Any] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ValueError("duplicate installed runtime manifest field")
-        result[key] = value
-    return result
 
 
 def _build_connectors(
@@ -1448,8 +1460,6 @@ DEFAULT_PORT = 8000
 HISTORY_MESSAGE_LIMIT = 200
 HISTORY_RUN_LIMIT = 200
 RELEASE_VERSION = "0.1.0-dev"
-# Explicit development-only model; signed installed mode never consumes it.
-DEFAULT_DEV_OLLAMA_MODEL_ID = "qwen2.5:3b"
 
 
 @dataclass(frozen=True, slots=True)
@@ -1926,6 +1936,7 @@ def build_production_runtime(
         if not runtime_root.is_absolute() or not working_directory.is_absolute():
             raise CoreInitializationError("SIGNED_RUNTIME_PATH_INVALID")
     safe_mode = safe_mode_controller or SafeModeController()
+    approval_policy_config = ApprovalPolicyConfigV1(approval_ttl_minutes=30)
     root = runtime_root.resolve()
     root.mkdir(parents=True, exist_ok=True)
     install_root = working_directory.resolve()
@@ -1939,7 +1950,21 @@ def build_production_runtime(
     )
     prompt_manifest_path = default_prompt_manifest_path()
     frontend_site = None
-    approved_models: dict[str, ApprovedModelInfo] | None = None
+    runtime_selection = LlmRuntimeSelectionV1(
+        schema_version=1,
+        deployment_profile=deployment_profile,
+        selected_model=None,
+        ollama_endpoint_policy="FIXED_LOOPBACK_OLLAMA_V1",
+        model_manifest_hash=None,
+        product_decision_hash=None,
+        local_runtime_activation_status=(
+            LocalRuntimeActivationStatus.DISABLED_BY_DEPLOYMENT_PROFILE
+            if deployment_profile == "API_ONLY"
+            else LocalRuntimeActivationStatus.DEFERRED_UNTIL_PRODUCT_DECISION
+        ),
+        requirements=None,
+        release_version=release_version,
+    )
     if configuration_source == "SIGNED_RELEASE_MANIFEST":
         _verify_installed_runtime_path(
             prompt_manifest_path,
@@ -1950,8 +1975,9 @@ def build_production_runtime(
             install_root=install_root,
             release_files=release_files,
         )
-        approved_models = _load_installed_approved_models(
+        runtime_selection = _load_installed_llm_runtime_selection(
             deployment_profile=deployment_profile,
+            release_version=release_version,
             install_root=install_root,
             release_files=release_files,
         )
@@ -2064,9 +2090,7 @@ def build_production_runtime(
             keyring_store=active_keyring_store,
             environment=oauth_environment.value,
             release_version=release_version,
-            deployment_profile=deployment_profile,
-            allow_development_model=configuration_source == "EXPLICIT_DEVELOPMENT",
-            approved_models=approved_models,
+            runtime_selection=runtime_selection,
         )
     except RuntimeError as error:
         connector_registry.close_all()
@@ -2421,9 +2445,7 @@ def build_production_runtime(
                     # that exact target/control against the compiled graph.
                     is_normal_handoff = admission.submission_kind == "NORMAL_HANDOFF"
                     resume_kind = (
-                        "NORMAL_HANDOFF"
-                        if is_normal_handoff
-                        else "CONSUMED_CONTINUATION_RECOVERY"
+                        "NORMAL_HANDOFF" if is_normal_handoff else "CONSUMED_CONTINUATION_RECOVERY"
                     )
                     resume_payload: dict[str, Any] = {}
                     result = workflow_runtime.resume(
@@ -2642,6 +2664,8 @@ def build_production_runtime(
         unit_of_work_factory=unit_of_work_factory,
         read_unit_of_work_factory=read_unit_of_work_factory,
         settings_port=settings_service,
+        structured_inference_port=structured_inference_router,
+        llm_runtime_selection=runtime_selection,
         create_conversation_handler=CreateConversationHandler(
             unit_of_work_factory=unit_of_work_factory,
             now_ms=clock.now_ms,
@@ -2802,11 +2826,7 @@ def build_production_runtime(
             id_factory=id_generator.new_uuid,
         ),
         approve_action_handler=ApproveActionHandler(
-            get_approval_ttl_minutes=lambda: getattr(
-                settings_service.get_settings(),
-                "approval_ttl_minutes",
-                AppSettings().approval_ttl_minutes,
-            ),
+            get_approval_ttl_minutes=lambda: approval_policy_config.approval_ttl_minutes,
             unit_of_work_factory=unit_of_work_factory,
             checkpoint_port=checkpoint,
             now_ms=clock.now_ms,
@@ -2933,9 +2953,7 @@ def _build_llm_runtime(
     now_ms: Callable[[], int],
     environment: str,
     release_version: str,
-    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
-    allow_development_model: bool,
-    approved_models: Mapping[str, ApprovedModelInfo] | None = None,
+    runtime_selection: LlmRuntimeSelectionV1,
     keyring_store: SecretStorePort | None = None,
 ) -> tuple[
     StructuredInferenceRuntimeRouter,
@@ -2947,11 +2965,6 @@ def _build_llm_runtime(
         store=FileSettingsStore(settings_path),
     )
     prompt_registry = PromptRegistry(prompt_manifest_path)
-
-    def runtime_settings() -> AppSettings:
-        return _project_runtime_settings(
-            settings_service.get_settings(), deployment_profile=deployment_profile
-        )
 
     credential_service = LlmCredentialRouter(
         provider_name="gemini",
@@ -2966,39 +2979,28 @@ def _build_llm_runtime(
         session_store=SessionMemorySecretStore(),
     )
     ollama_transport = OllamaHTTPClient()
+    ollama_probe = LoopbackOllamaProbe(transport=ollama_transport)
     gemini_transport = GeminiHTTPClient()
+    hardware_probe = WindowsHardwareProbeAdapter(
+        runtime_selection=runtime_selection,
+        ollama_probe=ollama_probe,
+    )
     status_service = LlmRuntimeStatusRouter(
-        build_profile=deployment_profile,
-        settings_service=runtime_settings,
+        runtime_selection=runtime_selection,
         credential_service=credential_service,
         api_connection_service=GeminiConnectionService(transport=gemini_transport),
-        ollama_probe=LoopbackOllamaProbe(transport=ollama_transport),
-        approved_models=(
-            dict(approved_models)
-            if approved_models is not None
-            else {
-                DEFAULT_DEV_OLLAMA_MODEL_ID: ApprovedModelInfo(
-                    model_id=DEFAULT_DEV_OLLAMA_MODEL_ID,
-                    runtime="OLLAMA",
-                    manifest_version="1",
-                    schema_version="1",
-                )
-            }
-            if allow_development_model
-            else {}
-        ),
+        hardware_probe=hardware_probe,
         runtime_policy=RuntimePolicy(),
         api_provider_name="gemini",
     )
     structured_inference = StructuredInferenceRuntimeRouter(
         before_provider_dispatch=account_provider_dispatch,
         run_context_provider=current_provider_dispatch_run_id,
-        settings_service=runtime_settings,
+        settings_service=settings_service.get_settings,
+        runtime_selection=runtime_selection,
         status_service=status_service,
         credential_service=credential_service,
-        hardware_probe=WindowsHardwareProbeAdapter(
-            ollama_endpoint=lambda: runtime_settings().ollama_endpoint,
-        ),
+        hardware_probe=hardware_probe,
         api_provider_name="gemini",
         api_provider=GeminiStructuredInferenceAdapter(
             provider_name="gemini",
@@ -3008,10 +3010,10 @@ def _build_llm_runtime(
                 prompt_ref, prompt_input, registry=prompt_registry
             ),
         ),
-        ollama_provider_factory=lambda model, settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
-            endpoint=settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint=runtime_selection.ollama_endpoint,
             model_id=model.model_id,
             assemble_instruction_text=lambda prompt_ref, prompt_input: assemble_prompt(
                 prompt_ref, prompt_input, registry=prompt_registry
@@ -3028,29 +3030,6 @@ def _build_llm_runtime(
         ),
     )
     return structured_inference, settings_service, credential_service, status_service
-
-
-def _project_runtime_settings(
-    settings: SettingsViewV1,
-    *,
-    deployment_profile: Literal["API_ONLY", "LOCAL_CAPABLE"],
-) -> AppSettings:
-    """Project the canonical persisted settings into the still-broad LLM runtime input."""
-
-    return AppSettings(
-        deployment_profile=deployment_profile,
-        requested_runtime_mode=settings.preferred_llm_mode,
-        default_calendar_id=settings.default_calendar_id,
-        default_tasklist_id=settings.default_tasklist_id,
-        timezone=settings.timezone,
-        work_hours=WorkHours(
-            days=tuple(range(7)) if settings.include_weekends else (0, 1, 2, 3, 4),
-            start=settings.working_day_start_local,
-            end=settings.working_day_end_local,
-        ),
-        run_retention_days=settings.retention_days,
-        external_llm_consent=settings.external_llm_consent,
-    )
 
 
 def _write_mcp_manifest(runtime_root: Path) -> Path:

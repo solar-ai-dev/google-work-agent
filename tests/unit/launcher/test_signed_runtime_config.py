@@ -9,10 +9,17 @@ from google_work_agent.api.app import _run_installed_service, create_app
 from google_work_agent.api.composition import (
     CoreInitializationError,
     ProductionRuntimeConfig,
-    _load_installed_approved_models,
+    _load_installed_llm_runtime_selection,
     _VerifiedReleaseFile,
 )
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
+from google_work_agent.ports.llm.approved_model_manifest import (
+    ApprovedModelEntryV1,
+    ModelManifestV1,
+)
+from google_work_agent.ports.llm.local_model_product_decision import (
+    LocalModelProductDecisionV1,
+)
 
 
 def _signed_payload() -> dict[str, object]:
@@ -78,32 +85,44 @@ def test_local_capable__projects_only_release__verified_model_allowlist(
     relative = "manifests/model-manifest-v1.json"
     manifest_path = tmp_path / relative
     manifest_path.parent.mkdir(parents=True)
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "schema_version": 1,
-                "minimum_ollama_version": "0.6.0",
-                "approved_models": [{"model_id": "qwen2.5:7b", "model_hash": "a" * 63 + "b"}],
-            },
-            sort_keys=True,
-        ),
-        encoding="utf-8",
+    manifest = ModelManifestV1(
+        schema_version=1,
+        minimum_ollama_version="0.6.0",
+        approved_models=(ApprovedModelEntryV1("qwen2.5:7b", "a" * 63 + "b"),),
     )
-    content = manifest_path.read_bytes()
-    release_file = _VerifiedReleaseFile(
-        file_path=relative,
-        file_size=len(content),
-        sha256=hashlib.sha256(content).hexdigest(),
-    )
-
-    models = _load_installed_approved_models(
+    manifest_path.write_bytes(manifest.to_canonical_bytes() + b"\n")
+    decision_relative = "manifests/local-model-product-decision-v1.json"
+    decision_path = tmp_path / decision_relative
+    decision = LocalModelProductDecisionV1(
+        schema_version=1,
+        decision_status="APPROVED_FOR_LOCAL_PROFILE",
+        release_version="1.2.3",
         deployment_profile="LOCAL_CAPABLE",
+        selected_model_id="qwen2.5:7b",
+        model_manifest_hash=hashlib.sha256(manifest.to_canonical_bytes()).hexdigest(),
+        candidate_config_hash=hashlib.sha256(b"candidate").hexdigest(),
+        minimum_cpu_logical_cores=4,
+        minimum_ram_bytes=8 * 1024**3,
+        minimum_vram_bytes=4 * 1024**3,
+        supported_os="WINDOWS",
+        supported_architecture="AMD64",
+    )
+    decision_path.write_bytes(decision.to_canonical_bytes() + b"\n")
+    release_files = {
+        path: _VerifiedReleaseFile.from_payload(_release_row(tmp_path, path))
+        for path in (relative, decision_relative)
+    }
+
+    selection = _load_installed_llm_runtime_selection(
+        deployment_profile="LOCAL_CAPABLE",
+        release_version="1.2.3",
         install_root=tmp_path,
-        release_files={relative: release_file},
+        release_files=release_files,
     )
 
-    assert models["qwen2.5:7b"].digest == "a" * 63 + "b"
-    assert models["qwen2.5:7b"].minimum_runtime_version == "0.6.0"
+    assert selection.selected_model is not None
+    assert selection.selected_model.digest == "a" * 63 + "b"
+    assert selection.selected_model.minimum_runtime_version == "0.6.0"
 
 
 def test_api_only__rejects_accidental__local_model_manifest(tmp_path: Path) -> None:
@@ -114,9 +133,10 @@ def test_api_only__rejects_accidental__local_model_manifest(tmp_path: Path) -> N
         sha256="a" * 64,
     )
 
-    with pytest.raises(CoreInitializationError, match="API_ONLY_MODEL_MANIFEST_FORBIDDEN"):
-        _load_installed_approved_models(
+    with pytest.raises(CoreInitializationError, match="API_ONLY_LOCAL_RELEASE_ARTIFACT_FORBIDDEN"):
+        _load_installed_llm_runtime_selection(
             deployment_profile="API_ONLY",
+            release_version="1.2.3",
             install_root=tmp_path,
             release_files={relative: release_file},
         )

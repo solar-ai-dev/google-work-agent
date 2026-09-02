@@ -38,6 +38,7 @@ def build_api_only_profile() -> ReleaseArtifactProfile:
         deployment_profile=DeploymentProfile.API_ONLY,
         runtime_modes=("API_LLM",),
         requires_model_manifest=False,
+        requires_local_model_product_decision=False,
         required_files=_COMMON_REQUIRED_FILES,
         required_nonempty_directories=_COMMON_NONEMPTY_DIRECTORIES,
     )

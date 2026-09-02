@@ -15,6 +15,9 @@ class HardwareProfileV1:
     ollama_available: bool
     ollama_version: str | None
     local_runtime_eligible: bool
+    operating_system: str
+    architecture: str
+    local_runtime_reason_codes: tuple[str, ...]
 
     def __post_init__(self) -> None:
         if self.schema_version != 1 or self.cpu_logical_cores < 1 or self.ram_total_bytes <= 0:
@@ -23,6 +26,8 @@ class HardwareProfileV1:
             self.gpu_name is not None or self.vram_total_bytes is not None
         ):
             raise ValueError("GPU metadata requires an observed GPU")
+        if self.local_runtime_eligible and self.local_runtime_reason_codes:
+            raise ValueError("eligible local runtime cannot contain failure reasons")
 
 
 class HardwareProbePort(Protocol):

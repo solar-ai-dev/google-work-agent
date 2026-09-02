@@ -2,38 +2,33 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Literal
 
 from google_work_agent.adapters.llm.gemini.runtime_status import GeminiLlmRuntimeStatusAdapter
 from google_work_agent.adapters.llm.gemini.structured_inference import GeminiConnectionService
-from google_work_agent.adapters.llm.ollama.runtime_status import OllamaLlmRuntimeStatusAdapter
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.runtime_selection import LlmRuntimeSelectionV1
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
-    OllamaRuntimeProbe,
     RuntimePolicy,
 )
-from google_work_agent.ports.system.contracts.application_settings import AppSettings
+from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
 
 
 @dataclass
 class LlmRuntimeStatusRouter:
-    build_profile: str
-    settings_service: Callable[[], AppSettings]
+    runtime_selection: LlmRuntimeSelectionV1
     credential_service: LlmCredentialRouter
     api_connection_service: GeminiConnectionService
-    ollama_probe: OllamaRuntimeProbe
-    approved_models: dict[str, ApprovedModelInfo]
+    hardware_probe: HardwareProbePort
     runtime_policy: RuntimePolicy
     api_provider_name: str
 
     def get_status(self, provider: str) -> LlmProviderRuntimeStatus:
-        settings = self.settings_service()
         if provider in {"ollama", "LOCAL_GPU"}:
-            status = self._ollama_status(settings)
+            status = self._ollama_status()
             return _with_provider(status, provider)
         actual_provider = self.api_provider_name if provider == "API_LLM" else provider
         if actual_provider != self.api_provider_name:
@@ -55,23 +50,28 @@ class LlmRuntimeStatusRouter:
         return _with_provider(status, provider)
 
     def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
-        return self.approved_models.get(model_id)
+        selected = self.runtime_selection.selected_model
+        return selected if selected is not None and selected.model_id == model_id else None
 
-    def _ollama_status(self, settings: AppSettings) -> LlmProviderRuntimeStatus:
-        if self.build_profile == "API_ONLY":
-            return _status("ollama", False, "DISABLED", None, None)
-        model = self.approved_models.get(settings.approved_model_id or "")
-        if settings.ollama_endpoint is None or model is None:
+    def _ollama_status(self) -> LlmProviderRuntimeStatus:
+        selection = self.runtime_selection
+        if not selection.is_active or selection.selected_model is None:
             return _status(
                 "ollama",
                 False,
                 "DISABLED",
-                settings.approved_model_id,
-                "LOCAL_RUNTIME_NOT_CONFIGURED",
+                selection.selected_model_id,
+                selection.local_runtime_activation_status.value,
             )
-        return OllamaLlmRuntimeStatusAdapter(self.ollama_probe).get_status(
-            endpoint=settings.ollama_endpoint,
-            model=model,
+        hardware = self.hardware_probe.probe()
+        return _status(
+            "ollama",
+            True,
+            "READY" if hardware.local_runtime_eligible else "UNAVAILABLE",
+            selection.selected_model_id,
+            None
+            if hardware.local_runtime_eligible
+            else next(iter(hardware.local_runtime_reason_codes), "LOCAL_UNAVAILABLE"),
         )
 
 

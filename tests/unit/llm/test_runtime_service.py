@@ -11,6 +11,7 @@ from tests.support.fakes import (
     FakeSchemaRepairer,
     approved_model,
 )
+from tests.support.llm_runtime import runtime_selection, settings_view
 
 from google_work_agent.adapters.llm.gemini.structured_inference import (
     GeminiConnectionService,
@@ -41,7 +42,6 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
-from google_work_agent.ports.system.contracts.application_settings import AppSettings
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
@@ -94,6 +94,9 @@ class _HardwareProbe:
             ollama_available=self.eligible,
             ollama_version="test" if self.eligible else None,
             local_runtime_eligible=self.eligible,
+            operating_system="WINDOWS",
+            architecture="AMD64",
+            local_runtime_reason_codes=() if self.eligible else ("GPU_NOT_AVAILABLE",),
         )
 
 
@@ -105,28 +108,13 @@ def _status_service(
     ollama_transport: FakeOllamaTransport,
 ) -> LlmRuntimeStatusRouter:
     return LlmRuntimeStatusRouter(
-        build_profile=build_profile,
-        settings_service=lambda: AppSettings(
+        runtime_selection=runtime_selection(
             deployment_profile=build_profile,
-            requested_runtime_mode="AUTO",
-            external_llm_consent=True,
-            approved_model_id=approved_model().model_id,
-            ollama_endpoint="http://127.0.0.1:11434",
+            model=approved_model() if build_profile == "LOCAL_CAPABLE" else None,
         ),
         credential_service=credential_service,
         api_connection_service=GeminiConnectionService(api_transport),
-        ollama_probe=type(
-            "_Probe",
-            (),
-            {
-                "probe": lambda self, endpoint, approved_model: ollama_transport.probe(
-                    endpoint=endpoint or "http://127.0.0.1:11434",
-                    model_id=None if approved_model is None else approved_model.model_id,
-                    timeout_seconds=5,
-                )
-            },
-        )(),
-        approved_models={approved_model().model_id: approved_model()},
+        hardware_probe=_HardwareProbe(),
         runtime_policy=RuntimePolicy(),
         api_provider_name="generic",
     )
@@ -151,6 +139,8 @@ def build_runtime(**kwargs: object) -> CanonicalStructuredInferenceRuntimeRouter
         if key in kwargs
     }
     router_kwargs.setdefault("hardware_probe", _HardwareProbe())
+    status_service = cast(LlmRuntimeStatusRouter, router_kwargs["status_service"])
+    router_kwargs.setdefault("runtime_selection", status_service.runtime_selection)
     kwargs.clear()
     checkpoint, projector = build_external_scope_gate()
     router_kwargs["checkpoint"] = checkpoint
@@ -198,11 +188,7 @@ def test_api_only__invokes_external__provider() -> None:
         session_store=SessionMemorySecretStore(),
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
-    settings = AppSettings(
-        deployment_profile="API_ONLY",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=True,
-    )
+    settings = settings_view(preferred_llm_mode="API_LLM")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -217,10 +203,10 @@ def test_api_only__invokes_external__provider() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -262,11 +248,7 @@ def test_discard_run__is_a__harmless_noop() -> None:
         session_store=SessionMemorySecretStore(),
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
-    settings = AppSettings(
-        deployment_profile="API_ONLY",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=True,
-    )
+    settings = settings_view(preferred_llm_mode="API_LLM")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -281,10 +263,10 @@ def test_discard_run__is_a__harmless_noop() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -321,13 +303,7 @@ def test_auto_falls__back_once_after__local_gpu_failure() -> None:
         session_store=SessionMemorySecretStore(),
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
-    settings = AppSettings(
-        deployment_profile="LOCAL_CAPABLE",
-        requested_runtime_mode="AUTO",
-        external_llm_consent=True,
-        ollama_endpoint="http://127.0.0.1:11434",
-        approved_model_id=approved_model().model_id,
-    )
+    settings = settings_view(preferred_llm_mode="AUTO")
     recorder = RecordingEventRecorder()
     service = build_runtime(
         settings_service=lambda: settings,
@@ -343,10 +319,10 @@ def test_auto_falls__back_once_after__local_gpu_failure() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -375,13 +351,7 @@ def test_local_gpu__mode_never_falls__back_to_api() -> None:
         session_store=SessionMemorySecretStore(),
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
-    settings = AppSettings(
-        deployment_profile="LOCAL_CAPABLE",
-        requested_runtime_mode="LOCAL_GPU",
-        external_llm_consent=True,
-        ollama_endpoint="http://127.0.0.1:11434",
-        approved_model_id=approved_model().model_id,
-    )
+    settings = settings_view(preferred_llm_mode="LOCAL_GPU")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -396,10 +366,10 @@ def test_local_gpu__mode_never_falls__back_to_api() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -430,13 +400,7 @@ def test_local_gpu__blocked_when__hardware_not_validated() -> None:
         keyring_store=SessionMemorySecretStore(),
         session_store=SessionMemorySecretStore(),
     )
-    settings = AppSettings(
-        deployment_profile="LOCAL_CAPABLE",
-        requested_runtime_mode="LOCAL_GPU",
-        external_llm_consent=False,
-        ollama_endpoint="http://127.0.0.1:11434",
-        approved_model_id=approved_model().model_id,
-    )
+    settings = settings_view(preferred_llm_mode="LOCAL_GPU", external_llm_consent=False)
     not_validated_probe = _HardwareProbe(eligible=False)
     service = build_runtime(
         settings_service=lambda: settings,
@@ -452,10 +416,10 @@ def test_local_gpu__blocked_when__hardware_not_validated() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=ollama_transport,
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -492,11 +456,7 @@ def test_schema_repair__is_limited__to_one_attempt() -> None:
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     repairer = FakeSchemaRepairer(repaired_output={"answer": "fixed"})
-    settings = AppSettings(
-        deployment_profile="API_ONLY",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=True,
-    )
+    settings = settings_view(preferred_llm_mode="API_LLM")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -511,10 +471,10 @@ def test_schema_repair__is_limited__to_one_attempt() -> None:
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -550,11 +510,7 @@ def test_application_semantic_validation__does_not_create_a__second_router_repai
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
     repairer = FakeSchemaRepairer(repaired_output={"answer": "correct-value"})
-    settings = AppSettings(
-        deployment_profile="API_ONLY",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=True,
-    )
+    settings = settings_view(preferred_llm_mode="API_LLM")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -569,10 +525,10 @@ def test_application_semantic_validation__does_not_create_a__second_router_repai
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,
@@ -614,11 +570,7 @@ def test_semantic_validate_failure__without_repairer_raises__once_no_repair_atte
         session_store=SessionMemorySecretStore(),
     )
     credential_service.store_credential("generic", b"key-1", "KEYRING", "credential-op")
-    settings = AppSettings(
-        deployment_profile="API_ONLY",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=True,
-    )
+    settings = settings_view(preferred_llm_mode="API_LLM")
     service = build_runtime(
         settings_service=lambda: settings,
         status_service=_status_service(
@@ -633,10 +585,10 @@ def test_semantic_validate_failure__without_repairer_raises__once_no_repair_atte
             transport=api_transport,
             model="api-model",
         ),
-        ollama_provider_factory=lambda model, current_settings: OllamaStructuredInferenceAdapter(
+        ollama_provider_factory=lambda model: OllamaStructuredInferenceAdapter(
             provider_name="ollama",
             transport=FakeOllamaTransport(),
-            endpoint=current_settings.ollama_endpoint or "http://127.0.0.1:11434",
+            endpoint="http://127.0.0.1:11434",
             model_id=model.model_id,
         ),
         router=None,

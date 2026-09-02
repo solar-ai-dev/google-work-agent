@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from typing import cast
 
@@ -21,7 +22,10 @@ from google_work_agent.adapters.connectors.runtime.stdio_mcp_client import (
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
-from release.generate_model_manifest import ModelManifestV1
+from google_work_agent.ports.llm.approved_model_manifest import ModelManifestV1
+from google_work_agent.ports.llm.local_model_product_decision import (
+    LocalModelProductDecisionV1,
+)
 from release.profiles import DeploymentProfile, ReleaseArtifactProfile
 from release.profiles.api_only import build_api_only_profile
 from release.profiles.local_capable import build_local_capable_profile
@@ -47,6 +51,7 @@ class ApplicationBundleInputs:
     installed_connector_manifest: Path
     signed_tool_registry: Path
     model_manifest: Path | None = None
+    local_model_product_decision: Path | None = None
 
 
 def assemble_application_bundle(
@@ -86,12 +91,28 @@ def assemble_application_bundle(
     if profile is DeploymentProfile.LOCAL_CAPABLE:
         if inputs.model_manifest is None or not inputs.model_manifest.is_file():
             raise ValueError("LOCAL_CAPABLE requires an explicit generated model manifest")
+        if (
+            inputs.local_model_product_decision is None
+            or not inputs.local_model_product_decision.is_file()
+        ):
+            raise ValueError("LOCAL_CAPABLE requires an explicit local model product decision")
         model_manifest = ModelManifestV1.from_bytes(inputs.model_manifest.read_bytes())
-        (manifests_dir / "model-manifest-v1.json").write_bytes(
-            model_manifest.to_canonical_bytes() + b"\n"
+        product_decision = LocalModelProductDecisionV1.from_bytes(
+            inputs.local_model_product_decision.read_bytes()
         )
-    elif inputs.model_manifest is not None:
-        raise ValueError("API_ONLY must not receive a model manifest")
+        manifest_bytes = model_manifest.to_canonical_bytes()
+        if product_decision.model_manifest_hash != sha256(manifest_bytes).hexdigest():
+            raise ValueError("local model product decision manifest hash mismatch")
+        if product_decision.selected_model_id not in {
+            entry.model_id for entry in model_manifest.approved_models
+        }:
+            raise ValueError("local model product decision selects an unapproved model")
+        (manifests_dir / "model-manifest-v1.json").write_bytes(manifest_bytes + b"\n")
+        (manifests_dir / "local-model-product-decision-v1.json").write_bytes(
+            product_decision.to_canonical_bytes() + b"\n"
+        )
+    elif inputs.model_manifest is not None or inputs.local_model_product_decision is not None:
+        raise ValueError("API_ONLY must not receive local model release artifacts")
 
     definitions = (
         (

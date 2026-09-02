@@ -66,6 +66,8 @@ class ApiContainer:
     client_address_resolver: Callable[[Request], str | None] | None = None
     operational_log_sink: OperationalLogSink | None = None
     settings_port: Any | None = None
+    structured_inference_port: Any | None = None
+    llm_runtime_selection: Any | None = None
     read_unit_of_work_factory: Callable[[], Any] | None = None
     start_authorization_handler: Any | None = None
     get_connection_status_handler: Any | None = None

@@ -6,8 +6,14 @@ from pathlib import Path
 
 import pytest
 from release.assemble_application_bundle import assemble_application_bundle
+from release.generate_local_model_product_decision import (
+    generate_local_model_product_decision,
+)
 from release.generate_model_manifest import ApprovedModelEntryV1, generate_model_manifest
 
+from google_work_agent.ports.llm.local_model_product_decision import (
+    LocalModelProductDecisionV1,
+)
 from release.profiles import DeploymentProfile
 from tests.support.bundle_fixture import create_bundle_inputs
 
@@ -48,7 +54,7 @@ def test_local_capable_bundle__requires_and_includes__generated_model_manifest(
     tmp_path: Path,
 ) -> None:
     model_manifest = tmp_path / "model-manifest-v1.json"
-    generate_model_manifest(
+    manifest = generate_model_manifest(
         minimum_ollama_version="0.6.0",
         approved_models=(
             ApprovedModelEntryV1(
@@ -58,7 +64,29 @@ def test_local_capable_bundle__requires_and_includes__generated_model_manifest(
         ),
         output_path=model_manifest,
     )
-    inputs = create_bundle_inputs(tmp_path / "inputs", model_manifest=model_manifest)
+    decision_path = tmp_path / "local-model-product-decision-v1.json"
+    generate_local_model_product_decision(
+        decision=LocalModelProductDecisionV1(
+            schema_version=1,
+            decision_status="APPROVED_FOR_LOCAL_PROFILE",
+            release_version="test-release",
+            deployment_profile="LOCAL_CAPABLE",
+            selected_model_id="qwen2.5:7b-instruct-q4_K_M",
+            model_manifest_hash=hashlib.sha256(manifest.to_canonical_bytes()).hexdigest(),
+            candidate_config_hash=hashlib.sha256(b"candidate-config").hexdigest(),
+            minimum_cpu_logical_cores=4,
+            minimum_ram_bytes=8 * 1024**3,
+            minimum_vram_bytes=4 * 1024**3,
+            supported_os="WINDOWS",
+            supported_architecture="AMD64",
+        ),
+        output_path=decision_path,
+    )
+    inputs = create_bundle_inputs(
+        tmp_path / "inputs",
+        model_manifest=model_manifest,
+        local_model_product_decision=decision_path,
+    )
 
     paths = assemble_application_bundle(
         profile=DeploymentProfile.LOCAL_CAPABLE,
@@ -67,6 +95,7 @@ def test_local_capable_bundle__requires_and_includes__generated_model_manifest(
     )
 
     assert "manifests/model-manifest-v1.json" in paths
+    assert "manifests/local-model-product-decision-v1.json" in paths
     assert not any("ollama.exe" in path.lower() for path in paths)
 
 
@@ -89,7 +118,13 @@ def test_local_capable__rejects_noncanonical__model_manifest(tmp_path: Path) -> 
         '[{"model_id":"ambient-model","model_hash":"0"}]}',
         encoding="utf-8",
     )
-    inputs = create_bundle_inputs(tmp_path / "inputs", model_manifest=model_manifest)
+    decision_path = tmp_path / "local-model-product-decision-v1.json"
+    decision_path.write_text("{}", encoding="utf-8")
+    inputs = create_bundle_inputs(
+        tmp_path / "inputs",
+        model_manifest=model_manifest,
+        local_model_product_decision=decision_path,
+    )
 
     with pytest.raises(ValueError, match="concrete lowercase"):
         assemble_application_bundle(

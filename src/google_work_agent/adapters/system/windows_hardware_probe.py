@@ -5,17 +5,18 @@ from __future__ import annotations
 import ctypes
 import json
 import os
+import platform
 import subprocess
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import cast
-from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
 
+from google_work_agent.adapters.llm.runtime.evaluate_local_runtime_eligibility import (
+    evaluate_local_runtime_eligibility,
+)
+from google_work_agent.ports.llm.runtime_selection import LlmRuntimeSelectionV1
+from google_work_agent.ports.llm.structured_inference_contracts import OllamaRuntimeProbe
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
-
-type LocalRuntimeEligibilityGate = Callable[[int, int, bool, int | None, bool, str | None], bool]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,10 +27,8 @@ class WindowsHardwareProbeAdapter:
     failures never fabricate a capable device or a positive RAM value.
     """
 
-    ollama_endpoint: Callable[[], str | None] = field(
-        default=lambda: "http://127.0.0.1:11434", repr=False
-    )
-    eligibility_gate: LocalRuntimeEligibilityGate | None = field(default=None, repr=False)
+    runtime_selection: LlmRuntimeSelectionV1
+    ollama_probe: OllamaRuntimeProbe
     probe_timeout_seconds: float = 1.0
 
     def probe(self) -> HardwareProfileV1:
@@ -39,20 +38,24 @@ class WindowsHardwareProbeAdapter:
         ram_total_bytes = _physical_memory_bytes()
         gpu_name, vram_total_bytes = _probe_gpu(self.probe_timeout_seconds)
         gpu_present = gpu_name is not None
-        ollama_available, ollama_version = _probe_ollama(
-            self.ollama_endpoint(), self.probe_timeout_seconds
+        operating_system = platform.system().upper()
+        architecture = platform.machine().upper()
+        probe = self.ollama_probe.probe(
+            endpoint=self.runtime_selection.ollama_endpoint,
+            approved_model=self.runtime_selection.selected_model,
         )
-        eligible = bool(
-            self.eligibility_gate
-            and self.eligibility_gate(
-                cpu_logical_cores,
-                ram_total_bytes,
-                gpu_present,
-                vram_total_bytes,
-                ollama_available,
-                ollama_version,
-            )
+        decision = evaluate_local_runtime_eligibility(
+            runtime_selection=self.runtime_selection,
+            operating_system=operating_system,
+            architecture=architecture,
+            cpu_logical_cores=cpu_logical_cores,
+            ram_total_bytes=ram_total_bytes,
+            gpu_present=gpu_present,
+            vram_total_bytes=vram_total_bytes,
+            ollama_probe=probe,
         )
+        raw_version = probe.metadata.get("version")
+        ollama_version = raw_version if isinstance(raw_version, str) else None
         return HardwareProfileV1(
             schema_version=1,
             cpu_logical_cores=cpu_logical_cores,
@@ -60,9 +63,12 @@ class WindowsHardwareProbeAdapter:
             gpu_present=gpu_present,
             gpu_name=gpu_name,
             vram_total_bytes=vram_total_bytes,
-            ollama_available=ollama_available,
+            ollama_available=probe.availability.value == "AVAILABLE",
             ollama_version=ollama_version,
-            local_runtime_eligible=eligible,
+            local_runtime_eligible=decision.eligible,
+            operating_system=operating_system,
+            architecture=architecture,
+            local_runtime_reason_codes=decision.safe_reason_codes,
         )
 
 
@@ -131,22 +137,4 @@ def _probe_gpu(timeout_seconds: float) -> tuple[str | None, int | None]:
     return str(device["Name"]), vram
 
 
-def _probe_ollama(endpoint: str | None, timeout_seconds: float) -> tuple[bool, str | None]:
-    if endpoint is None:
-        return False, None
-    parsed = urlparse(endpoint)
-    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-        return False, None
-    try:
-        with urlopen(  # nosec B310 - endpoint is validated loopback-only above
-            Request(f"{endpoint.rstrip('/')}/api/version", method="GET"),
-            timeout=max(0.1, timeout_seconds),
-        ) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return False, None
-    version = payload.get("version") if isinstance(payload, dict) else None
-    return True, version if isinstance(version, str) and version.strip() else None
-
-
-__all__ = ["LocalRuntimeEligibilityGate", "WindowsHardwareProbeAdapter"]
+__all__ = ["WindowsHardwareProbeAdapter"]

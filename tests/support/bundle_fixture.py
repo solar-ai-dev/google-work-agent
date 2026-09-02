@@ -11,6 +11,7 @@ def create_bundle_inputs(
     root: Path,
     *,
     model_manifest: Path | None = None,
+    local_model_product_decision: Path | None = None,
 ) -> ApplicationBundleInputs:
     directories = {
         name: root / name
@@ -67,4 +68,5 @@ def create_bundle_inputs(
             / "src/google_work_agent/application/tool_registry/tool_registry_manifest.json"
         ),
         model_manifest=model_manifest,
+        local_model_product_decision=local_model_product_decision,
     )

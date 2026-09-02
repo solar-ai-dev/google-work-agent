@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import pytest
 from tests.support.external_llm_scope import ExternalScopeCheckpoint
+from tests.support.llm_runtime import runtime_selection, settings_view
 
 from google_work_agent.adapters.llm.runtime.structured_inference_router import (
     StructuredInferenceRuntimeRouter,
@@ -20,7 +21,6 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     ProviderResponsePayload,
     RuntimePolicy,
 )
-from google_work_agent.ports.system.contracts.application_settings import AppSettings
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
@@ -81,7 +81,20 @@ class _Credential:
 
 class _Hardware:
     def probe(self) -> HardwareProfileV1:
-        return HardwareProfileV1(1, 8, 16 * 1024**3, True, "gpu", 8 * 1024**3, True, "1", True)
+        return HardwareProfileV1(
+            1,
+            8,
+            16 * 1024**3,
+            True,
+            "gpu",
+            8 * 1024**3,
+            True,
+            "1",
+            True,
+            "WINDOWS",
+            "AMD64",
+            (),
+        )
 
 
 @dataclass
@@ -105,29 +118,54 @@ def _router(
     local: _Provider | None = None,
     consent: bool = True,
     repairer: _Repairer | None = None,
+    deployment_profile: str = "LOCAL_CAPABLE",
 ) -> StructuredInferenceRuntimeRouter:
-    settings = AppSettings(
-        deployment_profile="LOCAL_CAPABLE",
-        requested_runtime_mode="API_LLM",
-        external_llm_consent=consent,
-        approved_model_id="model",
-        ollama_endpoint="http://127.0.0.1:11434",
+    settings = settings_view(
+        preferred_llm_mode="API_LLM", external_llm_consent=consent
+    )
+    selection = runtime_selection(
+        deployment_profile=deployment_profile,
+        model=(
+            ApprovedModelInfo("model", "OLLAMA", "1", "1")
+            if deployment_profile == "LOCAL_CAPABLE"
+            else None
+        ),
     )
     local_provider = local or _Provider(runtime=ActualRuntime.LOCAL_GPU)
     return StructuredInferenceRuntimeRouter(
         settings_service=lambda: settings,
+        runtime_selection=selection,
         status_service=_Status(),  # type: ignore[arg-type]
         credential_service=_Credential(),  # type: ignore[arg-type]
         hardware_probe=_Hardware(),
         api_provider_name="api",
         api_provider=api,
-        ollama_provider_factory=lambda _model, _settings: local_provider,
+        ollama_provider_factory=lambda _model: local_provider,
         runtime_policy=RuntimePolicy(),
         checkpoint=checkpoint,  # type: ignore[arg-type]
         schema_repairer=repairer,
         run_context_provider=lambda: "run-1",
         external_scope_projector=lambda _run_id, _source_kinds, _data_classes: _scope(),
     )
+
+
+def test_api_only_local_request__fails_before__either_provider_dispatch() -> None:
+    checkpoint = ExternalScopeCheckpoint(scope=_scope())
+    api = _Provider()
+    local = _Provider(runtime=ActualRuntime.LOCAL_GPU)
+    router = _router(
+        checkpoint=checkpoint,
+        api=api,
+        local=local,
+        deployment_profile="API_ONLY",
+    )
+
+    with pytest.raises(LLMInvocationError) as raised:
+        router.infer("LOCAL_GPU", PROMPT, {"user_request": "hello"}, SCHEMA)
+
+    assert raised.value.code is LLMErrorCode.RUNTIME_MODE_BLOCKED
+    assert api.calls == 0
+    assert local.calls == 0
 
 
 @pytest.mark.parametrize("published", [None, _scope(scope_hash="different")])

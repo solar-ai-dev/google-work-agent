@@ -11,6 +11,7 @@ from typing import Literal, cast
 from google_work_agent.adapters.llm.runtime.llm_credential_router import LlmCredentialRouter
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
+from google_work_agent.ports.llm.runtime_selection import LlmRuntimeSelectionV1
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -33,7 +34,6 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferenceResultV1
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
-from google_work_agent.ports.system.contracts.application_settings import AppSettings
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
@@ -43,6 +43,7 @@ from google_work_agent.ports.system.contracts.observability import (
     Severity,
 )
 from google_work_agent.ports.system.hardware_probe_port import HardwareProbePort
+from google_work_agent.ports.system.settings_port import SettingsViewV1
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,13 +56,14 @@ class NullLLMEventRecorder:
 class StructuredInferenceRuntimeRouter:
     """Select API/Ollama leaves and perform the single permitted AUTO fallback."""
 
-    settings_service: Callable[[], AppSettings]
+    settings_service: Callable[[], SettingsViewV1]
+    runtime_selection: LlmRuntimeSelectionV1
     status_service: LlmRuntimeStatusRouter
     credential_service: LlmCredentialRouter
     hardware_probe: HardwareProbePort
     api_provider_name: str
     api_provider: StructuredLLMProvider
-    ollama_provider_factory: Callable[[ApprovedModelInfo, AppSettings], StructuredLLMProvider]
+    ollama_provider_factory: Callable[[ApprovedModelInfo], StructuredLLMProvider]
     runtime_policy: RuntimePolicy
     event_recorder: LLMEventRecorder = NullLLMEventRecorder()
     schema_repairer: SchemaRepairer | None = None
@@ -85,7 +87,7 @@ class StructuredInferenceRuntimeRouter:
 
         return self.status_service.get_approved_model(model_id)
 
-    def get_runtime_status(self, settings: AppSettings) -> dict[str, object]:
+    def get_runtime_status(self) -> dict[str, object]:
         """Project the router's canonical local-runtime facts for tool calls."""
 
         hardware = self.hardware_probe.probe()
@@ -98,7 +100,7 @@ class StructuredInferenceRuntimeRouter:
             "ollama": {
                 "availability": self.status_service.get_status("ollama").availability,
                 "hardware_capability": {
-                    "cpu_arch": "unknown",
+                    "cpu_arch": hardware.architecture,
                     "core_summary": str(hardware.cpu_logical_cores),
                     "memory_bytes": hardware.ram_total_bytes,
                     "gpu_present": hardware.gpu_present,
@@ -106,9 +108,7 @@ class StructuredInferenceRuntimeRouter:
                     "gpu_name": hardware.gpu_name,
                     "gpu_memory_bytes": hardware.vram_total_bytes,
                     "capability_status": capability_status.value,
-                    "safe_reason_codes": (
-                        () if hardware.local_runtime_eligible else ("LOCAL_HARDWARE_NOT_VALIDATED",)
-                    ),
+                    "safe_reason_codes": hardware.local_runtime_reason_codes,
                 },
             }
         }
@@ -123,11 +123,10 @@ class StructuredInferenceRuntimeRouter:
         settings = self.settings_service()
         requested = RequestedRuntimeMode(requested_mode)
         api_status = self.status_service.get_status(self.api_provider_name)
-        ollama_status = self.status_service.get_status("ollama")
-        approved_model = self.status_service.get_approved_model(settings.approved_model_id or "")
+        approved_model = self.runtime_selection.selected_model
         hardware = self.hardware_probe.probe()
         hardware_capability = HardwareCapability(
-            cpu_arch="unknown",
+            cpu_arch=hardware.architecture,
             core_summary=str(hardware.cpu_logical_cores),
             memory_bytes=hardware.ram_total_bytes,
             gpu_present=hardware.gpu_present,
@@ -139,14 +138,12 @@ class StructuredInferenceRuntimeRouter:
                 if hardware.local_runtime_eligible
                 else HardwareCapabilityStatus.NOT_VALIDATED
             ),
-            safe_reason_codes=()
-            if hardware.local_runtime_eligible
-            else ("LOCAL_HARDWARE_NOT_VALIDATED",),
+            safe_reason_codes=hardware.local_runtime_reason_codes,
         )
         credential = self.credential_service.get_credential_status(self.api_provider_name)
         decision = self.decide(
             RouteDecisionInput(
-                build_profile=settings.deployment_profile,
+                build_profile=self.runtime_selection.deployment_profile,
                 requested_mode=requested,
                 external_llm_consent=settings.external_llm_consent,
                 api_credential_state=(
@@ -170,10 +167,10 @@ class StructuredInferenceRuntimeRouter:
                 ollama_probe=ProbeResult(
                     availability=(
                         AvailabilityState.AVAILABLE
-                        if ollama_status.availability == "READY"
+                        if hardware.local_runtime_eligible
                         else AvailabilityState.UNAVAILABLE
                     ),
-                    safe_error_code=ollama_status.error_code,
+                    safe_error_code=next(iter(hardware.local_runtime_reason_codes), None),
                 ),
                 approved_model=approved_model,
             )
@@ -190,13 +187,18 @@ class StructuredInferenceRuntimeRouter:
             requested_mode=requested,
             decision=decision,
         )
-        provider = self._resolve_provider(
-            runtime=decision.primary_runtime,
-            settings=settings,
-            approved_model=approved_model,
-            hardware_capability=hardware_capability,
-        )
+        if decision.safe_reason_code == LLMErrorCode.RUNTIME_MODE_BLOCKED.value:
+            raise LLMInvocationError(
+                LLMErrorCode.RUNTIME_MODE_BLOCKED,
+                "requested runtime mode is disabled by the release profile",
+            )
         try:
+            provider = self._resolve_provider(
+                runtime=decision.primary_runtime,
+                settings=settings,
+                approved_model=approved_model,
+                hardware_capability=hardware_capability,
+            )
             result = self._invoke_provider(
                 provider=provider,
                 prompt_ref=prompt_ref,
@@ -264,14 +266,14 @@ class StructuredInferenceRuntimeRouter:
     def test_connection(self) -> dict[str, object]:
         settings = self.settings_service()
         if (
-            RequestedRuntimeMode(settings.requested_runtime_mode) is RequestedRuntimeMode.API_LLM
+            RequestedRuntimeMode(settings.preferred_llm_mode) is RequestedRuntimeMode.API_LLM
             and not settings.external_llm_consent
         ):
             raise LLMInvocationError(
                 LLMErrorCode.CONSENT_REQUIRED,
                 "external LLM consent is disabled",
             )
-        return self.get_runtime_status(settings)
+        return self.get_runtime_status()
 
     def _project_external_scope(
         self,
@@ -297,7 +299,11 @@ class StructuredInferenceRuntimeRouter:
         """Preserved deterministic requested-mode and availability rules."""
         if request.build_profile == "API_ONLY":
             if request.requested_mode is not RequestedRuntimeMode.API_LLM:
-                return _decision(ActualRuntime.API_LLM, False, "API_ONLY_MODE_BLOCKED")
+                return _decision(
+                    ActualRuntime.API_LLM,
+                    False,
+                    LLMErrorCode.RUNTIME_MODE_BLOCKED.value,
+                )
             if not request.external_llm_consent:
                 return _decision(ActualRuntime.API_LLM, False, "CONSENT_REQUIRED")
             return _decision(ActualRuntime.API_LLM, False, None)
@@ -325,7 +331,7 @@ class StructuredInferenceRuntimeRouter:
         self,
         *,
         runtime: ActualRuntime,
-        settings: AppSettings,
+        settings: SettingsViewV1,
         approved_model: ApprovedModelInfo | None,
         hardware_capability: HardwareCapability,
     ) -> StructuredLLMProvider:
@@ -348,11 +354,12 @@ class StructuredInferenceRuntimeRouter:
             raise LLMInvocationError(
                 LLMErrorCode.MODEL_NOT_APPROVED, "approved model is unavailable"
             )
-        if settings.ollama_endpoint is None:
+        if not self.runtime_selection.is_active:
             raise LLMInvocationError(
-                LLMErrorCode.LOCAL_UNAVAILABLE, "Ollama endpoint is not configured"
+                LLMErrorCode.LOCAL_UNAVAILABLE,
+                "local runtime is not activated by a current signed product decision",
             )
-        return self.ollama_provider_factory(approved_model, settings)
+        return self.ollama_provider_factory(approved_model)
 
     def _invoke_provider(
         self,
@@ -557,7 +564,7 @@ class StructuredInferenceRuntimeRouter:
         error: LLMInvocationError,
         decision: RouteDecision,
         requested_mode: RequestedRuntimeMode,
-        settings: AppSettings,
+        settings: SettingsViewV1,
     ) -> bool:
         return (
             requested_mode is RequestedRuntimeMode.AUTO
