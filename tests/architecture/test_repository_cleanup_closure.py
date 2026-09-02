@@ -88,18 +88,23 @@ def test_top_level_config__is_retained_by__current_install_consumers() -> None:
 def test_byte_hashed_prompt_artifacts__pin_checkout_bytes__across_platforms() -> None:
     attributes = (ROOT / ".gitattributes").read_text(encoding="utf-8")
     manifest = ROOT / "src/google_work_agent/application/prompt_runtime/prompt_manifest.json"
-    baseline = json.loads(
-        (ROOT / "evaluation/configs/experiments/prompt-baseline-smoke.template.json").read_text(
-            encoding="utf-8"
-        )
-    )
+    plans = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((ROOT / "evaluation/configs/experiments").glob("prompt-*.json"))
+    ]
 
     assert "src/google_work_agent/application/prompt_runtime/*.json text eol=lf" in attributes
     assert "src/google_work_agent/application/prompt_runtime/sources/*.md text eol=lf" in attributes
     assert "evaluation/prompt_candidates/** text eol=lf" in attributes
-    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == baseline["prompt_candidate"][
+    assert len(plans) == 2
+    assert hashlib.sha256(manifest.read_bytes()).hexdigest() == plans[0]["prompt_candidate"][
         "bundle_hash"
     ]
+    for plan in plans:
+        for field in ("dataset", "candidate_config", "grader"):
+            artifact = plan[field]
+            path = ROOT / artifact["path"]
+            assert hashlib.sha256(path.read_bytes()).hexdigest() == artifact["sha256"]
 
 
 def test_production_packages__are_nonempty_and_have__no_alias_only_modules() -> None:

@@ -5,7 +5,7 @@
   "product_sha": "21e8e8cc26a5c5fe985f05525ee04bef50d0af9e",
   "dataset": {
     "path": "evaluation/datasets/e2e/canonical_cases_v7.jsonl",
-    "sha256": "3b66eedced512e16f1ba7c669ee0891c35f981f067277c7a192853ca4a61a981",
+    "sha256": "52c5967da7e9606582cc05cbf5017996f0ddeafed7f5957ebe94d79a2416bfd8",
     "case_ids": [
       "CASE-CORE-001",
       "CASE-CORE-002",
@@ -14,7 +14,7 @@
   },
   "candidate_config": {
     "path": "evaluation/configs/candidates/candidate-e01-finalist-prompt-baseline.template.json",
-    "sha256": "2ac1c508184932e7ec1dffeeb5c08692e0599ee3f3327e2778c271c4f4086ec2"
+    "sha256": "31fe90455e7b006f5620f952fe9c6c13f7cfd3da3532863c4b296148f67fc826"
   },
   "prompt_candidate": {
     "kind": "CURRENT_PRODUCT_BASELINE",
