@@ -7,13 +7,35 @@ import json
 import re
 from collections import Counter
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = ROOT / "docs/artifacts/product-closure"
 ARTIFACT_1 = ARTIFACT_ROOT / "01-canonical-implementation-traceability.csv"
 ARTIFACT_2 = ARTIFACT_ROOT / "02-cross-layer-runtime-traceability.csv"
 REPORT = ARTIFACT_ROOT / "03-product-closure-report.md"
-REVIEW_MANIFEST = ARTIFACT_ROOT / "04-runtime-authority-closure-review.json"
+CLOSURE_REVIEW_BEGIN = "<!-- BEGIN_CLOSURE_REVIEW_JSON -->"
+CLOSURE_REVIEW_END = "<!-- END_CLOSURE_REVIEW_JSON -->"
+CLOSURE_REVIEW_FIELDS = {
+    "schema_version",
+    "internal_reviewed_by",
+    "internal_review_source_sha",
+    "internal_review_reason",
+    "reviewed_requirement_rows",
+    "reviewed_lineage_rows",
+    "maximum_proof_reuse_without_manual_review",
+    "manually_reviewed_reused_proofs",
+    "machine_enforced_runtime_proofs",
+    "frontend_chain",
+    "defect_proof_map",
+    "independent_external_semantic_review_status",
+    "review_scope",
+}
+NEGATIVE_ENFORCEMENT_STALE_REVIEW_TOKENS = (
+    "04-runtime-authority-closure-" + "review.json",
+    "REVIEW_" + "MANIFEST",
+    "runtime-authority-closure-" + "review",
+)
 DELETED_EVALUATION_PATHS = {
     "evaluation/runner/run_experiment.py",
     "evaluation/runner/verify_product_identity.py",
@@ -89,6 +111,20 @@ def _report_counter(name: str) -> int:
     )
     assert match is not None, f"missing report counter: {name}"
     return int(match.group(1))
+
+
+def _closure_review_metadata() -> dict[str, object]:
+    report = REPORT.read_text(encoding="utf-8")
+    assert report.count(CLOSURE_REVIEW_BEGIN) == 1
+    assert report.count(CLOSURE_REVIEW_END) == 1
+    begin = report.index(CLOSURE_REVIEW_BEGIN) + len(CLOSURE_REVIEW_BEGIN)
+    end = report.index(CLOSURE_REVIEW_END)
+    assert begin < end
+    decoded = json.loads(report[begin:end].strip())
+    assert isinstance(decoded, dict)
+    assert set(decoded) == CLOSURE_REVIEW_FIELDS
+    assert decoded["schema_version"] == 1
+    return cast(dict[str, object], decoded)
 
 
 def _definition(path: Path, symbol: str) -> ast.AST:
@@ -269,18 +305,21 @@ def test_cross_layer_traceability__against_current_tree__has_closed_taxonomy_con
             )
 
 
-def test_runtime_authority_review_manifest__binds_actual_callers__effects_and_asserting_tests() -> (
+def test_embedded_closure_review_metadata__binds_actual_callers__effects_and_asserting_tests() -> (
     None
 ):
-    review = json.loads(REVIEW_MANIFEST.read_text(encoding="utf-8"))
-    assert review["schema_version"] == 1
-    assert review["manual_reviewed_by"] == "Codex"
-    assert review["manual_review_source_sha"] == "efb10b374425c4ff1d0af3b7826dad5800e9192c"
+    review = _closure_review_metadata()
+    assert review["internal_reviewed_by"] == "Codex"
+    assert review["internal_review_source_sha"] == "91a3c3e5de6fae3c758c5a5a50c190324323cc84"
     assert review["reviewed_requirement_rows"] == len(_rows(ARTIFACT_1))
     assert review["reviewed_lineage_rows"] == len(_rows(ARTIFACT_2))
-    assert review["manual_review_reason"].strip()
+    assert isinstance(review["internal_review_reason"], str)
+    assert review["internal_review_reason"].strip()
+    assert review["independent_external_semantic_review_status"] == "PENDING"
+    assert review["review_scope"] == "INTERNAL_WORKER_REVIEW_PLUS_MACHINE_CHECKS"
 
-    for proof in review["machine_enforced_runtime_proofs"]:
+    proofs = cast(list[dict[str, str]], review["machine_enforced_runtime_proofs"])
+    for proof in proofs:
         caller_path = ROOT / proof["caller_path"]
         effect_path = ROOT / proof["effect_path"]
         test_path = ROOT / proof["test_path"]
@@ -312,7 +351,7 @@ def test_runtime_authority_review_manifest__binds_actual_callers__effects_and_as
             f"{proof['defect_id']}: cited exact test is non-asserting"
         )
 
-    frontend = review["frontend_chain"]
+    frontend = cast(dict[str, str], review["frontend_chain"])
     api_source = (ROOT / frontend["api_path"]).read_text(encoding="utf-8")
     controller_source = (ROOT / frontend["controller_path"]).read_text(encoding="utf-8")
     component_source = (ROOT / frontend["component_path"]).read_text(encoding="utf-8")
@@ -325,8 +364,9 @@ def test_runtime_authority_review_manifest__binds_actual_callers__effects_and_as
 
 
 def test_traceability_proof_reuse__is_bounded_or__explicitly_manually_reviewed() -> None:
-    review = json.loads(REVIEW_MANIFEST.read_text(encoding="utf-8"))
+    review = _closure_review_metadata()
     threshold = review["maximum_proof_reuse_without_manual_review"]
+    assert isinstance(threshold, int)
     proofs = Counter(
         row["final_test_target_or_assertion"].split(" [", 1)[0] for row in _rows(ARTIFACT_1)
     )
@@ -334,10 +374,49 @@ def test_traceability_proof_reuse__is_bounded_or__explicitly_manually_reviewed()
     assert excessive == review["manually_reviewed_reused_proofs"]
 
 
+def test_product_closure_artifact_set__contains_exactly__three_current_files() -> None:
+    expected = {
+        "01-canonical-implementation-traceability.csv",
+        "02-cross-layer-runtime-traceability.csv",
+        "03-product-closure-report.md",
+    }
+    actual = {path.name for path in ARTIFACT_ROOT.iterdir() if path.is_file()}
+    assert actual == expected
+
+
+def test_retired_review_artifact__has_zero_live__current_repository_references() -> None:
+    roots = (
+        ROOT / "docs",
+        ROOT / "src",
+        ROOT / "tests",
+        ROOT / "release",
+        ROOT / "scripts",
+        ROOT / "launcher",
+        ROOT / "installer",
+        ROOT / "frontend/src",
+        ROOT / "frontend/tests",
+    )
+    searchable_suffixes = {".csv", ".json", ".md", ".py", ".ts", ".tsx"}
+    for base in roots:
+        for path in base.rglob("*"):
+            if not path.is_file() or path.suffix not in searchable_suffixes:
+                continue
+            source = path.read_text(encoding="utf-8")
+            for index, stale in enumerate(NEGATIVE_ENFORCEMENT_STALE_REVIEW_TOKENS):
+                if index == 1:
+                    live_reference = re.search(
+                        rf"(?<![A-Za-z0-9_]){re.escape(stale)}(?![A-Za-z0-9_])",
+                        source,
+                    )
+                    assert live_reference is None, f"stale review artifact reference: {path}"
+                else:
+                    assert stale not in source, f"stale review artifact reference: {path}"
+
+
 def test_deleted_runtime_authorities__have_zero__closure_artifact_references() -> None:
     current_truth = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (ARTIFACT_1, ARTIFACT_2, REPORT, REVIEW_MANIFEST)
+        for path in (ARTIFACT_1, ARTIFACT_2, REPORT)
     )
     for stale in (
         "a271de37e1888341021dab95ddf5ed3e136bc37b",
