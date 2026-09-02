@@ -229,7 +229,7 @@ class RejectActionHandler:
                         occurred_at_ms=now_ms,
                         action_id=command.action_id,
                         event_type="action_status",
-                        payload={"action_status": "REJECTED"},
+                        payload={"action_id": command.action_id, "status": "REJECTED"},
                     )
                 )
             if handoff_id is not None:

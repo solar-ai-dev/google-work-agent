@@ -1025,11 +1025,11 @@ class _WorkflowRuntimeComposition:
                 run_id=cast(str, facts["run_id"]),
                 occurred_at_ms=self._now_ms(),
                 event_type="error" if status == "FAILED" else "completed",
-                payload={
-                    "run_status": status,
-                    "run_version": facts["version"],
-                    "result_kind": facts["terminal_result_kind"],
-                },
+                payload=(
+                    {"error_code": "WORKFLOW_FAILED", "recoverable": False}
+                    if status == "FAILED"
+                    else {"status": status, "result_kind": facts["terminal_result_kind"]}
+                ),
             )
         )
 

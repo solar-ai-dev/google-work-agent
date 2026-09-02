@@ -439,7 +439,7 @@ def test_event_route_keeps__transport_but_not__replay_fallback_semantics() -> No
     source = (ROOT / "src/google_work_agent/api/routes/runs.py").read_text(encoding="utf-8")
     assert (
         "StreamingResponse" in source
-        and "_format_sse" in source
+        and "_format_run_sse" in source
         and ".subscribe(" in source
         and "keepalive" in source
     )

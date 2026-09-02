@@ -3,6 +3,7 @@ import type { RunContext, RunSnapshot } from "../../api/contract";
 import { getRunContext, getRunSnapshot } from "./api/get_run_snapshot";
 import { adjustRunContext, cancelRun, confirmRun, resumeRun } from "./api/run_commands";
 import { subscribeRunEvents } from "./api/subscribe_run_events";
+import type { RunSseEvent } from "./api/run_sse_event";
 
 export type PendingConfirmation = {
   interruptId: string;
@@ -31,6 +32,7 @@ type UseRunProjectionOptions = {
 export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, completeCommand, beginConversationProjection, getConversationProjection, isCurrentProjection, reloadConversationHistory, selectConversationHistory, isRunHistorySynced, markRunHistorySynced, onStatusLine }: UseRunProjectionOptions) {
   const [runSnapshot, setRunSnapshot] = useState<RunSnapshot | null>(null);
   const [runContext, setRunContext] = useState<RunContext | null>(null);
+  const [latestRunEvent, setLatestRunEvent] = useState<RunSseEvent | null>(null);
   const [pendingConfirmation, setPendingConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmationText, setConfirmationText] = useState("");
   const subscriptionRef = useRef<(() => void) | null>(null);
@@ -42,6 +44,7 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     subscriptionRunIdRef.current = null;
     setRunSnapshot(null);
     setRunContext(null);
+    setLatestRunEvent(null);
     setPendingConfirmation(null);
     setConfirmationText("");
   }, []);
@@ -76,7 +79,10 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     subscriptionRef.current?.();
     subscriptionRef.current = subscribeRunEvents(runId, {
       onStateChange: onStatusLine,
-      onEvent: () => { void refreshRun(runId, conversationId, generation); },
+      onEvent: (event) => {
+        setLatestRunEvent(event);
+        void refreshRun(runId, conversationId, generation);
+      },
       onSnapshotRequired: () => {
         subscriptionRef.current = null;
         subscriptionRunIdRef.current = null;
@@ -186,5 +192,5 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     } finally { setBusyCommand(null); }
   }, [busyCommand, commandIdFor, completeCommand, confirmationText, pendingConfirmation, refreshRun, runSnapshot, setBusyCommand]);
 
-  return { runSnapshot, runContext, pendingConfirmation, confirmationText, setConfirmationText, resetRunProjection, refreshRun, selectRun, selectConversation, handleCancelRun, handleResumeRun, handleResumeAfterReauth, handleAdjustContext, handleConfirmation };
+  return { runSnapshot, runContext, latestRunEvent, pendingConfirmation, confirmationText, setConfirmationText, resetRunProjection, refreshRun, selectRun, selectConversation, handleCancelRun, handleResumeRun, handleResumeAfterReauth, handleAdjustContext, handleConfirmation };
 }
