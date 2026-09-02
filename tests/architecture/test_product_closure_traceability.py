@@ -13,6 +13,7 @@ ARTIFACT_ROOT = ROOT / "docs/artifacts/product-closure"
 ARTIFACT_1 = ARTIFACT_ROOT / "01-canonical-implementation-traceability.csv"
 ARTIFACT_2 = ARTIFACT_ROOT / "02-cross-layer-runtime-traceability.csv"
 REPORT = ARTIFACT_ROOT / "03-product-closure-report.md"
+REVIEW_MANIFEST = ARTIFACT_ROOT / "04-runtime-authority-closure-review.json"
 DELETED_EVALUATION_PATHS = {
     "evaluation/runner/run_experiment.py",
     "evaluation/runner/verify_product_identity.py",
@@ -90,6 +91,42 @@ def _report_counter(name: str) -> int:
     return int(match.group(1))
 
 
+def _definition(path: Path, symbol: str) -> ast.AST:
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and (
+            node.name == symbol
+        ):
+            return node
+    raise AssertionError(f"missing definition: {path.relative_to(ROOT)}::{symbol}")
+
+
+def _has_asserting_behavior(path: Path, symbol: str) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    definitions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+    def visits_assertion(node: ast.AST, visited: set[str]) -> bool:
+        for child in ast.walk(node):
+            if isinstance(child, ast.Assert):
+                return True
+            if not isinstance(child, ast.Call):
+                continue
+            if isinstance(child.func, ast.Attribute) and child.func.attr in {"raises", "fail"}:
+                return True
+            if isinstance(child.func, ast.Name) and child.func.id in definitions:
+                helper = child.func.id
+                if helper not in visited and visits_assertion(
+                    definitions[helper], visited | {helper}
+                ):
+                    return True
+        return False
+
+    return visits_assertion(_definition(path, symbol), {symbol})
+
+
 def test_canonical_traceability_rows__against_current_tree__have_exact_unique_identity_and_locators() -> (
     None
 ):
@@ -153,10 +190,15 @@ def test_canonical_traceability_tests__against_collected_sources__resolve_exact_
         assert separator and recorded_path == row["final_test_path"]
         if target.startswith("test_title:"):
             title = json.loads(target.removeprefix("test_title:"))
-            assert title in path.read_text(encoding="utf-8")
+            test_source = path.read_text(encoding="utf-8")
+            assert title in test_source
+            assert "expect(" in test_source, f"{row['requirement_id']}: non-asserting frontend proof"
         else:
             assert target in _python_symbols(path), (
                 f"{row['requirement_id']}: stale exact test target"
+            )
+            assert _has_asserting_behavior(path, target), (
+                f"{row['requirement_id']}: exact test target has no assertion"
             )
 
 
@@ -217,11 +259,95 @@ def test_cross_layer_traceability__against_current_tree__has_closed_taxonomy_con
         assert path.is_file(), f"{row['lineage_id']}: stale proof path"
         target = target_and_detail.split(" [", 1)[0]
         if target.startswith("test_title:"):
-            assert json.loads(target.removeprefix("test_title:")) in path.read_text(
-                encoding="utf-8"
-            )
+            test_source = path.read_text(encoding="utf-8")
+            assert json.loads(target.removeprefix("test_title:")) in test_source
+            assert "expect(" in test_source, f"{row['lineage_id']}: non-asserting proof"
         else:
             assert target in _python_symbols(path), f"{row['lineage_id']}: stale proof target"
+            assert _has_asserting_behavior(path, target), (
+                f"{row['lineage_id']}: exact proof target has no assertion"
+            )
+
+
+def test_runtime_authority_review_manifest__binds_actual_callers__effects_and_asserting_tests() -> (
+    None
+):
+    review = json.loads(REVIEW_MANIFEST.read_text(encoding="utf-8"))
+    assert review["schema_version"] == 1
+    assert review["manual_reviewed_by"] == "Codex"
+    assert review["manual_review_source_sha"] == "efb10b374425c4ff1d0af3b7826dad5800e9192c"
+    assert review["reviewed_requirement_rows"] == len(_rows(ARTIFACT_1))
+    assert review["reviewed_lineage_rows"] == len(_rows(ARTIFACT_2))
+    assert review["manual_review_reason"].strip()
+
+    for proof in review["machine_enforced_runtime_proofs"]:
+        caller_path = ROOT / proof["caller_path"]
+        effect_path = ROOT / proof["effect_path"]
+        test_path = ROOT / proof["test_path"]
+        _assert_path_and_symbol(
+            proof["owner_path"], proof["owner_symbol"], context=proof["defect_id"]
+        )
+        _assert_path_and_symbol(
+            proof["caller_path"], proof["caller_symbol"], context=proof["defect_id"]
+        )
+        _assert_path_and_symbol(
+            proof["effect_path"], proof["effect_symbol"], context=proof["defect_id"]
+        )
+        caller_source = caller_path.read_text(encoding="utf-8")
+        assert proof["owner_symbol"] in caller_source, (
+            f"{proof['defect_id']}: caller neither imports nor injects owner"
+        )
+        composition_source = (ROOT / "src/google_work_agent/api/composition.py").read_text(
+            encoding="utf-8"
+        )
+        assert proof["composition_symbol"] in (
+            caller_source + composition_source
+        ), f"{proof['defect_id']}: production composition binding is absent"
+        effect_source = effect_path.read_text(encoding="utf-8")
+        assert any(
+            marker in effect_source
+            for marker in ("invoke_structured(", "write_bytes(", "save(", "edge_map(")
+        ), f"{proof['defect_id']}: effect locator has no effect operation"
+        assert _has_asserting_behavior(test_path, proof["test_symbol"]), (
+            f"{proof['defect_id']}: cited exact test is non-asserting"
+        )
+
+    frontend = review["frontend_chain"]
+    api_source = (ROOT / frontend["api_path"]).read_text(encoding="utf-8")
+    controller_source = (ROOT / frontend["controller_path"]).read_text(encoding="utf-8")
+    component_source = (ROOT / frontend["component_path"]).read_text(encoding="utf-8")
+    test_source = (ROOT / frontend["test_path"]).read_text(encoding="utf-8")
+    assert f"function {frontend['api_symbol']}" in api_source
+    assert frontend["api_symbol"] in controller_source
+    assert frontend["controller_symbol"] in controller_source
+    assert frontend["component_symbol"] in component_source
+    assert "onCancel" in component_source and "expect(" in test_source
+
+
+def test_traceability_proof_reuse__is_bounded_or__explicitly_manually_reviewed() -> None:
+    review = json.loads(REVIEW_MANIFEST.read_text(encoding="utf-8"))
+    threshold = review["maximum_proof_reuse_without_manual_review"]
+    proofs = Counter(
+        row["final_test_target_or_assertion"].split(" [", 1)[0] for row in _rows(ARTIFACT_1)
+    )
+    excessive = {target: count for target, count in proofs.items() if count > threshold}
+    assert excessive == review["manually_reviewed_reused_proofs"]
+
+
+def test_deleted_runtime_authorities__have_zero__closure_artifact_references() -> None:
+    current_truth = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (ARTIFACT_1, ARTIFACT_2, REPORT, REVIEW_MANIFEST)
+    )
+    for stale in (
+        "a271de37e1888341021dab95ddf5ed3e136bc37b",
+        "ports/system/contracts/application_settings.py",
+        "frontend/src/app/App.test.tsx",
+        "_load_installed_approved_models",
+        "adapters/readiness/composite.py",
+        "adapters/connectors/google/mcp",
+    ):
+        assert stale not in current_truth
 
 
 def test_closure_report_counters__against_traceability_csvs__are_mechanically_equal() -> None:

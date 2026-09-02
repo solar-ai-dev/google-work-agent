@@ -1,112 +1,122 @@
-# Final Product Closure Report
+# Remaining Runtime Authority and Duplication Closure Report
 
 ## Current truth anchors
 
 ```text
-SOURCE_BRANCH_HEAD_AT_START = b598c877c210dce5adb89e33f3fc1031b22d842b
-PRODUCT_SOURCE_SHA = a271de37e1888341021dab95ddf5ed3e136bc37b
-PRODUCT_SOURCE_TREE = 702c52d1c641c5c4ecebf35e2baf0b32c0f4fb97
-ARTIFACT_VALIDATION_BASE_SHA = a271de37e1888341021dab95ddf5ed3e136bc37b
-EVALUATION_STRUCTURE_SHA = 66e1f9c910973d7406bec9d6e25519e4ad784065
+SOURCE_BRANCH = remediation/final-closure-integrity-fix
+EXPECTED_SOURCE_HEAD = d2ee71fed4afc885bacc404c81c1c61dd56bc330
+ACTUAL_SOURCE_HEAD = d2ee71fed4afc885bacc404c81c1c61dd56bc330
+WORK_BRANCH = remediation/final-runtime-authority-closure
+RUNTIME_COMMIT_SHA = 18a5b247692cc79697864562607c9358d57c3222
+PRODUCT_SOURCE_SHA = efb10b374425c4ff1d0af3b7826dad5800e9192c
+ARCHITECTURE_COMMIT_SHA = efb10b374425c4ff1d0af3b7826dad5800e9192c
+MANUAL_REVIEW_SOURCE_SHA = efb10b374425c4ff1d0af3b7826dad5800e9192c
 CURRENT_SHA_CI_EVIDENCE = NOT_AVAILABLE
-ARTIFACT_1_SHA256 = 0e16153470a1f1b5fe9cc4b887e7cd8911274132b9b5d9dfcf3b4864057472e0
-ARTIFACT_2_SHA256 = da0de6b49709ff38bf967b959856a26f4d3445af367cc51924ef4b653eea3a69
+ARTIFACT_1_SHA256 = cd17cf92bdaec4c82a85b786f3fb01e2f0346e6739dba0b8ae175d4fa28de318
+ARTIFACT_2_SHA256 = 0fb2193f5d62c5647ae1f05c47fccc6aebcf3343867813c7f273625101e5ab89
 ```
 
-The artifact commit is intentionally not self-referenced. All test evidence below is local unless explicitly marked otherwise. Current Canonical, current tracked paths/symbols, frozen finding provenance, direct callers, runtime bindings, and exact collected test targets were independently re-resolved; prior PASS/debt values and generic family templates were not copied.
+The artifact-only commit is intentionally not self-referenced. All recorded execution evidence is LOCAL. The final artifact commit and the matching remote head are reported after push.
 
 ## Defect closure
 
-| Defect | Current remediation | Exact proof | Status |
-|---|---|---|---|
-| D-001 | Removed the universal Main router; 22 conditional stages own exact `route_after_<stage>.py` functions and the terminal chain uses direct edges. | `tests/architecture/langgraph/test_main_stage_routing.py`; 51 real graph profile/scenario cases | PASS |
-| D-002 | Split `runtime.py` into `application_settings.py`, `backup.py`, and `runtime_operation.py`; migrated every import. | forbidden-name architecture census + mypy/import compilation | PASS |
-| D-003 | Removed the hard-coded `runtime.py` enforcement exception without adding a registry exception. | `test_forbidden_production_filenames__in_current_tree__are_absent` | PASS |
-| D-004 | Renamed all 1,606 Python tests to the three-segment grammar; the Product commit collected 2,031 tests (+6 routing/naming/fixture gates) and the final artifact commit adds 10 consistency gates for 2,041 total. | AST naming enforcement + full collection | PASS |
-| D-005 | Moved 14 JSON fixtures to `tests/fixtures/data/google/<resource>/...`; deleted the legacy root. | strict UTF-8/path enforcement + fixture consumer tests | PASS |
-| D-006 | Rebuilt all 1,010 requirement rows with current exact locators and test targets. | Product Closure traceability architecture gate | PASS |
-| D-007 | Reclassified all 13 `FINAL-AUTHORITY-*` rows as `AUTHORITY`. | Artifact 2 taxonomy gate | PASS |
-| D-008 | Rebuilt all 85 lineages; corrected the durable `POST /runs` consumer chain to `ScheduleRunExecutionHandler → WorkflowExecutionPort → BackgroundRunExecutorAdapter`. | lineage consistency and real E2E gates | PASS |
-| D-009 | Recalculated every counter below directly from Artifact 1/2. | report-vs-CSV consistency gate | PASS |
-| D-010 | Bound local commands/results to the current tree and explicitly record missing CI evidence. | Regression execution ledger below | PASS |
-| D-011 | Bound each historical finding occurrence to a current PASS row with exact owner/caller/runtime/test proof. | historical semantic accounting gate | PASS |
-| D-012 | Revalidated the current Evaluation workspace and public HTTP-only Product boundary. | `tests/evaluation` + evaluation boundary architecture tests | PASS |
+| ID | Before | Root cause | Remediation | Exact proof | Status |
+|---|---|---|---|---|---|
+| B-001 | A LOCAL_CAPABLE install could not supply an approved selected model, immutable loopback endpoint policy, or final eligibility to production composition. | Release facts were projected through broad settings and the production hardware gate remained disconnected. | Added signed `LocalModelProductDecisionV1`, immutable `LlmRuntimeSelectionV1`, installed artifact validation, one eligibility evaluator, and production injection into both status and structured-inference routers. | `tests/integration/llm/test_production_local_runtime_composition.py::test_signed_local_decision__production_composition__invokes_only_local_provider` | PASS |
+| B-002 | `AppSettings` re-owned user preferences, release profile, model identity, runtime mode, endpoint, and policy defaults. | An old compatibility aggregate survived after exact ports existed. | Deleted the aggregate; user persistence is `SettingsViewV1`, release choice is `LocalModelProductDecisionV1`, immutable runtime projection is `LlmRuntimeSelectionV1`, and approval timing is `ApprovalPolicyConfigV1`. | `tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities` | PASS |
+| B-003 | Release generation and Product startup independently defined manifest fields and validation. | No packageable Product contract owned canonical parsing and serialization. | `approved_model_manifest.py` now owns the only schema/parser/hash/placeholder/order authority; generator and consumer import it. | `tests/release/test_generate_model_manifest.py::test_model_manifest_is__deterministic_and_uses__only_current_closed_schema`; `tests/architecture/test_repository_architecture.py::test_local_runtime_authorities__have_exactly_one__semantic_owner` | PASS |
+| B-004 | Closure rows were accepted when paths and symbols merely existed. | The gate did not bind current caller, composition, effect, asserting test, frontend chain, or excessive proof reuse. | Added an artifact-bound review manifest plus AST/source gates for assertion behavior, owner/caller/composition/effect locators, frontend chain, deleted symbols, and manually adjudicated proof reuse. | `tests/architecture/test_product_closure_traceability.py::test_runtime_authority_review_manifest__binds_actual_callers__effects_and_asserting_tests` | PASS |
+| H-001 | Some stage routers accepted globally known but profile-absent successors and failed later in edge-map lookup. | Routers validated the global target vocabulary instead of the compiled profile-local successor set. | All conditional stage routers now receive the immutable profile-local target set and reject unavailable targets before edge selection. | `tests/architecture/langgraph/test_main_stage_routing.py::test_every_main_stage__accepts_only__current_profile_successors`; `test_globally_known_but_profile_unavailable_target__fails_in_router__before_edge_map` | PASS |
+| DUP-001 | Four app/composition tests lived under `frontend/src` while the canonical test root also existed. | Historical colocation survived after test-root ownership was standardized. | Moved all four tests to `frontend/tests/app`; assertions and the 107-case integration episode were preserved. | `npm exec -- vitest run`: 34 files / 156 tests; `test_removed_structure_residue__has_zero__production_authorities` | PASS |
+| DUP-002 | Empty Google MCP and Main projection package markers remained in production source. | Old package locations survived after their authorities moved. | Deleted empty production packages and added a repository-wide empty-package gate. | `tests/architecture/test_repository_architecture.py::test_production_packages__contain_runtime_artifacts__beyond_package_markers` | PASS |
+| DUP-003 | Static readiness test doubles were shipped in production source. | Test fixtures had become convenient imports for tests without a production caller. | Moved both static doubles to `tests/support/readiness.py`; production has zero references. | `tests/architecture/test_repository_architecture.py::test_removed_structure_residue__has_zero__production_authorities` | PASS |
+| DUP-004 | Task and Calendar detail adapters repeat three small response checks. | The two consumers have owner-local provider response contracts, below the three-consumer extraction threshold. | Classified as `SAFE_LOCAL_REPETITION`; no generic helper or second authority was introduced. | Review manifest `defect_proof_map.DUP-004` and two-consumer census | PASS |
 
-## Product and architecture accounting
+## Runtime matrix
+
+| Profile | Requested mode | Local state | Expected | Actual | Proof |
+|---|---|---|---|---|---|
+| API_ONLY | API_LLM | N/A | API primary, no local dependency | API primary; fallback disabled | `tests/unit/llm/test_router.py::test_api_only__forces_api__runtime` |
+| API_ONLY | LOCAL_GPU | N/A | Fail before provider dispatch | `RUNTIME_MODE_BLOCKED`; local 0, API 0 | `tests/unit/adapters/llm/runtime/test_structured_inference_router.py::test_api_only_local_request__fails_before__either_provider_dispatch` |
+| LOCAL_CAPABLE | LOCAL_GPU | Signed decision + approved manifest + eligible hardware + ready Ollama + installed matching model | Local primary | Local invoked exactly 1; API 0 | installed-like production-composition integration proof for B-001 |
+| LOCAL_CAPABLE | LOCAL_GPU | unavailable or ineligible | Fail closed; API fallback 0 | `LOCAL_UNAVAILABLE` or exact eligibility reason; API 0 | `tests/unit/llm/test_runtime_service.py::test_local_gpu__mode_never_falls__back_to_api`; `test_local_gpu__blocked_when__hardware_not_validated` |
+| LOCAL_CAPABLE | AUTO | local ready | Local primary | Local primary | `tests/unit/llm/test_router.py::test_auto_allows_one_api__fallback_when_local_is__unavailable_and_consent_exists` verifies primary and bounded fallback decision; installed-like B-001 proof verifies the live local leaf |
+| LOCAL_CAPABLE | AUTO | technical local failure + consent + credential + exact published scope | One API fallback | Local 1 then API 1 | `tests/unit/llm/test_runtime_service.py::test_auto_falls__back_once_after__local_gpu_failure` |
+| LOCAL_CAPABLE | AUTO | local failure but scope/consent policy forbids fallback | Fail closed | Local 1; API 0 | `tests/unit/adapters/llm/runtime/test_structured_inference_router.py::test_auto_fallback_does__not_call_api__without_published_scope` |
+| LOCAL_CAPABLE | any local path | missing/invalid/stale/mismatched signed artifacts or unsupported hardware/Ollama/model | Fail before unsafe dispatch | Exact bounded safe code; provider dispatch 0 | `tests/integration/llm/test_production_local_runtime_composition.py` (14 cases) |
+
+## Authority accounting
 
 ```text
-MAIN_CATCH_ALL_ROUTER = 0
-CONDITIONAL_MAIN_STAGES = 22
-STAGE_ROUTER_COVERAGE = 22/22
-FORBIDDEN_RUNTIME_PY = 0
-ENFORCEMENT_ONLY_EXCEPTIONS = 0
-BEFORE_PYTHON_TESTS_COLLECTED = 2025
-AFTER_PYTHON_TESTS_COLLECTED = 2041
-REMOVED_TESTS = 0
-ADDED_TESTS = 16
-RENAMED_TESTS = 1606
-INVALID_PYTHON_TEST_NAMES = 0
-MOVED_STATIC_FIXTURES = 14
-INVALID_STATIC_FIXTURE_PATHS = 0
-PRODUCT_TO_EVALUATION_IMPORTS = 0
-EVALUATION_TO_PRODUCT_INTERNAL_IMPORTS = 0
-ACTIVE_FAKE_PRODUCT_ADAPTERS = 0
-PUBLIC_EVALUATION_BOUNDARY_GAP = 0
+COMPETING_LIVE_AUTHORITIES = 0
+DUPLICATE_EXTERNAL_WRITE_CALLERS = 0
+DUPLICATE_WORKFLOW_EXECUTORS = 0
+DUPLICATE_PERSISTENCE_MUTATION_OWNERS = 0
+MODEL_MANIFEST_PARSER_IMPLEMENTATIONS = 1
+MODEL_MANIFEST_FIELD_SET_AUTHORITIES = 1
+MODEL_MANIFEST_HASH_VALIDATORS = 1
+MODEL_MANIFEST_PLACEHOLDER_VALIDATORS = 1
+MODEL_MANIFEST_SCHEMA_AUTHORITIES = 1
+GENERATOR_CONSUMER_SCHEMA_PARITY = 1
+HARDWARE_ELIGIBILITY_AUTHORITIES = 1
+SETTINGS_AUTHORITIES = 4
+DUPLICATE_SETTINGS_AUTHORITIES = 0
+BROAD_APP_SETTINGS_AGGREGATE = 0
+RELEASE_FACTS_IN_USER_SETTINGS = 0
+USER_PREFERENCES_IN_RELEASE_DECISION = 0
+DEAD_APPLICATION_SETTINGS_FIELDS = 0
 ```
 
-## Artifact 1 accounting
+The four settings-related authorities own non-overlapping facts: persisted user preferences (`SettingsViewV1`/`JsonSettingsAdapter`), signed release choice (`LocalModelProductDecisionV1`), immutable runtime projection (`LlmRuntimeSelectionV1`), and approval timing policy (`ApprovalPolicyConfigV1`).
 
-Definitions: a row-to-test proof link is one exact `path::target` recorded by a requirement row; a unique proof is a distinct exact target after deduplication.
+## Duplication accounting
+
+```text
+SAFE_ROLE_SEPARATIONS = PRESERVED
+REMOVED_STALE_CONTRACTS = 1
+REMOVED_EMPTY_PACKAGES = 2
+MOVED_TEST_DOUBLES = 2
+FRONTEND_TEST_OWNERSHIP = SINGLE_CANONICAL_TEST_ROOT
+SAFE_LOCAL_REPETITIONS = 1
+UNJUSTIFIED_FRONTEND_TEST_ROOTS = 0
+EMPTY_PRODUCTION_PACKAGES = 0
+PRODUCTION_TEST_DOUBLES_WITHOUT_JUSTIFICATION = 0
+```
+
+Port/Adapter, scheduler/executor/reconciler/timer, semantic/runtime registries, persisted/process/snapshot state, stage-owned routers, and multi-level test coverage remain classified as safe role separation.
+
+## Test inventory
+
+```text
+PYTHON_TESTS_BEFORE = 2041
+PYTHON_TESTS_AFTER = 2066
+FRONTEND_TESTS_BEFORE = 156
+FRONTEND_TESTS_AFTER = 156
+REMOVED_TESTS = 0
+REMOVED_ASSERTIONS = 0
+ADDED_TESTS = 25
+MOVED_TESTS = 4
+DUPLICATE_ASSERTION_EPISODES = 0
+```
+
+## Canonical and lineage accounting
 
 ```text
 CANONICAL_REQUIREMENTS_TOTAL = 1010
 UNIQUE_REQUIREMENT_IDS = 1010
 DUPLICATE_REQUIREMENT_IDS = 0
-MISSING_CANONICAL_REQUIREMENTS = 0
-EXTRA_NON_CANONICAL_REQUIREMENTS = 0
 PASS_REQUIREMENTS = 1010
 OPEN_REQUIREMENTS = 0
 NON_BLOCKING_DEBT_REQUIREMENTS = 0
-INVALID_NA = 0
-MISSING_PRODUCTION_OWNERS = 0
-MISSING_ACTUAL_CALLERS = 0
-UNREACHABLE_RUNTIME_PATHS = 0
-MISSING_PERSISTENCE_OR_EFFECT_PATHS = 0
-MISSING_API_FRONTEND_PROJECTIONS = 0
-STALE_PATHS = 0
-STALE_SYMBOLS = 0
-WEAK_TEST_PROOFS = 0
-ROW_TO_TEST_PROOF_LINKS_TOTAL = 1010
-UNIQUE_TEST_FUNCTION_PROOFS_TOTAL = 337
-MISSING_TEST_FUNCTION_PROOFS = 0
-WEAK_OR_NON_ASSERTING_PROOF_LINKS = 0
-```
-
-## Artifact 2 accounting
-
-```text
 TOTAL_LINEAGE_ROWS = 85
 HANDOFF_ROWS = 53
 HANDOFFS_CLOSED = 53
 BROKEN_HANDOFFS = 0
-UNREACHABLE_HANDOFFS = 0
-CONTRACT_MISMATCHES = 0
 AUTHORITY_ROWS = 13
 AUTHORITY_ROWS_CLOSED = 13
-COMPETING_AUTHORITIES = 0
-UNADJUDICATED_AUTHORITIES = 0
 SCENARIO_ROWS = 19
 SCENARIOS_CLOSED = 19
 OPEN_SCENARIOS = 0
-WEAK_SCENARIO_PROOFS = 0
-```
-
-## Historical finding accounting
-
-The five frozen inputs are present in Git history: Wave 1 Coordinator `9ef11cf79800bdfe35a8cdba3efa827977f88abe`, X1 `80b8ee9d392f630ee89fab9c28dd4189d36d3e22`, X2 `a89edf5a56265ee2ed47b8e12b406e351d8e11ba`, X3 `e449b07ff2b0856fec16f36b3c46445d3ccd3f23`, and X4 `7b9976db05b77158963fef96ba15d7a1d7d0b565`. An occurrence is semantically accounted only when its current row is PASS and that same row contains an existing exact owner, direct caller (or reasoned static N/A), runtime/effect description, and exact test target.
-
-```text
-HISTORICAL_FINDING_IDS_TOTAL = 242
 HISTORICAL_FINDING_IDS_UNIQUE = 189
 ORPHAN_HISTORICAL_FINDINGS = 0
 UNPROVEN_HISTORICAL_CLOSURES = 0
@@ -115,47 +125,63 @@ UNACCOUNTED_OLD_FINDINGS = 0
 
 ## Regression execution ledger
 
-| Command | Tree/SHA | Result | Duration | Evidence |
-|---|---|---|---|---|
-| `.\.venv-cpu\Scripts\python.exe -m pytest --collect-only -q` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 2,041 collected | 2.09s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m pytest -q` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 2,036 passed, 0 failed, 5 skipped | 382.66s | LOCAL |
-| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .\.venv-cpu\Scripts\python.exe -m pytest -q tests/architecture` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 343 passed, 0 failed, 0 skipped | 28.75s | LOCAL |
-| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .\.venv-cpu\Scripts\python.exe -m pytest -q tests/architecture/test_product_closure_traceability.py` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + final report | 10 passed, 0 failed, 0 skipped | 6.87s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m pytest -q tests/e2e/test_langgraph_real_production.py` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 51 passed, 0 failed, 0 skipped | 322.70s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m pytest -q tests/evaluation` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 11 passed, 0 failed, 0 skipped | 5.86s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m ruff check .` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + final report | PASS | 0.35s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m mypy .` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + final report | 0 issues in 1,400 source files | 0.99s | LOCAL |
-| `.\.venv-cpu\Scripts\python.exe -m compileall -q src launcher release evaluation tests` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + final report | PASS | 0.57s | LOCAL |
-| `npm test -- --run` (frontend) | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | 34 files / 156 tests passed, 0 failed | 15.81s Vitest / 19.59s wall | LOCAL |
-| `npm run typecheck` (frontend) | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | PASS | 7.93s | LOCAL |
-| `npm run lint` (frontend) | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | PASS | 7.11s | LOCAL |
-| `npm run build` (frontend) | `a271de37e1888341021dab95ddf5ed3e136bc37b` + artifact gate | PASS; 103 modules transformed | 0.94s Vite / 9.37s wall | LOCAL |
-| `git diff --check` | `a271de37e1888341021dab95ddf5ed3e136bc37b` + final report | PASS | 0.25s | LOCAL |
+| Command | SHA | Collected | Passed | Failed | Skipped | Duration | Evidence |
+|---|---|---:|---:|---:|---:|---:|---|
+| `.venv\\Scripts\\python.exe -m pytest --collect-only -q` | `efb10b37` + artifact gate | 2,066 | N/A | 0 | N/A | 2.62s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q` | `efb10b37` + artifact gate | 2,066 | 2,061 | 0 | 5 | 547.93s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/unit` | `efb10b37` | 1,461 | 1,461 | 0 | 0 | 29.40s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/integration` | `efb10b37` | 146 | 146 | 0 | 0 | 15.48s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/component` | `efb10b37` | 3 | 3 | 0 | 0 | 3.26s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/contract` | `efb10b37` | 17 | 17 | 0 | 0 | 1.11s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/e2e` | `efb10b37` | 51 | 51 | 0 | 0 | 383.31s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/release` | `efb10b37` | 16 | 16 | 0 | 0 | 0.94s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/evaluation` | `efb10b37` | 11 | 11 | 0 | 0 | 6.37s | LOCAL |
+| `$env:GWA_ARCHITECTURE_FINAL_CUTOVER='1'; .venv\\Scripts\\python.exe -m pytest -q tests/architecture` | `efb10b37` + artifact gate | 353 | 353 | 0 | 0 | 59.88s | LOCAL |
+| `.venv\\Scripts\\python.exe -m pytest -q tests/integration/llm/test_production_local_runtime_composition.py` | `efb10b37` | 14 | 14 | 0 | 0 | 2.78s | LOCAL |
+| `.venv\\Scripts\\python.exe -m ruff check .` | `efb10b37` + artifact gate | N/A | PASS | 0 | N/A | 0.49s | LOCAL |
+| `.venv\\Scripts\\python.exe -m mypy .` | `efb10b37` + artifact gate | 1,405 files | PASS | 0 | N/A | 1.31s | LOCAL |
+| `.venv\\Scripts\\python.exe -m compileall -q src launcher release evaluation tests` | `efb10b37` + artifact gate | N/A | PASS | 0 | N/A | 2.40s | LOCAL |
+| `npm exec -- vitest run` | `efb10b37` | 34 files / 156 | 156 | 0 | 0 | 33.41s | LOCAL |
+| `npm run typecheck` | `efb10b37` | N/A | PASS | 0 | N/A | 13.88s | LOCAL |
+| `npm run lint` | `efb10b37` | N/A | PASS | 0 | N/A | 23.32s | LOCAL |
+| `npm run build` | `efb10b37` | 103 modules | PASS | 0 | N/A | 15.79s wall / 1.19s Vite | LOCAL |
+| `git diff --check` | `efb10b37` + final artifact | N/A | PASS | 0 | N/A | 0.22s | LOCAL |
 
-The first artifact-aware full run produced 2,035 passed, 5 skipped, and one consistency failure because one row still named the deleted one-time rebuild script as a caller; the first ruff run also reported formatting-only defects in the new consistency test. The locators were re-resolved to current production/tooling owners, the test was formatted, and the exact final commands above passed. No current-SHA CI run is available, so local evidence is not described as CI.
+CI evidence for the current source SHA is `NOT_AVAILABLE`; no LOCAL result is represented as CI.
 
-## Zero gate and verdict
+## Zero gates and verdict
 
 ```text
+LOCAL_CAPABLE_PRODUCTION_LOCAL_PATH_PROVEN = 1
+LOCAL_GPU_UNREACHABLE_PATHS = 0
+LOCAL_RUNTIME_SHADOW_DEFAULTS = 0
+BROAD_APP_SETTINGS_AGGREGATE = 0
+DUPLICATE_SETTINGS_AUTHORITIES = 0
+MODEL_MANIFEST_PARSER_IMPLEMENTATIONS = 1
+MODEL_MANIFEST_SCHEMA_AUTHORITIES = 1
+HARDWARE_ELIGIBILITY_AUTHORITIES = 1
+PROFILE_UNAVAILABLE_TARGETS_ACCEPTED = 0
+DUPLICATE_EXTERNAL_WRITE_CALLERS = 0
+DUPLICATE_WORKFLOW_EXECUTORS = 0
+DUPLICATE_PERSISTENCE_MUTATION_OWNERS = 0
+COMPETING_LIVE_AUTHORITIES = 0
+UNJUSTIFIED_FRONTEND_TEST_ROOTS = 0
+EMPTY_PRODUCTION_PACKAGES = 0
+PRODUCTION_TEST_DOUBLES_WITHOUT_JUSTIFICATION = 0
 OPEN_REQUIREMENTS = 0
-NON_BLOCKING_DEBT_REQUIREMENTS = 0
-MISSING_PRODUCTION_OWNERS = 0
-MISSING_ACTUAL_CALLERS = 0
-UNREACHABLE_RUNTIME_PATHS = 0
 BROKEN_HANDOFFS = 0
-CONTRACT_MISMATCHES = 0
 OPEN_SCENARIOS = 0
-MISSING_TEST_FUNCTION_PROOFS = 0
-WEAK_OR_NON_ASSERTING_PROOF_LINKS = 0
-COMPETING_AUTHORITIES = 0
-UNADJUDICATED_AUTHORITIES = 0
-UNACCOUNTED_OLD_FINDINGS = 0
-REMAINING_FUNCTIONAL_BLOCKERS = 0
-REMAINING_SAFETY_BLOCKERS = 0
-REMAINING_ARCHITECTURE_BLOCKERS = 0
+WEAK_TRACEABILITY_PROOFS = 0
 STALE_CURRENT_TRUTH_REFERENCES = 0
 
-FINAL_PRODUCT_CLOSURE = PASS
-CLOSURE_ARTIFACT_CURRENTNESS = PRODUCT_SOURCE_SHA_BOUND
-EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED — Authenticode certificate, trusted timestamp, public signed installer, and SmartScreen reputation remain external distribution gates
+FINAL_PRODUCT_CLOSURE = DEFERRED_UNTIL_PRODUCT_DECISION
+LOCAL_RUNTIME_IMPLEMENTATION_CLOSURE = PASS
+ACTUAL_LOCAL_MODEL_ACTIVATION = DEFERRED_UNTIL_PRODUCT_DECISION
+REMAINING_FUNCTIONAL_BLOCKERS = 1 — final experiment-owned signed Product Decision
+REMAINING_ARCHITECTURE_BLOCKERS = 0
+REMAINING_COMPETING_AUTHORITIES = 0
+REMAINING_REMOVABLE_DUPLICATION = 0
+EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED — final model decision and external signing/distribution gates are not fabricated by this remediation
 ```
+
+The implementation can activate LOCAL_GPU through the real production composition when supplied a valid signed decision and manifest. This repository does not contain an experiment-approved concrete final model decision, so actual activation and final Product closure remain explicitly deferred rather than being reported as PASS.
