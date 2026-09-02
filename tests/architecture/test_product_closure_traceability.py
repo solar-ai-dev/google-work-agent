@@ -1,0 +1,316 @@
+# ruff: noqa: E501
+from __future__ import annotations
+
+import ast
+import csv
+import json
+import re
+from collections import Counter
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+ARTIFACT_ROOT = ROOT / "docs/artifacts/product-closure"
+ARTIFACT_1 = ARTIFACT_ROOT / "01-canonical-implementation-traceability.csv"
+ARTIFACT_2 = ARTIFACT_ROOT / "02-cross-layer-runtime-traceability.csv"
+REPORT = ARTIFACT_ROOT / "03-product-closure-report.md"
+DELETED_EVALUATION_PATHS = {
+    "evaluation/runner/run_experiment.py",
+    "evaluation/runner/verify_product_identity.py",
+    "tests/evaluation/runner/test_run_experiment.py",
+}
+
+
+def _rows(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle))
+
+
+def _python_symbols(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    symbols = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    for node in tree.body:
+        targets: list[ast.expr] = []
+        if isinstance(node, ast.Assign):
+            targets = node.targets
+        elif isinstance(node, ast.AnnAssign):
+            targets = [node.target]
+        symbols.update(target.id for target in targets if isinstance(target, ast.Name))
+    return symbols
+
+
+def _typescript_symbols(path: Path) -> set[str]:
+    source = path.read_text(encoding="utf-8")
+    symbols = set(
+        re.findall(
+            r"(?m)^(?:export\s+)?(?:default\s+)?(?:async\s+)?"
+            r"(?:function|class|interface|type|enum|const|let|var)\s+([A-Za-z_$][\w$]*)",
+            source,
+        )
+    )
+    for group in re.findall(r"(?m)^export\s+(?:type\s+)?\{([^}]+)\}", source):
+        symbols.update(
+            raw.strip().split(" as ")[-1].strip() for raw in group.split(",") if raw.strip()
+        )
+    return symbols
+
+
+def _symbols(path: Path) -> set[str]:
+    if path.suffix == ".py":
+        return _python_symbols(path)
+    if path.suffix in {".ts", ".tsx"}:
+        return _typescript_symbols(path)
+    return set()
+
+
+def _assert_path_and_symbol(path_value: str, symbol_value: str, *, context: str) -> None:
+    if path_value.startswith("N/A —"):
+        assert symbol_value.startswith("N/A —"), f"{context}: unreasoned N/A symbol"
+        return
+    path = ROOT / path_value
+    assert path.exists(), f"{context}: stale path {path_value}"
+    if path.suffix in {".py", ".ts", ".tsx"}:
+        assert symbol_value in _symbols(path), (
+            f"{context}: stale symbol {path_value}::{symbol_value}"
+        )
+    else:
+        assert symbol_value.startswith("N/A —"), (
+            f"{context}: static artifact requires a reasoned N/A symbol"
+        )
+
+
+def _report_counter(name: str) -> int:
+    match = re.search(
+        rf"^{re.escape(name)} = (\d+)$", REPORT.read_text(encoding="utf-8"), re.MULTILINE
+    )
+    assert match is not None, f"missing report counter: {name}"
+    return int(match.group(1))
+
+
+def test_canonical_traceability_rows__against_current_tree__have_exact_unique_identity_and_locators() -> (
+    None
+):
+    rows = _rows(ARTIFACT_1)
+    ids = [row["requirement_id"] for row in rows]
+    assert len(rows) == 1_010
+    assert len(set(ids)) == 1_010
+    for row in rows:
+        source = ROOT / row["canonical_source"]
+        assert source.is_file(), f"{row['requirement_id']}: stale canonical source"
+        assert row["canonical_locator"].strip(), (
+            f"{row['requirement_id']}: missing canonical locator"
+        )
+        assert row["canonical_requirement"].strip(), f"{row['requirement_id']}: missing requirement"
+
+
+def test_canonical_traceability_owners__against_current_tree__resolve_exact_paths_symbols_and_callers() -> (
+    None
+):
+    for row in _rows(ARTIFACT_1):
+        requirement_id = row["requirement_id"]
+        _assert_path_and_symbol(
+            row["final_production_owner_path"],
+            row["final_production_owner_symbol"],
+            context=f"{requirement_id} owner",
+        )
+        _assert_path_and_symbol(
+            row["final_actual_caller_path"],
+            row["final_actual_caller_symbol"],
+            context=f"{requirement_id} caller",
+        )
+        assert row["final_runtime_binding"].strip()
+        assert row["final_persistence_or_effect"].strip()
+        assert row["final_api_or_frontend_destination"].strip()
+        for field in (
+            "final_production_owner_path",
+            "final_production_owner_symbol",
+            "final_actual_caller_path",
+            "final_actual_caller_symbol",
+            "final_persistence_or_effect",
+            "final_api_or_frontend_destination",
+        ):
+            if row[field].startswith("N/A"):
+                assert row[field].startswith("N/A —"), (
+                    f"{requirement_id}: unreasoned N/A in {field}"
+                )
+
+
+def test_canonical_traceability_tests__against_collected_sources__resolve_exact_asserting_targets() -> (
+    None
+):
+    for row in _rows(ARTIFACT_1):
+        path = ROOT / row["final_test_path"]
+        assert path.is_file(), f"{row['requirement_id']}: stale test path"
+        proof = row["final_test_target_or_assertion"]
+        prefix, separator, detail = proof.partition(" [")
+        assert separator and " — asserts `" in detail, (
+            f"{row['requirement_id']}: weak proof description"
+        )
+        recorded_path, separator, target = prefix.partition("::")
+        assert separator and recorded_path == row["final_test_path"]
+        if target.startswith("test_title:"):
+            title = json.loads(target.removeprefix("test_title:"))
+            assert title in path.read_text(encoding="utf-8")
+        else:
+            assert target in _python_symbols(path), (
+                f"{row['requirement_id']}: stale exact test target"
+            )
+
+
+def test_closure_known_regressions__in_current_artifacts__use_corrected_semantic_owners_and_taxonomy() -> (
+    None
+):
+    requirements = {row["requirement_id"]: row for row in _rows(ARTIFACT_1)}
+    assert requirements["A-FUNC-001"]["final_production_owner_symbol"] == "StartupFlow"
+    assert (
+        requirements["A-FUNC-001"]["final_test_path"] == "frontend/tests/app/startup_flow.test.tsx"
+    )
+    assert (
+        "ApproveActionHandler" not in requirements["B-DOM-REQ-036"]["final_production_owner_symbol"]
+    )
+    assert (
+        requirements["B-DOM-REQ-036"]["final_production_owner_symbol"] == "transition_reject_action"
+    )
+    assert "routing/route_after_" in requirements["F-LG-REQ-012"]["final_production_owner_path"]
+    for requirement_id in ("F-LG-REQ-012", "L-ARCH-006", "L-ARCH-071", "L-ARCH-072", "L-ARCH-076"):
+        assert requirements[requirement_id]["final_disposition"] == "PASS"
+        assert requirements[requirement_id]["non_blocking_debt"].startswith("N/A —")
+
+    lineages = {row["lineage_id"]: row for row in _rows(ARTIFACT_2)}
+    assert lineages["X1-PC-FINAL-001"]["consumer_symbol"] == "ScheduleRunExecutionHandler"
+    assert "build_production_runtime" not in lineages["X1-PC-FINAL-001"]["consumer_symbol"]
+    assert all(
+        row["lineage_kind"] == "AUTHORITY"
+        for lineage_id, row in lineages.items()
+        if lineage_id.startswith("FINAL-AUTHORITY-")
+    )
+
+
+def test_cross_layer_traceability__against_current_tree__has_closed_taxonomy_contracts_and_proofs() -> (
+    None
+):
+    rows = _rows(ARTIFACT_2)
+    assert len(rows) == 85
+    assert len({row["lineage_id"] for row in rows}) == 85
+    assert Counter(row["lineage_kind"] for row in rows) == {
+        "HANDOFF": 53,
+        "AUTHORITY": 13,
+        "SCENARIO": 19,
+    }
+    for row in rows:
+        assert row["lineage_kind"] in {"HANDOFF", "AUTHORITY", "SCENARIO"}
+        assert row["final_status"] == "PASS"
+        assert row["semantic_authority_count"] == "1"
+        assert row["competing_authority"] == "NO"
+        _assert_path_and_symbol(
+            row["producer_path"], row["producer_symbol"], context=f"{row['lineage_id']} producer"
+        )
+        _assert_path_and_symbol(
+            row["consumer_path"], row["consumer_symbol"], context=f"{row['lineage_id']} consumer"
+        )
+        proof_path, separator, target_and_detail = row["test_or_runtime_proof"].partition("::")
+        assert separator, f"{row['lineage_id']}: proof has no exact target"
+        path = ROOT / proof_path
+        assert path.is_file(), f"{row['lineage_id']}: stale proof path"
+        target = target_and_detail.split(" [", 1)[0]
+        if target.startswith("test_title:"):
+            assert json.loads(target.removeprefix("test_title:")) in path.read_text(
+                encoding="utf-8"
+            )
+        else:
+            assert target in _python_symbols(path), f"{row['lineage_id']}: stale proof target"
+
+
+def test_closure_report_counters__against_traceability_csvs__are_mechanically_equal() -> None:
+    requirements = _rows(ARTIFACT_1)
+    lineages = _rows(ARTIFACT_2)
+    dispositions = Counter(row["final_disposition"] for row in requirements)
+    kinds = Counter(row["lineage_kind"] for row in lineages)
+    expected = {
+        "CANONICAL_REQUIREMENTS_TOTAL": len(requirements),
+        "UNIQUE_REQUIREMENT_IDS": len({row["requirement_id"] for row in requirements}),
+        "PASS_REQUIREMENTS": dispositions["PASS"],
+        "OPEN_REQUIREMENTS": dispositions["OPEN"],
+        "NON_BLOCKING_DEBT_REQUIREMENTS": dispositions["NON_BLOCKING_DEBT"],
+        "TOTAL_LINEAGE_ROWS": len(lineages),
+        "HANDOFF_ROWS": kinds["HANDOFF"],
+        "AUTHORITY_ROWS": kinds["AUTHORITY"],
+        "SCENARIO_ROWS": kinds["SCENARIO"],
+    }
+    for name, value in expected.items():
+        assert _report_counter(name) == value
+
+
+def test_historical_findings__in_closure_artifacts__are_semantically_accounted() -> None:
+    rows = [*_rows(ARTIFACT_1), *_rows(ARTIFACT_2)]
+    finding_rows: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        for finding_id in row.get("pre_remediation_finding_ids", "").split(";"):
+            if finding_id and not finding_id.startswith("N/A"):
+                finding_rows.setdefault(finding_id, []).append(row)
+    assert len(finding_rows) == 189
+    assert all(
+        any(row.get("final_disposition", row.get("final_status")) == "PASS" for row in linked_rows)
+        for linked_rows in finding_rows.values()
+    )
+    assert _report_counter("HISTORICAL_FINDING_IDS_UNIQUE") == len(finding_rows)
+    assert _report_counter("ORPHAN_HISTORICAL_FINDINGS") == 0
+    assert _report_counter("UNACCOUNTED_OLD_FINDINGS") == 0
+
+
+def test_current_evaluation_and_generic_templates__in_closure_artifacts__contain_no_stale_or_repeated_misuse() -> (
+    None
+):
+    text = ARTIFACT_1.read_text(encoding="utf-8") + ARTIFACT_2.read_text(encoding="utf-8")
+    assert not DELETED_EVALUATION_PATHS.intersection(text.split())
+    for deleted in DELETED_EVALUATION_PATHS:
+        assert deleted not in text
+    requirements = _rows(ARTIFACT_1)
+    caller_counts = Counter(
+        (row["final_actual_caller_path"], row["final_actual_caller_symbol"]) for row in requirements
+    )
+    assert (
+        caller_counts[("src/google_work_agent/api/composition.py", "build_production_runtime")] <= 8
+    )
+    assert caller_counts[("frontend/src/app/main_shell.tsx", "MainShell")] <= 12
+    assert all(
+        "previous generic lineage template was not reused" in row["notes"]
+        for row in _rows(ARTIFACT_2)
+    )
+
+
+def test_p0_negative_capabilities__across_current_product_tree__remain_absent() -> None:
+    production = "\n".join(
+        path.relative_to(ROOT).as_posix()
+        for base in (ROOT / "src", ROOT / "frontend/src")
+        for path in base.rglob("*")
+        if path.is_file()
+    )
+    assert "rename_conversation" not in production
+    assert "delete_conversation" not in production
+    assert "evaluation/runner/run_experiment.py" not in production
+    assert not (ROOT / "src/google_work_agent/ports/system/contracts/runtime.py").exists()
+
+
+def test_forbidden_production_filename_exceptions__against_canonical_registry__have_no_code_only_entries() -> (
+    None
+):
+    enforcement_path = ROOT / "tests/architecture/test_repository_architecture.py"
+    enforcement = enforcement_path.read_text(encoding="utf-8")
+    tree = ast.parse(enforcement)
+    bad_name = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "bad_name"
+    )
+    source = ast.get_source_segment(enforcement, bad_name)
+    assert source is not None
+    assert "ROLE_FILES" in source
+    assert "runtime.py" not in source
+    assert "ports/system/contracts" not in source
+    registry = (
+        ROOT / "docs/canonical/16-repository-architecture/13-exception-registry.md"
+    ).read_text(encoding="utf-8")
+    for role_file in ("state.py", "graph.py", "model.py", "composition.py"):
+        assert f"`{role_file}`" in registry
