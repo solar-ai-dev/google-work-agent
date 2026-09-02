@@ -206,6 +206,8 @@ Launcher operation files may contain OS-specific private helpers, but another pu
 
 The specific installer backend invocation, subprocess arguments, temporary staging data structure, and batching are private implementation choices **inside these canonical release operations**. They do not justify `packaging/`, `build/`, `scripts/release/`, `installer_service.py`, or a second manifest/signing authority. Release signing order and required signed artifact set remain owned by 10/09; 16 only fixes where the implementation lives.
 
+Signed Prompt bundle의 installed path authority는 `%INSTALL_ROOT%/manifests/prompt/` 하나다. `release/assemble_application_bundle.py`는 CLI가 선택한 `prompt_manifest.json`과 sibling input contract, exact 21 source, referenced activation evidence를 기존 `PromptRegistry`로 검증한 뒤 이 경로에 materialize한다. `release/generate_release_manifest.py`는 materialized bundle을 같은 Registry로 다시 검증하고 모든 파일을 Release Manifest hash chain에 포함한다. `api/composition.py`의 `SIGNED_RELEASE_MANIFEST` composition은 이 verified installed manifest만 선택하며 service distribution 내부 package 기본 Prompt로 fallback하지 않는다. Package 기본 Prompt는 `EXPLICIT_DEVELOPMENT`의 `DEVELOPMENT_SMOKE`에만 사용한다.
+
 #### Signed Build Config repository closure
 
 10의 `release-manifest.json + .sig`가 유일한 installed Signed Build Config artifact다. 별도 production `build-config.json`/`config.json`/unsigned environment authority를 만들지 않는다.

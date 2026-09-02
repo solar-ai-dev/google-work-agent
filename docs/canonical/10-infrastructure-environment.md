@@ -1170,6 +1170,7 @@ Release Gate:
 - 금지 Tool 미등록
 - Secret·Source Map·`.env` Artifact 검사
 - API·MCP·Policy·DB Version 호환
+- Signed Release가 선택한 `RUNTIME_ACTIVE` Prompt bundle을 `manifests/prompt/`에 materialize하고, manifest·input contract·21개 source·activation evidence 전부를 같은 Release Manifest hash chain으로 검증한다. Installed runtime은 이 verified bundle만 로드하며 service package 기본 Prompt로 fallback하지 않는다.
 - Clean Install·Upgrade·Uninstall 통과
 - Production Signature 확인
 - Manifest Signature·Hash 확인
