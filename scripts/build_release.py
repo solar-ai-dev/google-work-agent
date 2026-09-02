@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -35,7 +36,7 @@ from release.sign_release_artifacts import (  # noqa: E402
 from release.profiles import DeploymentProfile  # noqa: E402
 
 
-def main() -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--profile",
@@ -70,6 +71,7 @@ def main() -> int:
         ),
     )
     parser.add_argument("--model-manifest", type=Path)
+    parser.add_argument("--local-model-product-decision", type=Path)
     parser.add_argument("--app-version", required=True)
     parser.add_argument(
         "--build-channel", choices=("DEVELOPMENT", "STAGING", "PRODUCTION"), required=True
@@ -88,7 +90,7 @@ def main() -> int:
     parser.add_argument("--certificate-selector", action="append", default=[])
     parser.add_argument("--inno-setup", type=Path)
     parser.add_argument("--installer-output-dir", type=Path, required=True)
-    arguments = parser.parse_args()
+    arguments = parser.parse_args(argv)
     migrations = arguments.migrations_dir.resolve()
     migration_versions = tuple(
         sorted(
@@ -122,6 +124,11 @@ def main() -> int:
             signed_tool_registry=arguments.signed_tool_registry.resolve(),
             model_manifest=(
                 arguments.model_manifest.resolve() if arguments.model_manifest is not None else None
+            ),
+            local_model_product_decision=(
+                arguments.local_model_product_decision.resolve()
+                if arguments.local_model_product_decision is not None
+                else None
             ),
         ),
         output_root=output,
