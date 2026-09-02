@@ -2,15 +2,20 @@
 
 ## Baseline and truth hierarchy
 
+- `TARGETED_REFRESH_START_SHA`: `66e1f9c910973d7406bec9d6e25519e4ad784065`
+- `CURRENT_REPOSITORY_SHA_BEFORE_REFRESH`: `66e1f9c910973d7406bec9d6e25519e4ad784065`
+- `EVALUATION_RESTRUCTURE_SHA`: `66e1f9c910973d7406bec9d6e25519e4ad784065`
 - `E2E_START_SHA`: `8a7182d5c10a4325a5031492465ce113b70c2d9e`
 - `POST_E2E_FINAL_PRODUCT_SHA`: `09bf45013f0fb0572fce65de9bb7ef2f6e06ec99`
 - Product source anchor: `0ec4583efb9589cddaff4edfe5ede2bb899fd14e`
 - E2E certification commits: `4aed0a857c65277a4099fe6a329df58f40bec3cb`, `32295d97fe54cde5038ffd60c57822e18cefded6`, `09bf45013f0fb0572fce65de9bb7ef2f6e06ec99`
 - Local branch: `remediation/fresh-audit-product-closure`
 - Canonical root: `docs/canonical/`
-- Truth order: current Canonical → Product source anchor → actual caller/runtime → durable fact/effect → API/SSE/frontend → failure/recovery/restart → meaningful production-path proof.
+- Truth order: current Canonical → current repository structure → Product source anchor → actual caller/runtime → durable fact/effect → public API boundary → Evaluation client → Dataset/Gold/Grader → meaningful production-path proof.
 - Current Canonical content was not changed to satisfy E2E. Normal Release Google READ remains `InputRoutePlanV1 → Retrieval → ConnectorReadPort → RetrievalResultV1` with Action/Write 0; `READ_EXECUTION` remains Legacy compatibility only.
-- The two CSV artifacts were targeted rather than regenerated: 35 directly affected requirement rows, 36 affected handoffs, and all 19 retained scenario rows were re-resolved.
+- The three closure artifacts were targeted rather than regenerated. Artifact 1 re-resolved 52 affected rows, including every `J-EVAL-*` row and every stale Evaluation locator/semantic binding. Artifact 2 changed one PromptRegistry authority row; Product runtime handoffs and all 19 certified scenarios remain unchanged.
+
+`66e1f9c9` changes the Evaluation/experiment workspace, its tests, and Canonical placement/boundary rules. It changes no Product runtime file. Therefore the repository/Evaluation identity is newer than the unchanged Product implementation identity `09bf4501`.
 
 ## Remediation commits
 
@@ -48,6 +53,7 @@
 | `4aed0a85` | add real production-composition LangGraph E2E certification harness |
 | `32295d97` | certify durable read-backed terminal projection |
 | `09bf4501` | certify the full scenario universe across all three graph profiles |
+| `66e1f9c9` | replace the legacy Evaluation framework with the public-HTTP Evaluation workspace |
 
 ## Historical coverage provenance
 
@@ -62,6 +68,88 @@ Historical artifacts are coverage/provenance inputs, not implementation truth.
 | X4 uniqueness | `7b9976db05b77158963fef96ba15d7a1d7d0b565` | 15 candidates in 13 semantic groups; all groups revalidated |
 
 The final lineage adds one explicit `SAFE_MODE_RESTORE` row by splitting that required scenario from historical X2 installed-lifecycle coverage. No historical requirement or substantive finding was dropped.
+
+## Evaluation / Experiment workspace closure
+
+### Structure before
+
+```text
+Evaluation files = 1428
+evaluation/compat/experiments = 1251 files
+runner/target/projection/fixture framework mixed
+```
+
+### Structure after
+
+```text
+evaluation/
+├── README.md
+├── client/
+├── configs/candidates/
+├── datasets/
+│   ├── retrieval/
+│   ├── agent/
+│   └── e2e/
+├── dataset.py
+├── grader.py
+├── runner.py
+└── scoring-contract-v1.1.json
+```
+
+No empty notebook/result directory is tracked. Transient `evaluation/results/**` is local and gitignored; no useful historical notebook or version-controlled benchmark result existed to migrate.
+
+### Migration accounting
+
+```text
+EVALUATION_FILES_AFTER = 195
+DATASET_FILES_MIGRATED = 168
+CONFIGS_MIGRATED = 19
+RESULTS_MIGRATED = 0
+NOTEBOOKS_MIGRATED = 0
+EXPERIMENT_FILES_MIGRATED = 48
+EXPERIMENT_FILES_DELETED = 1203
+
+DATASET_CASES_BEFORE = 382
+DATASET_CASES_AFTER = 382
+LOST_DATASET_CASES = 0
+
+GOLD_LABELS_BEFORE = 241
+GOLD_LABELS_AFTER = 241
+LOST_GOLD_LABELS = 0
+
+UNACCOUNTED_EXPERIMENT_ARTIFACTS = 0
+```
+
+Git-tree and deterministic dataset accounting confirm 182 byte-identical file migrations plus five reference-only path migrations across all retained Evaluation assets. Case identity/semantic-field coverage is 100%; no Dataset or Gold value was tuned.
+
+### Public Product boundary
+
+```text
+Dataset
+→ evaluation/runner.py:run_case
+→ evaluation/client/http.py:ProductApiClient
+→ real Product loopback HTTP API
+→ production composition and compiled Product runtime
+→ public Run snapshot
+→ evaluation/runner.py:normalize_snapshot
+→ evaluation/grader.py:grade_case
+→ evaluation/runner.py:write_result
+→ transient JSON result
+```
+
+```text
+PRODUCT_TO_EVALUATION_IMPORTS = 0
+EVALUATION_TO_PRODUCT_INTERNAL_IMPORTS = 0
+ACTIVE_FAKE_PRODUCT_ADAPTERS = 0
+PUBLIC_EVALUATION_BOUNDARY_GAP = 0
+TOP_LEVEL_EXPERIMENTS_DIRECTORIES = 0
+STALE_CURRENT_TRUTH_EVALUATION_REFERENCES = 0
+PRODUCT_BEHAVIOR_CHANGED_BY_EVALUATION_RESTRUCTURE = NO
+PRODUCT_DEFECTS_FOUND_DURING_TARGETED_REFRESH = 0
+PRODUCT_FILES_CHANGED_BY_TARGETED_REFRESH = 0
+```
+
+The public-boundary smoke starts the real Product FastAPI application from production composition, loads a dataset case, configures the supported session through HTTP, starts a real Product run, captures its public result, grades it, and atomically serializes the Evaluation result. Product internal imports, private Node/Subgraph calls, target registries, and fake Product execution are absent from Evaluation code.
 
 ## LangGraph real production E2E certification
 
@@ -160,30 +248,28 @@ Real production E2E exposed fifteen Product defects after the previous static cl
 
 Targeted refresh impact:
 
-- Artifact 1: 35 directly/indirectly affected requirement rows refreshed; 1,010-row coverage retained.
-- Artifact 2: 36 affected handoffs plus all 19 scenario rows refreshed; 66 handoffs/19 scenarios retained.
-- Artifact 3: Product/E2E identities, defects, scenario/profile matrices, regression, zero gates, and verdict refreshed.
+- Artifact 1: 52 Evaluation-affected requirement rows refreshed; 1,010-row coverage retained. Thirty-three deleted-path locators were replaced, and all affected PromptRegistry projections now describe Evaluation as a public-API observer.
+- Artifact 2: one PromptRegistry authority projection refreshed; 66 handoffs/19 scenarios and all real LangGraph E2E certification evidence retained unchanged.
+- Artifact 3: repository/Product identity separation, Evaluation migration, dependency boundary, current validation, zero gates, and verdict refreshed.
 - Fresh Audit/Wave/Ledger/Map structures were not recreated.
 
 ## Current full regression
 
 ```text
-Real LangGraph E2E = PASS (51 passed in 283.95s)
-Remaining Python suite = PASS (2025 passed, 5 skipped in 53.58s)
-Combined Python coverage = PASS (2076 passed, 5 skipped; 2081 collected)
-E2E + MCP same-process stress = PASS (158 passed in 282.03s)
-SAFE_MODE_RESTORE exact system test = PASS (1 passed)
-Domain / Application / Agent / LangGraph / Persistence / API / Security / Architecture / Evaluation / Release / Launcher = PASS (covered by the Python suite)
+Post-E2E real LangGraph certification = PASS (51 profile/scenario cases; Product SHA 09bf4501)
+Current repository Python suite = PASS (2020 passed, 5 skipped in 339.11s)
+Current Evaluation tests = PASS (15 passed)
+Current architecture/import tests = PASS (322 passed, 5 skipped)
+Dataset migration validation = PASS (382/382 cases; 241/241 Gold labels)
+Grader non-vacuity = PASS
+Real Product public-HTTP invocation smoke = PASS
 Ruff = PASS
-Mypy = PASS (1351 source files)
-Frontend tests = PASS (34 files, 156 tests)
-Frontend typecheck = PASS
-Frontend lint = PASS
-Frontend production build = PASS
+Mypy = PASS (1374 source files)
+Python compile/import = PASS
 git diff --check = PASS
 ```
 
-One all-in-one Windows pytest attempt stalled without a failing assertion late in process teardown. Exhaustive split-process coverage passed every collected item, and an additional E2E-plus-MCP same-process stress run passed; no Product child process or internal mock leak remained.
+The Evaluation restructure changed no Product/Frontend runtime file. The prior real LangGraph E2E and Frontend certification therefore remain the Product proof baseline; current Evaluation, architecture, static, and full Python gates were rerun at `66e1f9c9`.
 
 ## External distribution gates
 
@@ -249,6 +335,11 @@ UNADJUDICATED_AUTHORITIES = 0
 REMAINING_FUNCTIONAL_BLOCKERS = 0
 REMAINING_SAFETY_BLOCKERS = 0
 UNACCOUNTED_OLD_FINDINGS = 0
+STALE_CURRENT_TRUTH_EVALUATION_REFERENCES = 0
+PRODUCT_TO_EVALUATION_IMPORTS = 0
+EVALUATION_TO_PRODUCT_INTERNAL_IMPORTS = 0
+ACTIVE_FAKE_PRODUCT_ADAPTERS = 0
+PUBLIC_EVALUATION_BOUNDARY_GAP = 0
 ```
 
 Old finding accounting covers `189` distinct substantive Wave 1/X1/X2/X3/X4 IDs. Each ID appears on a final requirement or lineage row and resolves to a remediation commit/root cause/final disposition.
@@ -347,11 +438,11 @@ Old finding accounting covers `189` distinct substantive Wave 1/X1/X2/X3/X4 IDs.
 
 ### Evaluation / test non-vacuity
 
-**BEFORE** — Dataset/test presence and mock-only paths did not demonstrate real Product execution or meaningful grader failure.
-**ROOT CAUSE** — Evaluation identity, target execution, grader inputs, and failure sensitivity were not one chain.
-**REMEDIATION** — `6657c2f4` connected real Product targets/graders; `c8af6b3c` repinned final identity; `082a60cc` aligned final test typing without Product behavior changes.
-**AFTER** — Evaluation binds exact Product/config/dataset/prompt identity and graders consume real episode evidence with negative/failure assertions.
-**FINAL PROOF** — evaluation runner/grader/architecture suites, full mypy, and final repository gates.
+**BEFORE** — Evaluation mixed 1,428 files, a 1,251-file compatibility experiment tree, private Product target bindings, projection/fixture frameworks, and fake execution adapters.
+**ROOT CAUSE** — Evaluation had become a second internal Product architecture instead of an external consumer of the supported Product boundary.
+**REMEDIATION** — `66e1f9c9` preserved Dataset/Gold/config semantics, removed the compatibility/target/projection framework, and cut execution over to `ProductApiClient` over the public loopback HTTP API.
+**AFTER** — One 195-file `evaluation/` owner contains category datasets, candidate metadata, a tiny client/runner, an independent grader, and local-by-default results. Product↔Evaluation internal imports and active fake Product adapters are all zero.
+**FINAL PROOF** — `tests/evaluation/`, `tests/architecture/test_evaluation_boundary.py`, the real Product public-HTTP smoke, deterministic 382-case/241-Gold accounting, Ruff, Mypy, and the current full Python suite.
 **FINAL STATUS** — PASS.
 
 ## Closure verdict
@@ -368,6 +459,14 @@ ALL_REQUIRED_REAL_E2E_SCENARIOS_PASS = YES
 PROFILE_SEMANTIC_PARITY = PASS
 FULL_REGRESSION = PASS
 PRODUCT_CLOSURE_ARTIFACTS_CURRENT = YES
+CURRENT_REPOSITORY_SHA_BEFORE_REFRESH = 66e1f9c910973d7406bec9d6e25519e4ad784065
+EVALUATION_RESTRUCTURE_SHA = 66e1f9c910973d7406bec9d6e25519e4ad784065
+PRODUCT_BEHAVIOR_CHANGED_BY_EVALUATION_RESTRUCTURE = NO
+STALE_CURRENT_TRUTH_EVALUATION_REFERENCES = 0
+PRODUCT_TO_EVALUATION_IMPORTS = 0
+EVALUATION_TO_PRODUCT_INTERNAL_IMPORTS = 0
+ACTIVE_FAKE_PRODUCT_ADAPTERS = 0
+PUBLIC_EVALUATION_BOUNDARY_GAP = 0
 LANGGRAPH_REAL_E2E_CERTIFICATION = PASS
 CANONICAL_REQUIREMENT_REVALIDATION_COMPLETE = YES
 WAVE1_COVERAGE_ACCOUNTED = YES
@@ -376,8 +475,10 @@ MEANINGFUL_TEST_PROOF_CONNECTED = YES
 UNACCOUNTED_OLD_FINDINGS = 0
 FINAL_ARTIFACT_COUNT = 3
 FINAL_PRODUCT_CLOSURE = PASS
+CLOSURE_ARTIFACT_CURRENTNESS = PASS
+EVALUATION_RESTRUCTURE_CLOSURE = PASS
 REMAINING_FIXABLE_PRODUCT_BLOCKERS = 0
 EXTERNAL_DISTRIBUTION_CLOSURE = DEFERRED
 ```
 
-Wave 1/2 and the former Ledger/Map/Audit framework have completed their role. These three files are the long-term implementation/runtime/verification reference for `POST_E2E_FINAL_PRODUCT_SHA`.
+Wave 1/2 and the former Ledger/Map/Audit framework have completed their role. These three files are the long-term implementation/runtime/verification reference: Product behavior is anchored at `POST_E2E_FINAL_PRODUCT_SHA`, while repository/Evaluation placement is anchored at `EVALUATION_RESTRUCTURE_SHA`.
