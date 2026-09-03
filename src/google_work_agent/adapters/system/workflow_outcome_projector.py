@@ -149,13 +149,18 @@ def accepted_event_type(payload: dict[str, object]) -> RunSseEventTypeV1:
         interrupt_kind = interrupt_payload.get("interrupt_kind")
         if interrupt_kind == "CONFIRMATION":
             return "confirmation_required"
-        if interrupt_kind == "APPROVAL":
+        action_ids = interrupt_payload.get("action_ids")
+        if (
+            interrupt_kind == "APPROVAL"
+            and isinstance(action_ids, list)
+            and all(isinstance(item, str) for item in action_ids)
+        ):
             return "approval_required"
     phase = payload.get("phase")
     if phase == "WAITING_CONFIRMATION":
         return "confirmation_required"
     if phase == "WAITING_APPROVAL":
-        return "approval_required"
+        return "run_status"
     return "run_status"
 
 

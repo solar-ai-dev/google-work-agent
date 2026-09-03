@@ -266,7 +266,10 @@ class PlanPersistenceMixin:
         action_id_map = {action["action_id"]: action["action_id"] for action in plan["actions"]}
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
         evidence_ids = evidence_ids_from_plan(plan)
-        evidence_id_map = {item: item for item in evidence_ids}
+        # Retrieval evidence ids are logical, run-scoped references. Persisted
+        # Evidence ids are repository-wide identities and must stay unique when
+        # a later Run selects the same external resource segment.
+        evidence_id_map = {item: self._id_factory() for item in evidence_ids}
         if replan_from_plan_id is not None and not any(
             plan.id == replan_from_plan_id for plan in plans
         ):
@@ -278,7 +281,6 @@ class PlanPersistenceMixin:
             # evidence identities that already belong to an older Plan.
             plan_id = self._id_factory()
             action_id_map = {action["action_id"]: self._id_factory() for action in plan["actions"]}
-            evidence_id_map = {item: self._id_factory() for item in evidence_ids}
 
         evidence_drafts = {
             item["evidence_id"]: item
