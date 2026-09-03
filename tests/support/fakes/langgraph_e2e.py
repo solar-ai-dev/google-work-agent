@@ -22,6 +22,7 @@ class LangGraphE2EGeminiTransport:
 
     invocations: list[dict[str, object]] = field(default_factory=list)
     crash_prompt_id: str | None = None
+    crash_scenario: str | None = None
     _scenario_prompt_counts: dict[tuple[str, str], int] = field(default_factory=dict)
 
     def probe(self, *, api_key: str, timeout_seconds: int) -> ProbeResult:
@@ -62,7 +63,9 @@ class LangGraphE2EGeminiTransport:
                 "api_key_length": len(api_key),
             }
         )
-        if prompt_id == self.crash_prompt_id:
+        if prompt_id == self.crash_prompt_id and (
+            self.crash_scenario is None or scenario == self.crash_scenario
+        ):
             # Simulate abrupt process loss at an external boundary. BaseException
             # intentionally bypasses Product failure/recovery translation, just
             # as an actual process termination would.
@@ -253,10 +256,14 @@ def _scenario(value: object) -> str:
     serialized = json.dumps(value, sort_keys=True, default=str).upper()
     for scenario in (
         "RETRIEVAL_CACHE_LOSS",
+        "UNKNOWN_RESULT_RECOVERY",
         "VERIFICATION_MISMATCH",
         "CONTEXT_ADJUSTMENT",
         "PARTIAL_APPROVAL",
         "CALENDAR_WRITE",
+        "PROCESS_RESTART",
+        "RESPONSE_LOSS",
+        "MCP_FAILURE",
         "REVIEW_BACK_EDGE",
         "RESTART_RESUME",
         "UNKNOWN_RESULT",

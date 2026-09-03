@@ -7,6 +7,10 @@ from collections.abc import Callable, Mapping
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
 )
+from google_work_agent.application.use_cases.recovery.project_recovery_options import (
+    ProjectRecoveryOptionsQueryV1,
+    ProjectRecoveryOptionsResultV1,
+)
 from google_work_agent.application.use_cases.recovery.require_recovery import (
     RequireRecoveryCommand,
     RequireRecoveryHandler,
@@ -16,7 +20,7 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
     ProjectRunEventHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.recovery.model import RECOVERY_RESOLUTION_MATRIX, RecoveryReasonV1
+from google_work_agent.domain.recovery.model import RecoveryReasonV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome
 from google_work_agent.ports.system.contracts.workflow_handoff import (
@@ -36,12 +40,16 @@ class WorkflowOutcomeProjector:
         now_ms: Callable[[], int],
         id_factory: Callable[[], str],
         recovery_target: Callable[[str], RegisteredResumeTargetRefV2 | None],
+        project_recovery_options: Callable[
+            [ProjectRecoveryOptionsQueryV1], ProjectRecoveryOptionsResultV1
+        ],
     ) -> None:
         self._require_recovery = require_recovery
         self._project_run_event = project_run_event
         self._now_ms = now_ms
         self._id_factory = id_factory
         self._recovery_target = recovery_target
+        self._project_recovery_options = project_recovery_options
 
     def publish_cancel_response(self, response: WriteRunResponse) -> None:
         if response.run_status == RunStatusV1.CANCELLED.value:
@@ -73,7 +81,7 @@ class WorkflowOutcomeProjector:
                 expected_version=expected_version,
                 reason="CHECKPOINT_MISMATCH",
             )
-            self._publish(run_id, "recovery_required", _recovery_payload("CHECKPOINT_MISMATCH"))
+            self._publish(run_id, "recovery_required", self._recovery_payload(run_id))
             return
         if outcome is WorkflowOutcome.FAILED:
             self._require_recovery_result(
@@ -88,7 +96,11 @@ class WorkflowOutcomeProjector:
             WorkflowOutcome.RECOVERY_REQUIRED: "recovery_required",
             WorkflowOutcome.FAILED: "error",
         }[outcome]
-        event_payload = _canonical_payload(event_type, payload, expected_version)
+        event_payload = (
+            self._recovery_payload(run_id)
+            if event_type == "recovery_required"
+            else _canonical_payload(event_type, payload, expected_version)
+        )
         if event_payload is not None:
             self._publish(run_id, event_type, event_payload)
 
@@ -141,6 +153,16 @@ class WorkflowOutcomeProjector:
         )
         if not result.applied:
             raise RuntimeError(result.conflict_detail or "RequireRecovery was not applied")
+
+    def _recovery_payload(self, run_id: str) -> dict[str, object]:
+        projection = self._project_recovery_options(ProjectRecoveryOptionsQueryV1(run_id))
+        return {
+            "recovery": {
+                "reason_code": projection.reason_code,
+                "target": projection.target,
+                "allowed_resolution_kinds": list(projection.allowed_resolution_kinds),
+            }
+        }
 
 
 def accepted_event_type(payload: dict[str, object]) -> RunSseEventTypeV1:
@@ -199,15 +221,3 @@ def _canonical_payload(
         if isinstance(action_ids, list) and all(isinstance(item, str) for item in action_ids):
             return {"action_ids": action_ids}
     return None
-
-
-def _recovery_payload(reason: RecoveryReasonV1) -> dict[str, object]:
-    return {
-        "recovery": {
-            "reason_code": reason,
-            "target": {"target_kind": "RUN"},
-            "allowed_resolution_kinds": [
-                item.value for item in RECOVERY_RESOLUTION_MATRIX[reason]
-            ],
-        }
-    }

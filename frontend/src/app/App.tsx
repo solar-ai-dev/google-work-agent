@@ -80,6 +80,7 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
     handleResolveRecovery,
   } = conversation;
   const restoredOpenRunRef = useRef(false);
+  const reauthConnectionCheckRef = useRef<string | null>(null);
   const reauthResumeAttemptRef = useRef<string | null>(null);
   const operationalCommandIds = useRef(new Map<string, string>());
 
@@ -151,16 +152,32 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
   }, []);
 
   useEffect(() => {
-    if (google.connection_status !== "CONNECTED" || runSnapshot?.run.status !== "REAUTH_REQUIRED") {
+    if (runSnapshot?.run.status !== "REAUTH_REQUIRED") {
+      reauthConnectionCheckRef.current = null;
       reauthResumeAttemptRef.current = null;
       return;
     }
     const identity = `${runSnapshot.run.run_id}:${runSnapshot.run.version}`;
-    if (reauthResumeAttemptRef.current === identity) return;
-    reauthResumeAttemptRef.current = identity;
-    void handleResumeAfterReauth().catch((error: unknown) => {
-      setStatusLine(error instanceof ApiClientError ? error.message : "Google 재인증 후 작업을 재개하지 못했습니다.");
-    });
+    const resumeAfterFreshConnection = (): void => {
+      if (reauthResumeAttemptRef.current === identity) return;
+      reauthResumeAttemptRef.current = identity;
+      void handleResumeAfterReauth().catch((error: unknown) => {
+        setStatusLine(error instanceof ApiClientError ? error.message : "Google 재인증 후 작업을 재개하지 못했습니다.");
+      });
+    };
+    if (reauthConnectionCheckRef.current !== identity) {
+      reauthConnectionCheckRef.current = identity;
+      void getGoogleConnection().then((freshConnection) => {
+        setGoogle(freshConnection);
+        if (freshConnection.connection_status === "CONNECTED") {
+          resumeAfterFreshConnection();
+        }
+      }).catch((error: unknown) => {
+        setStatusLine(error instanceof ApiClientError ? error.message : "Google 재인증 상태를 확인하지 못했습니다.");
+      });
+      return;
+    }
+    if (google.connection_status === "CONNECTED") resumeAfterFreshConnection();
   }, [google.connection_status, handleResumeAfterReauth, runSnapshot]);
 
   useEffect(() => {
