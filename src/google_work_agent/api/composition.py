@@ -2438,6 +2438,7 @@ def build_production_runtime(
         now_ms=clock.now_ms,
         id_factory=id_generator.new_uuid,
         recovery_target=_workflow_recovery_target,
+        project_recovery_options=project_recovery_options,
     )
 
     def _start_request(admission: WorkflowExecutionAdmissionV1) -> WorkflowStartRequest:

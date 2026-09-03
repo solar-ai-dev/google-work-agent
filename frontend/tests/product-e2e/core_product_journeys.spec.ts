@@ -1,71 +1,23 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+import {
+  BrowserProductHarness,
+  type ProductRow,
+  type ProductState,
+  type StartedRun,
+} from "./support/browser_product_harness";
 
-type ProductRow = Record<string, unknown>;
-
-type ProductState = {
-  run: ProductRow;
-  plans: ProductRow[];
-  actions: ProductRow[];
-  action_dependencies: ProductRow[];
-  approvals: ProductRow[];
-  execution_attempts: ProductRow[];
-  verifications: ProductRow[];
-  messages: ProductRow[];
-  workflow_binding: ProductRow;
-  audit_events: ProductRow[];
-  run_count: number;
-  command_count: number;
-  mcp_events: ProductRow[];
-  llm_invocations: ProductRow[];
-};
-
-type StartedRun = {
-  runId: string;
-  requestPayload: Record<string, unknown>;
-};
-
-const baseURL = "http://127.0.0.1:18765";
-const writeTools = new Set([
-  "calendar_create_event",
-  "gmail_create_draft",
-  "gmail_send_message",
-  "tasks_create_task",
-]);
-
-let context: BrowserContext;
+let harness: BrowserProductHarness;
 let page: Page;
 
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async ({ browser }, testInfo) => {
-  testInfo.setTimeout(120_000);
-  context = await browser.newContext();
-  page = await context.newPage();
-  await page.goto(
-    "/#bootstrap_secret=browser-product-e2e-bootstrap-secret"
-      + "&service_instance_id=browser-product-e2e-service",
-  );
-
-  await expect(page.getByRole("main").getByRole("heading", { name: "Google Work Agent 시작하기" })).toBeVisible();
-  await expect(page.getByText("설정 상태를 확인하고 있습니다.", { exact: true })).toHaveCount(0);
-  const consent = page.getByLabel("외부 LLM으로 요청 컨텍스트를 전송하는 데 동의합니다.");
-  await consent.check();
-  await expect(consent).toBeChecked();
-  await page.getByRole("button", { name: "동의 저장" }).click();
-  await expect(page.getByText("완료 · 개인정보·외부 LLM 전송 동의")).toBeVisible();
-  await page.getByLabel("API Key").fill("browser-product-e2e-gemini-key");
-  await page.getByLabel("저장 방식").selectOption("SESSION_ONLY");
-  await page.getByRole("button", { name: "저장하고 연결 검사" }).click();
-  await expect(page.getByText("완료 · API LLM 연결")).toBeVisible();
-  const completeSetup = page.getByRole("button", { name: "설정 완료하고 시작" });
-  await expect(completeSetup).toBeEnabled();
-  await completeSetup.click();
-  await expect(page.getByRole("textbox", { name: /선택한 .*업무를 요청하세요/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /새 대화/ })).toBeVisible();
+  harness = await BrowserProductHarness.create(browser, testInfo);
+  page = harness.page;
 });
 
 test.afterAll(async () => {
-  await context.close();
+  await harness.close();
 });
 
 test("E2E_001_ANSWER_ONLY_PASS", async () => {
@@ -268,85 +220,49 @@ test("E2E_008_REFRESH_SSE_RECOVERY_PASS", async () => {
 });
 
 async function beginNewConversation(): Promise<void> {
-  await page.getByRole("button", { name: /새 대화/ }).click();
-  await expect(page.getByRole("region", { name: "Action Plan" })).toHaveCount(0);
+  await harness.beginNewConversation();
 }
 
 async function startNewRun(requestText: string): Promise<StartedRun> {
-  await beginNewConversation();
-  return startRun(requestText);
+  return harness.startNewRun(requestText);
 }
 
 async function startRun(requestText: string): Promise<StartedRun> {
-  const composer = page.getByRole("textbox", { name: /선택한 .*업무를 요청하세요/ });
-  await composer.fill(requestText);
-  const responsePromise = page.waitForResponse((response) => (
-    response.request().method() === "POST"
-      && new URL(response.url()).pathname === "/api/v1/runs"
-  ));
-  await page.getByRole("button", { name: "보내기", exact: true }).click();
-  const response = await responsePromise;
-  expect(response.status()).toBe(202);
-  const payload = await response.json() as { run_id: string };
-  const requestPayload = response.request().postDataJSON() as Record<string, unknown>;
-  return { runId: payload.run_id, requestPayload };
+  return harness.startRun(requestText);
 }
 
 async function productState(runId: string): Promise<ProductState> {
-  const response = await context.request.get(
-    `${baseURL}/__e2e__/state/${encodeURIComponent(runId)}`,
-  );
-  expect(response.ok()).toBe(true);
-  return await response.json() as ProductState;
+  return harness.productState(runId);
 }
 
 async function waitForRunStatus(runId: string, status: string): Promise<ProductState> {
-  let current = await productState(runId);
-  await expect.poll(async () => {
-    current = await productState(runId);
-    return current.run.status;
-  }).toBe(status);
-  return current;
+  return harness.waitForRunStatus(runId, status);
 }
 
 async function actionCard(toolName: string) {
-  const card = page
-    .getByRole("region", { name: "Action Plan" })
-    .getByRole("article")
-    .filter({ hasText: toolName });
-  await expect(card).toBeVisible();
-  return card;
+  return harness.actionCard(toolName);
 }
 
 async function approve(card: Awaited<ReturnType<typeof actionCard>>): Promise<void> {
-  const acknowledgements = card.getByRole("checkbox");
-  for (let index = 0; index < await acknowledgements.count(); index += 1) {
-    await acknowledgements.nth(index).check();
-  }
-  await card.getByRole("button", {
-    name: /^(승인|확인하고 승인|충돌을 알고도 진행|그래도 새로 만들기)$/,
-  }).click();
+  await harness.approve(card);
 }
 
 async function assertCompletedUi(answer?: string): Promise<void> {
-  await expect(page.getByText("작업을 완료했습니다.", { exact: true })).toBeVisible();
-  let assistantMessage = page.getByRole("article").filter({ hasText: "에이전트 응답" });
-  if (answer) assistantMessage = assistantMessage.filter({ hasText: answer });
-  await expect(assistantMessage).toBeVisible();
+  await harness.assertCompletedUi(answer);
 }
 
 function toolCount(state: ProductState, toolName: string): number {
-  return state.mcp_events.filter((event) => event.tool_name === toolName).length;
+  return harness.toolCount(state, toolName);
 }
 
 function writeCount(state: ProductState): number {
-  return state.mcp_events.filter((event) => writeTools.has(String(event.tool_name))).length;
+  return harness.writeCount(state);
 }
 
 function auditTypes(state: ProductState): unknown[] {
-  return state.audit_events.map((event) => event.event_type);
+  return harness.auditTypes(state);
 }
 
 function assistantMessages(state: ProductState): ProductRow[] {
-  return state.messages.filter((message) => message.role === "ASSISTANT");
+  return harness.assistantMessages(state);
 }

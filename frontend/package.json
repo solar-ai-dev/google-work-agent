@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.app.json --noEmit",
     "test": "vitest",
     "test:coverage": "vitest --coverage",
-    "test:e2e": "npm run build && playwright test --config=playwright.config.ts"
+    "test:e2e": "npm run build && playwright test --config=playwright.config.ts",
+    "test:e2e:failure": "npm run build && playwright test --config=playwright.config.ts --grep ^F_E2E"
   },
   "dependencies": {
     "react": "18.3.1",

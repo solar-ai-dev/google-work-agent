@@ -35,6 +35,7 @@ _claim_state = SimpleNamespace(
 
 
 def main() -> None:
+    _append_runtime_event({"event_type": "PROCESS_STARTED", "pid": os.getpid()})
     for line in sys.stdin:
         request = cast(dict[str, object], json.loads(line))
         request_id = str(request.get("id", ""))
@@ -144,9 +145,11 @@ def _control_payload(method: str) -> dict[str, object]:
             ]
         }
     if method == "google.connection.get":
+        state = _load_state()
+        reauth_required = bool(state.get("reauth_required"))
         return {
-            "connected": True,
-            "credential_state": "CONNECTED",
+            "connected": not reauth_required,
+            "credential_state": "REAUTH_REQUIRED" if reauth_required else "CONNECTED",
             "account_id": "e2e-google-account",
             "account_email": "e2e@example.com",
             "display_name": "E2E User",
@@ -161,7 +164,7 @@ def _control_payload(method: str) -> dict[str, object]:
                 "calendar.events.freebusy",
             ],
             "missing_scopes": [],
-            "reauth_required": False,
+            "reauth_required": reauth_required,
             "oauth_environment": "DEVELOPMENT",
             "last_checked_at_ms": 1,
         }
@@ -179,12 +182,20 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
     counts = cast(dict[str, int], state.setdefault("counts", {}))
     counts[tool_name] = int(counts.get(tool_name, 0)) + 1
     failure_mode = _failure_mode(arguments)
-    if failure_mode == "FAILED_RETRY" and counts[tool_name] == 1:
+    fault_counts = cast(dict[str, int], state.setdefault("fault_counts", {}))
+    fault_key = f"{failure_mode}:{tool_name}"
+    fault_counts[fault_key] = int(fault_counts.get(fault_key, 0)) + 1
+    fault_count = fault_counts[fault_key]
+    if failure_mode == "FAILED_RETRY" and fault_count == 1:
         _save_state(state)
         raise _ExternalFailure("TOOL_REJECTED", "NOT_SENT")
-    if failure_mode == "REAUTH" and counts[tool_name] == 1:
+    if failure_mode == "REAUTH" and fault_count == 1:
+        state["reauth_required"] = True
         _save_state(state)
         raise _ExternalFailure("AUTH_REQUIRED", "NOT_SENT")
+    if failure_mode == "MCP_FAILURE" and fault_count == 1:
+        _save_state(state)
+        os._exit(70)
 
     if tool_name == "search_by_recovery_fingerprint":
         fingerprint = str(arguments["recovery_fingerprint"])
@@ -230,7 +241,11 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
         resources = cast(dict[str, dict[str, object]], state.setdefault("resources", {}))
         resources[_resource_key(item)] = item
         _save_state(state)
-        if failure_mode == "UNKNOWN_RESULT":
+        if failure_mode in {
+            "UNKNOWN_RESULT",
+            "UNKNOWN_RESULT_RECOVERY",
+            "RESPONSE_LOSS",
+        }:
             raise _ExternalFailure("TIMEOUT", "SENT_RESPONSE_LOST")
         return {"item": item}
     if tool_name in {
@@ -374,7 +389,16 @@ def _failure_mode(arguments: dict[str, object]) -> str | None:
     payload = arguments.get("payload")
     title = payload.get("title") if isinstance(payload, dict) else None
     normalized = title.upper() if isinstance(title, str) else ""
-    for value in ("FAILED_RETRY", "UNKNOWN_RESULT", "VERIFICATION_MISMATCH", "RECOVERY", "REAUTH"):
+    for value in (
+        "UNKNOWN_RESULT_RECOVERY",
+        "VERIFICATION_MISMATCH",
+        "FAILED_RETRY",
+        "UNKNOWN_RESULT",
+        "RESPONSE_LOSS",
+        "MCP_FAILURE",
+        "RECOVERY",
+        "REAUTH",
+    ):
         if value in normalized:
             return value
     return None
@@ -401,11 +425,19 @@ def _load_state() -> dict[str, object]:
 
 def _save_state(state: dict[str, object]) -> None:
     path = _state_root() / "langgraph-e2e-mcp-state.json"
-    path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    temporary_path = path.with_suffix(f".{os.getpid()}.tmp")
+    temporary_path.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+    temporary_path.replace(path)
 
 
 def _append_event(event: dict[str, object]) -> None:
     path = _state_root() / "langgraph-e2e-mcp-events.jsonl"
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(event, sort_keys=True) + "\n")
+
+
+def _append_runtime_event(event: dict[str, object]) -> None:
+    path = _state_root() / "langgraph-e2e-mcp-runtime-events.jsonl"
     with path.open("a", encoding="utf-8") as stream:
         stream.write(json.dumps(event, sort_keys=True) + "\n")
 

@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { App } from "../../src/app/App";
+import type { GoogleConnection } from "../../src/features/settings";
 
 type MockResponse = {
   status?: number;
@@ -3171,11 +3172,29 @@ test("renders snapshot context/disclosure and sends a context adjustment command
 });
 
 test("resumes a REAUTH_REQUIRED run after the Google connection is restored", async () => {
-  const requests = installUiContractFetch({ status: "REAUTH_REQUIRED" });
+  const requests = installUiContractFetch({
+    googleConnectionStates: ["CONNECTED", "CONNECTED"],
+    status: "REAUTH_REQUIRED",
+  });
   render(<App />);
   await waitFor(() => expect(requests.some((request) => request.path === "/api/v1/runs/run-1/resume")).toBe(true));
+  expect(
+    requests.filter((request) => request.path === "/api/v1/connections/google/status"),
+  ).toHaveLength(2);
   const request = requests.find((item) => item.path === "/api/v1/runs/run-1/resume");
   expect(JSON.parse(String(request?.init?.body))).toMatchObject({ resume_kind: "REAUTH_COMPLETED" });
+});
+
+test("does not resume a REAUTH_REQUIRED run from a stale connected projection", async () => {
+  const requests = installUiContractFetch({
+    googleConnectionStates: ["CONNECTED", "REAUTH_REQUIRED"],
+    status: "REAUTH_REQUIRED",
+  });
+  render(<App />);
+  await waitFor(() => expect(
+    requests.filter((request) => request.path === "/api/v1/connections/google/status"),
+  ).toHaveLength(2));
+  expect(requests.some((request) => request.path === "/api/v1/runs/run-1/resume")).toBe(false);
 });
 
 function installUiContractFetch(options: {
@@ -3200,6 +3219,7 @@ function installUiContractFetch(options: {
   gmailCount?: number;
   gmailCountError?: boolean;
   gmailCountResponse?: Promise<Response>;
+  googleConnectionStates?: Array<GoogleConnection["connection_status"]>;
   historyMessages?: Array<{ id: string; run_id: string | null; role: string; content: string; created_at_ms: number }>;
   historyRuns?: Array<{ run_id: string; status: string; started_at_ms: number; finished_at_ms: number | null }>;
   run?: boolean;
@@ -3235,13 +3255,24 @@ function installUiContractFetch(options: {
   let firstTaskPageRequests = 0;
   let completedTaskResponseIndex = 0;
   let accountResponseIndex = 0;
+  let googleConnectionStateIndex = 0;
   globalThis.fetch = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const path = String(input);
     requests.push({ path, init });
     if (path === "/health/live") return jsonFetchResponse(liveResponse());
     if (path === "/health/ready") return jsonFetchResponse(readyResponse());
     if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
-    if (path === "/api/v1/connections/google/status") return jsonFetchResponse(googleConnection());
+    if (path === "/api/v1/connections/google/status") {
+      const states = options.googleConnectionStates;
+      const state = states?.[
+        Math.min(googleConnectionStateIndex++, Math.max((states?.length ?? 1) - 1, 0))
+      ] ?? "CONNECTED";
+      return jsonFetchResponse(googleConnection({
+        account_id: state === "CONNECTED" ? "account-1" : null,
+        connection_status: state,
+        display_email: state === "CONNECTED" ? "user@example.com" : null,
+      }));
+    }
     if (path === "/api/v1/identity/google-account") {
       const account = options.accountResponses && accountResponseIndex < options.accountResponses.length
         ? options.accountResponses[accountResponseIndex++]
@@ -3824,7 +3855,7 @@ function llmConnectionPayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function googleConnection() {
+function googleConnection(overrides: Partial<GoogleConnection> = {}): GoogleConnection {
   return {
     schema_version: 1,
     connector_id: "google-workspace",
@@ -3833,6 +3864,7 @@ function googleConnection() {
     connection_status: "CONNECTED",
     granted_scopes: ["gmail.readonly"],
     missing_required_scopes: [],
+    ...overrides,
   };
 }
 
