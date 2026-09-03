@@ -237,13 +237,13 @@ export class BrowserProductHarness {
       await acknowledgements.nth(index).check();
     }
     await card.getByRole("button", {
-      name: /^(승인|확인하고 승인|충돌을 알고도 진행|그래도 새로 만들기)$/,
+      name: /^(네, 실행해 주세요|위험을 확인하고 실행해 주세요|충돌을 알고도 실행해 주세요|그래도 새로 만들어 주세요)$/,
     }).click();
   }
 
   async assertCompletedUi(answer?: string): Promise<void> {
-    await expect(this.page.getByText("작업을 완료했습니다.", { exact: true })).toBeVisible();
-    let assistantMessage = this.page.getByRole("article").filter({ hasText: "에이전트 응답" });
+    await expect(this.page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toBeVisible();
+    let assistantMessage = this.page.getByRole("article", { name: "에이전트 응답" });
     if (answer) assistantMessage = assistantMessage.filter({ hasText: answer });
     await expect(assistantMessage).toBeVisible();
   }

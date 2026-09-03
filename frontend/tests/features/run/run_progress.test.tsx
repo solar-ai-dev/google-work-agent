@@ -14,9 +14,9 @@ test("RunProgress exposes only server-projected cancel and resume actions", asyn
 });
 
 test.each([
-  ["tool_routing", { route_revision: 1, input_route_count: 2, output_mode: "ACTION" }, "도구 경로 2개 분석 완료"],
-  ["retrieval_progress", { coverage: "PARTIAL", completed_sources: 1, total_sources: 3 }, "자료 확인 1/3"],
-  ["analysis_progress", { completed_stage: "WORK_ANALYSIS" }, "분석 완료: WORK_ANALYSIS"],
+  ["tool_routing", { route_revision: 1, input_route_count: 2, output_mode: "ACTION" }, "도구 경로 에이전트 · 사용할 경로 2개를 정했습니다."],
+  ["retrieval_progress", { coverage: "PARTIAL", completed_sources: 1, total_sources: 3 }, "자료 검색 에이전트 · 컨텍스트 1/3개를 확인하고 있습니다."],
+  ["analysis_progress", { completed_stage: "WORK_ANALYSIS" }, "업무 분석 에이전트 · 필요한 조건과 근거를 정리했습니다."],
 ] as const)("RunProgress preserves canonical %s progress", (eventType, payload, label) => {
   const snapshot = { run: { status: "ANALYZING", next_allowed_commands: [] }, execution_status: { action_count: 0, terminal_action_count: 0 }, terminal_result_kind: "NONE" } as RunSnapshot;
   const latestEvent = {
@@ -25,4 +25,14 @@ test.each([
   } as RunSseEvent;
   render(<RunProgress snapshot={snapshot} latestEvent={latestEvent} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
   expect(screen.getByTestId("run-event-progress")).toHaveTextContent(label);
+});
+
+test("RunProgress appends a gray line when the active agent stage changes", () => {
+  const snapshot = { run: { run_id: "run-1", version: 1, status: "ANALYZING", next_allowed_commands: [] }, execution_status: { action_count: 0, terminal_action_count: 0 }, terminal_result_kind: "NONE" } as RunSnapshot;
+  const first = { schema_version: 1, event_id: "event-1", run_id: "run-1", action_id: null, occurred_at_ms: 1, event_type: "phase_changed", payload: { phase: "REQUEST_ANALYSIS" }, projection_version: 1 } as RunSseEvent;
+  const second = { ...first, event_id: "event-2", event_type: "phase_changed", payload: { phase: "TOOL_ROUTING" }, projection_version: 2 } as RunSseEvent;
+  const rendered = render(<RunProgress snapshot={snapshot} latestEvent={first} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  rendered.rerender(<RunProgress snapshot={snapshot} latestEvent={second} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  expect(screen.getByText("요청 이해 에이전트 · 요청의 목적을 파악하고 있습니다.")).toBeInTheDocument();
+  expect(screen.getByText("도구 경로 에이전트 · 사용할 도구를 정하고 있습니다.")).toBeInTheDocument();
 });

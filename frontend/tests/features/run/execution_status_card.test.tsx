@@ -6,7 +6,9 @@ import { ExecutionStatusCard } from "../../../src/features/run/execution_status_
 test("ExecutionStatusCard keeps UNKNOWN_RESULT non-terminal", () => {
   const snapshot = { actions: [{ action_id: "a-1", tool_name: "gmail_send", status: "UNKNOWN_RESULT", delivery_certainty: "SENT_RESPONSE_LOST" }], verification_summary: { verified_count: 0, mismatch_count: 0 }, recovery_summary: { unknown_result_action_count: 1 } } as RunSnapshot;
   render(<ExecutionStatusCard snapshot={snapshot} />);
-  expect(screen.getByText("UNKNOWN_RESULT")).toBeInTheDocument();
-  expect(screen.getByText("SENT_RESPONSE_LOST")).toBeInTheDocument();
-  expect(screen.queryByText(/성공 또는 실패/)).not.toBeInTheDocument();
+  expect(screen.getByText("Gmail 실행 에이전트 · 응답을 받지 못해 실제 결과를 안전하게 확인하고 있습니다.")).toBeInTheDocument();
+  expect(screen.getByText("결과 불명 작업 1건을 확인하고 있습니다.")).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain("SENT_RESPONSE_LOST");
+  expect(document.body.textContent).not.toContain("실행 및 검증 상태");
+  expect(document.body.textContent).not.toContain("성공했습니다");
 });

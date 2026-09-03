@@ -235,7 +235,7 @@ test("F_E2E_007_VERIFICATION_MISMATCH_PASS", async () => {
     "FAIL",
   ]);
   await expect(recoveryCard()).toContainText("VERIFICATION_MISMATCH");
-  await expect(page.getByText("작업을 완료했습니다.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toHaveCount(0);
 
   await recoveryCard().getByRole("button", { name: "현재 결과 수용" }).click();
   const completed = await harness.waitForRunStatus(runId, "COMPLETED");
@@ -272,7 +272,7 @@ test("F_E2E_008_MCP_FAILURE_PASS", async () => {
     expect.arrayContaining(["WRITE_UNKNOWN_RESULT", "WRITE_RECOVERY_RESOLVED_FAILED"]),
   );
   await expect(page.getByText("FAILED", { exact: true })).toBeVisible();
-  await expect(page.getByText("작업을 완료했습니다.", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toHaveCount(0);
 });
 
 function recoveryCard() {

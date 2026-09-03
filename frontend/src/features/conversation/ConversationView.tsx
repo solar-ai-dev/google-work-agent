@@ -5,7 +5,7 @@ import { ActionPlanCard } from "../approval";
 import { RecoveryCard } from "../recovery";
 import { ConfirmationCard, ContextPreviewCard, ExecutionStatusCard, ExternalLlmDisclosureCard, RequestComposer, RunProgress } from "../run";
 import type { RunSseEvent } from "../run/api/run_sse_event";
-import { DateSeparator, UserMessageBubble } from "./MessageBubble";
+import { AssistantMessageBubble, DateSeparator, UserMessageBubble } from "./MessageBubble";
 
 type RecoveryKind = NonNullable<RunSnapshot["recovery"]>["allowed_resolution_kinds"][number];
 
@@ -50,12 +50,11 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
   useEffect(() => {
     const node = timelineRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [selectedConversationId, historyMessages, showTransientRequest]);
+  }, [selectedConversationId, historyMessages, latestRunEvent?.event_id, runSnapshot?.projection_version, showTransientRequest]);
   const retryActionIds = new Set(runSnapshot?.error?.actions.filter((action) => action.kind === "PREPARE_RETRY" && action.action_id).map((action) => action.action_id!) ?? []);
 
   return (
     <>
-      {runSnapshot ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
       <div className="panel-body">
         <div className="central-scroll-area" ref={timelineRef}>
           {children}
@@ -64,19 +63,19 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
               {groupMessagesByDate(historyMessages).map(({ message, separatorLabel }) => (
                 <Fragment key={message.id}>
                   {separatorLabel ? <DateSeparator label={separatorLabel} /> : null}
-                  {message.role === "USER" ? <UserMessageBubble content={message.content} createdAtMs={message.created_at_ms} /> : <article className="info-card"><strong>{historyMessageLabel(message.role)}</strong><p>{message.content}</p></article>}
+                  {message.role === "USER" ? <UserMessageBubble content={message.content} createdAtMs={message.created_at_ms} /> : message.role === "ASSISTANT" ? <AssistantMessageBubble content={message.content} createdAtMs={message.created_at_ms} /> : <article className="info-card"><strong>시스템 메시지</strong><p>{message.content}</p></article>}
                 </Fragment>
               ))}
               {showTransientRequest ? <UserMessageBubble content={runContext!.request_text} /> : null}
+              {runSnapshot ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
               {runSnapshot?.pending_interrupt ? <ConfirmationCard interrupt={runSnapshot.pending_interrupt} text={confirmationText} busy={busyCommand === "confirm-run"} onTextChange={setConfirmationText} onSubmit={(option) => void handleConfirmation(option)} /> : null}
-              {runSnapshot?.external_llm_transfer_scope ? <ExternalLlmDisclosureCard scope={runSnapshot.external_llm_transfer_scope} /> : null}
-              {runSnapshot?.context_preview ? <ContextPreviewCard preview={runSnapshot.context_preview} busy={busyCommand?.startsWith("adjust-context:") ?? false} onAdjust={handleAdjustContext} /> : null}
-              {runSnapshot ? <ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /> : null}
-              {runSnapshot ? <ExecutionStatusCard snapshot={runSnapshot} /> : null}
+              {runSnapshot ? <div className="action-execution-flow"><ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /><ExecutionStatusCard snapshot={runSnapshot} /></div> : null}
               {runSnapshot ? <RecoveryCard snapshot={runSnapshot} busy={busyCommand} onResolve={(kind) => void handleResolveRecovery(kind)} onErrorAction={(kind) => kind === "OPEN_DIAGNOSTICS" ? onOpenDiagnostics() : onOpenSettings()} /> : null}
             </section>
           </section>
         </div>
+        {runSnapshot?.external_llm_transfer_scope ? <ExternalLlmDisclosureCard scope={runSnapshot.external_llm_transfer_scope} /> : null}
+        {runSnapshot?.context_preview ? <ContextPreviewCard preview={runSnapshot.context_preview} busy={busyCommand?.startsWith("adjust-context:") ?? false} onAdjust={handleAdjustContext} /> : null}
         <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} />
       </div>
     </>
@@ -94,8 +93,4 @@ function groupMessagesByDate(messages: ConversationMessage[]): MessageWithSepara
     lastDateKey = dateKey;
     return { message, separatorLabel };
   });
-}
-
-function historyMessageLabel(role: ConversationMessage["role"]): string {
-  return role === "ASSISTANT" ? "에이전트 응답" : role === "USER" ? "사용자 요청" : "시스템 메시지";
 }
