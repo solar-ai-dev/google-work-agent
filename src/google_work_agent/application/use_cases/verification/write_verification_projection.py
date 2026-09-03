@@ -9,6 +9,7 @@ versions, etags and timestamps are deliberately absent.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import cast
 
 _RECOVERY_MARKER_PREFIX = "\u200bgwa-recovery-fingerprint:"
@@ -146,6 +147,10 @@ def normalize_actual_verification_projection(
         if isinstance(notes, str):
             payload["notes"] = _strip_recovery_marker(notes)
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
+        for field_name in ("start", "end"):
+            value = payload.get(field_name)
+            if isinstance(value, str):
+                payload[field_name] = _canonical_calendar_instant(value)
         description = payload.get("description")
         if isinstance(description, str):
             payload["description"] = _strip_recovery_marker(description)
@@ -153,6 +158,22 @@ def normalize_actual_verification_projection(
         if isinstance(attendees, list):
             payload["attendees"] = sorted(str(item) for item in attendees)
     return normalized
+
+
+def _canonical_calendar_instant(value: str) -> str:
+    candidate = f"{value[:-1]}+00:00" if value.endswith("Z") else value
+    try:
+        parsed = datetime.fromisoformat(candidate)
+    except ValueError:
+        return value
+    if parsed.tzinfo is None:
+        return value
+    return (
+        parsed.astimezone(UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _strip_recovery_marker(value: str) -> str:

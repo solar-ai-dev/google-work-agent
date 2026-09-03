@@ -194,9 +194,10 @@ class VerifyEffectHandler:
         raw_actual = result.output.get("item", result.output)
         if not isinstance(raw_actual, dict):
             raise TypeError("verification read result must contain an object")
+        normalizer_tool_name = _normalizer_tool_name(query.target_resource_ref)
         actual = _business_actual(
             cast(dict[str, object], raw_actual),
-            normalizer_tool_name=_normalizer_tool_name(query.target_resource_ref),
+            normalizer_tool_name=normalizer_tool_name,
         )
         if strategy == "GET_ABSENT":
             return VerificationResultV1(
@@ -207,7 +208,10 @@ class VerifyEffectHandler:
                 [result.request_id],
                 ["TARGET_STILL_PRESENT"],
             )
-        expected = _business_expected(query.expected_effect)
+        expected = _business_expected(
+            query.expected_effect,
+            normalizer_tool_name=normalizer_tool_name,
+        )
         diffs = calculate_verification_subset_diff(expected, actual)
         return VerificationResultV1(
             "VERIFIED" if not diffs else "MISMATCH",
@@ -292,10 +296,17 @@ class VerifyEffectHandler:
         raise ValueError(f"unsupported verification resource type: {target.resource_type}")
 
 
-def _business_expected(expected: dict[str, object]) -> dict[str, object]:
+def _business_expected(
+    expected: dict[str, object],
+    *,
+    normalizer_tool_name: str | None = None,
+) -> dict[str, object]:
     payload = expected.get("payload")
     business = cast(dict[str, object], payload) if isinstance(payload, dict) else expected
-    return {key: value for key, value in business.items() if key != "recovery_fingerprint"}
+    filtered = {key: value for key, value in business.items() if key != "recovery_fingerprint"}
+    if normalizer_tool_name is None:
+        return filtered
+    return _business_actual(filtered, normalizer_tool_name=normalizer_tool_name)
 
 
 def _business_actual(actual: dict[str, object], *, normalizer_tool_name: str) -> dict[str, object]:
