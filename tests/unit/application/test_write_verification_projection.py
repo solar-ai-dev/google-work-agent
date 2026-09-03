@@ -1,10 +1,52 @@
 from __future__ import annotations
 
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
+from google_work_agent.application.use_cases.verification.verify_effect import (
+    SelectedResourceRefV1,
+    VerifyEffectHandler,
+    VerifyEffectQueryV1,
+)
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
     build_expected_verification_projection,
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
+from google_work_agent.ports.connector.connector_read_port import (
+    ConnectorReadResultV1,
+    JsonValue,
+)
+from google_work_agent.ports.connector.contracts.validated_connector_tool_binding import (
+    ValidatedConnectorToolBindingV1,
+)
+
+
+class _CalendarRead:
+    def execute_read(
+        self,
+        binding: ValidatedConnectorToolBindingV1,
+        arguments: dict[str, JsonValue],
+    ) -> ConnectorReadResultV1:
+        assert binding.tool_id == "calendar_get_event"
+        assert arguments == {"calendar_id": "calendar-1", "event_id": "event-1"}
+        return ConnectorReadResultV1(
+            1,
+            "calendar_get_event",
+            "verification-read-1",
+            {
+                "item": {
+                    "resource_type": "calendar_event",
+                    "resource_id": "event-1",
+                    "parent_id": "calendar-1",
+                    "title": "Focus",
+                    "start": "2026-08-20T00:00:00.900Z",
+                    "end": "2026-08-20T01:00:00Z",
+                }
+            },
+            None,
+            None,
+        )
 
 
 def test_task_create_expected__maps_scheduled_date__to_provider_due() -> None:
@@ -97,6 +139,38 @@ def test_calendar_expected_omits__fields_current_verification__snapshot_cannot_o
             "end": "2026-08-20T10:00:00+09:00",
         }
     }
+
+
+def test_calendar_verification__with_equal_timezone_instants__is_verified() -> None:
+    result = VerifyEffectHandler(
+        connector_read=_CalendarRead(),
+        tool_registry=load_signed_tool_registry(),
+    )(
+        VerifyEffectQueryV1(
+            "run-1",
+            "action-1",
+            "attempt-1",
+            "CREATE",
+            {
+                "title": "Focus",
+                "start": "2026-08-20T09:00:00+09:00",
+                "end": "2026-08-20T10:00:00+09:00",
+            },
+            SelectedResourceRefV1(
+                1,
+                "resource-ref-1",
+                "google_workspace",
+                "calendar_event",
+                "event-1",
+                "calendar-1",
+            ),
+        )
+    )
+
+    assert result.status == "VERIFIED"
+    assert result.expected_normalized["start"] == "2026-08-20T00:00:00Z"
+    assert result.actual_normalized is not None
+    assert result.actual_normalized["start"] == "2026-08-20T00:00:00Z"
 
 
 def test_delete_expected__is_absence__only() -> None:
