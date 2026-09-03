@@ -300,13 +300,9 @@ adapters/langgraph/subgraphs/<role>/nodes/<verb>_<object>_node.py
 
 Supporting deterministic operations that 06 keeps inside an existing node/stage keep their canonical Application operation file/test but do **not** require a second LangGraph Node, Router, Edge, or resume target. Current examples are `retrieval.resolve_availability`, `work_analysis.validate_work_analysis` inside runtime `analysis.finalize`, `planning.validate_plan` inside runtime `planning.assemble`, and `review.validate_review` inside runtime `review.aggregate_findings`.
 
-### Local Runtime provisioning capability mapping
+### Local Runtime provisioning target mapping
 
-| Spec term | Canonical owner | Layer | Canonical operation | Repository mapping | Test owner |
-| --- | --- | --- | --- | --- | --- |
-| Local Runtime automatic provisioning | `runtime_status` | Application | `provision_local_runtime` | `application/use_cases/runtime_status/provision_local_runtime.py → ProvisionLocalRuntimeCommandV1 / ProvisionLocalRuntimeResultV1 / ProvisionLocalRuntimeHandler` | `tests/unit/application/use_cases/runtime_status/test_provision_local_runtime.py` + 12 INF/SEC/REL |
-
-Handler dependencies are `OperationalCommandReplayPort + LocalRuntimeProvisioningPort + verified ModelManifestV2 loader/query + verified LocalModelProductDecisionV2 loader/query`. It never downloads, invokes an installer/process, parses model tags, scans arbitrary filesystem state, or mutates Domain lifecycle. Existing `get_runtime_status` remains the only status projection capability.
+Automatic provisioning is direction-approved but is not part of the current exact Application capability manifest. Its implementation may activate only after the Application handler, Port/Adapter, API owner, test owner, and V2 signed artifacts are cut over as one complete capability. Until then existing `get_runtime_status` remains the only runtime-status projection capability and the unimplemented endpoint is not advertised by the current boundary manifest.
 
 ### Runtime Node ID → Application operation closed mapping
 
@@ -483,7 +479,6 @@ POST /api/v1/runs/{run_id}/resume + SAFE_CHECKPOINT_RESUME
 | --- | --- | --- | --- | --- | --- |
 | `GET /api/v1/runtime` protected Runtime Detail | `runtime_status` | `get_runtime_status` | `application/use_cases/runtime_status/get_runtime_status.py` | `GetRuntimeStatusQuery / GetRuntimeStatusResult / GetRuntimeStatusHandler` | `tests/unit/application/use_cases/runtime_status/test_get_runtime_status.py` |
 
-| `POST /api/v1/runtime/local/provision` | `runtime_status` | `provision_local_runtime` | `application/use_cases/runtime_status/provision_local_runtime.py` | `ProvisionLocalRuntimeCommandV1 / ProvisionLocalRuntimeResultV1 / ProvisionLocalRuntimeHandler` | `tests/unit/application/use_cases/runtime_status/test_provision_local_runtime.py` |
 | `POST /api/v1/runtime/mode` | `runtime_mode` | `update_runtime_mode` | `application/use_cases/runtime_mode/update_runtime_mode.py` | `UpdateRuntimeModeCommand / UpdateRuntimeModeResult / UpdateRuntimeModeHandler` | `tests/unit/application/use_cases/runtime_mode/test_update_runtime_mode.py` |
 | `POST /api/v1/connections/google/start` | `connection` | `start_authorization` | `application/use_cases/connection/start_authorization.py` | `StartAuthorizationCommand / StartAuthorizationResult / StartAuthorizationHandler` | `tests/unit/application/use_cases/connection/test_start_authorization.py` |
 | `GET /api/v1/connections/google/status` | `connection` | `get_connection_status` | `application/use_cases/connection/get_connection_status.py` | `GetConnectionStatusQuery / GetConnectionStatusResult / GetConnectionStatusHandler` | `tests/unit/application/use_cases/connection/test_get_connection_status.py` |

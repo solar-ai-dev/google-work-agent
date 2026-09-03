@@ -790,11 +790,11 @@ Product LLM caller는 concrete model/provider를 선택하지 않고 `Structured
 초기 Local 후보 Profile:
 
 ```text
-WORKER    → qwen3.5:4b    # bounded extraction/classification candidate
-REASONING → qwen3.5:9b    # ambiguity, tool route, retrieval plan, analysis, planning, review candidate
+WORKER    → qwen3.5:9b
+REASONING → qwen3.5:9b
 ```
 
-이 concrete mapping은 13 Evaluation을 통과해 signed Release artifact가 된 경우에만 활성화된다. Agent code, Prompt text, Browser 설정, model-name 문자열 parsing은 model authority가 아니다. 같은 tier의 concrete model 교체는 semantic owner·Graph topology·Port를 바꾸지 않는 Release configuration change다.
+이 single-model mapping은 13 Evaluation을 통과해 signed Release artifact가 된 경우에만 활성화된다. `WORKER | REASONING`은 Prompt responsibility metadata이며 모델 전환 신호가 아니다. Agent code, Prompt text, Browser 설정, model-name 문자열 parsing은 model authority가 아니다. concrete model 교체는 semantic owner·Graph topology·Port를 바꾸지 않는 Release configuration change다.
 
 ### 16.1-B Provisioning boundary
 

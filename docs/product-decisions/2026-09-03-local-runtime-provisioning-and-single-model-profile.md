@@ -1,4 +1,4 @@
-# Product Decision — Automatic Local Runtime Provisioning and Dual-Model Profile
+# Product Decision — Automatic Local Runtime Provisioning and Single-Model Profile
 
 - **Decision date:** 2026-09-03
 - **Status:** `DIRECTION_APPROVED / RELEASE_ACTIVATION_GATED`
@@ -12,7 +12,7 @@
 The Google Work Agent installation and first-run onboarding flow coordinates provisioning of:
 
 1. a release-approved Ollama runtime; and
-2. a signed Local Model Profile containing the models required by the product.
+2. a signed Local Model Profile containing the single model required by the product.
 
 Ollama remains a separate local Loopback runtime process. It is not linked into Product Core and is not treated as an Application, Agent, or Domain owner.
 
@@ -21,15 +21,15 @@ The Windows Installer declares and installs the provisioning capability, but it 
 ## 2. Candidate Local Model Profile
 
 ```text
-profile_id = qwen3_5_dual_tier_candidate_v1
+profile_id = qwen3.5-9b-single-model-v1
 runtime    = OLLAMA
-WORKER     = qwen3.5:4b
+WORKER     = qwen3.5:9b
 REASONING  = qwen3.5:9b
 ```
 
-This concrete profile is direction-approved as the next evaluation candidate. It is not an active production or signed Release authority until the required Evaluation, Safety, hardware, provisioning, and Release gates pass.
+This concrete single-model profile is direction-approved as the next evaluation candidate. It is not an active signed Release authority until the required Evaluation, Safety, hardware, provisioning, and Release gates pass. `WORKER | REASONING` remain closed responsibility metadata, but both resolve to the same model and must not trigger a same-Run model swap.
 
-`qwen2.5:7b` remains a single-model comparison baseline. It is no longer treated as the immutable product architecture.
+The previous 7B baseline and 4B/9B switching candidate are not active product candidates.
 
 ## 3. Model Selection Boundary
 
@@ -50,14 +50,14 @@ The following are prohibited as competing model-selection authorities:
 - model-name string parsing such as `4b`, `7b`, or `9b` to grant execution eligibility;
 - a second model registry in Settings, Application, or Frontend.
 
-## 4. Initial Tier Candidate Mapping
+## 4. Inference-class metadata
 
 | Tier | Candidate responsibilities |
 | --- | --- |
 | `WORKER` | `request.identify_goal` and other bounded extraction/classification slots only after slot-specific Contract and Gold gates pass |
 | `REASONING` | `request.detect_ambiguity`, Tool Routing semantic selection, Retrieval planning/sufficiency, Work Analysis, Planning, and Review |
 
-The mapping is signed release data rather than Agent code. A Prompt slot may move between tiers only through evaluation and a new signed Product Decision/Profile revision.
+The mapping is signed release data rather than Agent code. A Prompt slot may move between classes only through evaluation and a new signed Product Decision/Profile revision, but both classes resolve to `qwen3.5:9b` in this profile.
 
 The current repeated Confirmation defect makes `request.detect_ambiguity` a required `REASONING` evaluation case. The profile must prove forward progress rather than merely produce schema-valid output.
 
@@ -69,9 +69,8 @@ The target first-run experience is:
 Install Google Work Agent
 → run environment and disk checks
 → reuse compatible existing Ollama OR prepare approved Ollama
-→ download and verify the WORKER model
-→ download and verify the REASONING model
-→ run tier-specific Structured Output smoke tests
+→ download and verify the active single model
+→ run Structured Output smoke tests
 → enable LOCAL_GPU
 → READY
 ```
@@ -82,7 +81,7 @@ The onboarding UI exposes:
 
 - current component and stage;
 - progress percentage and transferred/remaining bytes where available;
-- `빠른 모델` and `고성능 모델` labels in the primary UX;
+- one `로컬 AI 모델` status in the primary UX;
 - exact model ID, digest, and runtime version only in diagnostics;
 - typed retryable failure actions;
 - `다시 시도`, `진단 열기`, and `API로 계속` when allowed.
@@ -180,15 +179,7 @@ Existing `runtime_status.get_runtime_status` remains the only runtime-status pro
 
 ## 10. Evaluation and Release Gate
 
-Paired candidates:
-
-```text
-L0 = qwen2.5:7b single-model baseline
-L1 = qwen3.5:9b single-model candidate
-L2 = qwen3.5:4b WORKER + qwen3.5:9b REASONING candidate
-```
-
-The comparison keeps PromptRef, schemas, policy, Tool Registry, fixtures, Domain behavior, and Graph topology fixed.
+The current evaluation target is `qwen3.5:9b` as one concrete model for every Product Prompt. The evaluation keeps PromptRef, schemas, policy, Tool Registry, fixtures, Domain behavior, and Graph topology fixed.
 
 Required evidence includes:
 
@@ -201,7 +192,7 @@ Required evidence includes:
 - Planning/Review quality;
 - actual Gmail READ reachability;
 - approval-gated Gmail WRITE and Verification;
-- model load/swap overhead;
+- cold model load overhead and same-Run model swap count 0;
 - peak VRAM/RAM and throughput;
 - p50/p95 Node and total Run latency;
 - cold provisioning time and download volume;
@@ -225,7 +216,7 @@ Parameter count or model tag alone never grants support.
 
 ## 10-A. Versioned artifact cut-over
 
-The current implementation has `ModelManifestV1` and `LocalModelProductDecisionV1` with single-model semantics. The dual-tier design is an incompatible contract change and therefore targets V2 artifacts rather than mutating V1 fields in place.
+The current implementation has `ModelManifestV1` and `LocalModelProductDecisionV1`. Automatic provisioning requires the V2 artifact fields for approved installer identity, model digest/size, hardware gates, and an active profile; this cut-over must not mutate V1 fields in place.
 
 Final activation requires:
 
@@ -244,8 +235,8 @@ V1 may remain only in explicit migration/fixture evidence.
 1. **Contract realization** — typed API/Port/Profile schemas, Model Manifest extension, architecture tests.
 2. **Provisioning adapter** — download/staging/signature/hash/digest, existing-runtime detection, operation replay reconciliation.
 3. **Installer and onboarding** — clean-VM first-run progress, retry, repair, and uninstall behavior.
-4. **Tier routing** — Prompt-slot tier metadata and Router profile resolution with no Agent hardcoding.
-5. **Evaluation** — L0/L1/L2 comparison, repeated Confirmation reproduction, Gmail READ/WRITE E2E.
+4. **Runtime routing** — Prompt-class metadata and single-model Router profile resolution with no Agent hardcoding or same-Run model swap.
+5. **Evaluation** — 9B single-model Contract/latency evaluation, repeated Confirmation reproduction, Gmail READ/WRITE E2E.
 6. **Release** — signed Model Manifest/Profile and clean-VM/upgrade/uninstall gates, followed by activation.
 
 ## 12. Explicit Non-Closure
@@ -253,8 +244,8 @@ V1 may remain only in explicit migration/fixture evidence.
 This decision and Canonical synchronization do not claim that:
 
 - automatic Ollama/model provisioning is implemented;
-- the dual-model profile has passed Evaluation;
-- `qwen3.5:4b` or `qwen3.5:9b` is already a signed production default;
+- the single-model profile has passed Evaluation;
+- `qwen3.5:9b` is already a signed production default;
 - the current Request Understanding Confirmation loop is fixed;
 - actual Gmail Agent READ/WRITE has reached the Connector boundary.
 

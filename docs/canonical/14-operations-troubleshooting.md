@@ -51,8 +51,8 @@
 
 | 역할 | 허용 작업 | 금지 작업 |
 | --- | --- | --- |
-| 사용자 | 재로그인·Mode 변경·재시도 승인·Backup·Restore·진단 Bundle 생성 | SQLite 직접 수정·MCP 수동 Write·Token 공유 |
-| 애플리케이션 | 제한된 Retry·GET 검증·Checkpoint 복구·Safe Mode | 무한 Retry·UNKNOWN_RESULT Write 재전송·자동 데이터 삭제 |
+| 사용자 | OAuth 동의·Secret 입력·Write 승인·필요 시 진단 Bundle 공유 | Backup 대상 선택·Process 종료·SQLite 직접 수정·MCP 수동 Write·Token 공유 |
+| 애플리케이션 | 인증 갱신·Runtime 선택·제한된 Retry·GET 검증·Checkpoint 복구·검증된 Backup 자동 Restore·실패 Rollback·Safe Mode | 무한 Retry·UNKNOWN_RESULT Write 재전송·자동 데이터 삭제 |
 | 개발자 지원 | Sanitized Evidence 분석·서명 Build Repair·호환 Backup Restore 안내 | 사용자 Secret 요청·직접 SQL 수정 안내·검증 없는 상태 강제 변경 |
 
 P0에는 원격 관리자 Console과 자동 Log Upload가 없다. 사용자가 명시적으로 생성한 Diagnostic Bundle만 외부 공유 대상이 된다.
@@ -119,7 +119,7 @@ flowchart TD
 | Write `NOT_SENT` 확정 실패 | `FAILED` 저장 | 자동 재실행 없음 | `FAILED → EXECUTING` |
 | `MAY_HAVE_BEEN_SENT | SENT_RESPONSE_LOST` | `UNKNOWN_RESULT`·GET/Search | 조회 Budget 범위 | 새 Attempt·Write |
 | SQLite Busy | 짧은 Busy Timeout 후 실패 | 5초 | DB Lock 상태 외부 Write |
-| Migration 실패 | Safe Mode | 자동 재시도 없음 | DB 삭제·Downgrade Open |
+| Migration·DB Integrity 실패 | 검증된 최신 호환 Backup 1개 자동 Restore·실패 시 원본 Rollback·Safe Mode 유지 | 자동 Restore 1회 | DB 삭제·Downgrade Open·사용자 임의 선택 |
 
 
 ### 6.1 Durable pending handoff recovery
@@ -306,7 +306,7 @@ AUTO는 기술적 Local 실패에서 API Fallback 최대 1회를 허용한다. �
 ```text
 Runtime Detail 확인
 → `NOT_STARTED | REPAIR_REQUIRED`이면 `로컬 AI 준비`
-→ Ollama/WORKER/REASONING component progress 확인
+→ Ollama/active-model component progress 확인
 → READY 뒤 tier Smoke Test 결과 확인
 → LOCAL_GPU 활성화
 ```
@@ -615,7 +615,6 @@ Safe Mode 허용:
 - Restore
 - Sanitized Log 확인
 - 설정 확인
-- 앱 종료
 
 Safe Mode 금지:
 
@@ -665,9 +664,9 @@ Restore 중 실패하면 원본과 Restore 대상 모두 보존한다. 마지막
 - 둘 중 먼저 도달한 기준으로 정리
 - Migration 직전 마지막 정상 Backup은 새 Version 첫 정상 시작 전까지 유지
 
-### 22.4 Safe Mode backup target discovery
+### 22.4 Safe Mode automatic backup target selection
 
-Safe Mode Restore UI는 `GET /api/v1/backups → backup.list_backups → BackupPort.list_backups()`로 integrity-eligible backup metadata와 opaque `backup_ref`를 읽는다. User selects one ref, then `POST /api/v1/restore`. latest auto-pick, raw path input, directory probing은 금지한다.
+System recovery coordinator는 `BackupPort.list_backups()`의 integrity·schema-compatible metadata만 소비한다. `created_at_ms DESC, backup_ref ASC`의 첫 항목 하나를 선택하고 동일 candidate에는 operational replay로 1회만 Restore한다. UI target selector, raw path input, directory probing은 금지한다. Post-restore Readiness 실패나 중간 오류는 Restore 전 DB를 보존·복원하고 Safe Mode를 유지한다.
 
 ## 23. Shutdown·Crash Recovery Runbook
 

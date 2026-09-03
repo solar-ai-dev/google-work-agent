@@ -1762,4 +1762,12 @@ Main State의 `RunInputV1.requested_mode`와 `WorkflowBindingV1.requested_mode`�
 - Resume/Repair/Revision은 원 호출의 tier를 유지한다. tier fallback이나 model substitution은 03/10 Router policy와 13 Gate만 소유한다.
 - Agent State와 Checkpoint에는 concrete model name을 실행 권위로 저장하지 않고 PromptRef/tier/release-profile identity와 관측 결과만 보존한다.
 
-초기 candidate binding은 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`지만 Evaluation/Release 활성화 전에는 current production binding을 대체하지 않는다.
+현재 candidate binding은 `WORKER=qwen3.5:9b`, `REASONING=qwen3.5:9b`인 단일 모델 구성이다. class는 Prompt 책임 metadata로만 남고 같은 Run에서 concrete model swap을 만들지 않는다. Evaluation/Release 활성화 전에는 current signed production binding을 대체하지 않는다.
+
+## 19-B. State-derived conditional execution
+
+- Main Supervisor는 `RunInputV1`과 현재 typed artifact로부터 도출한 조건으로 전체 stage/Subgraph 진입 여부를 결정한다. LLM 출력이나 별도 장기 `skip_*` boolean은 routing authority가 아니다.
+- 각 Subgraph는 자기 Local State와 current typed artifact로 내부 Node의 applicability를 결정한다. 해당 Node가 새로 만들 정보가 없으면 실행하지 않는다.
+- 필요한 artifact가 이미 결정적으로 산출 가능하면 LLM 호출만 생략하고 owner의 deterministic builder/validator가 canonical artifact를 만든다. artifact contract 자체를 생략하지 않는다.
+- Validation, Policy, Approval, Domain transition, Write safety, Verification, Recovery와 unknown-contract fail-closed Node는 비용 절감을 이유로 건너뛰지 않는다.
+- `RESOURCE_SELECTED`처럼 exact resource identity가 이미 있으면 Retrieval query-planning LLM은 생략할 수 있지만 canonical detail read, Evidence/RAG와 sufficiency contract는 유지한다.

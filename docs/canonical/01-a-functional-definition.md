@@ -104,10 +104,10 @@
 - **상태:** P0 배포 기능
 - **사용자 목적:** Ollama와 제품 Local Model을 직접 설치하지 않고 `LOCAL_CAPABLE` 제품을 사용할 수 있게 한다.
 - **입력:** `로컬 AI 준비` 사용자 행동 또는 최초 설정의 자동 시작, 현재 Hardware/디스크/네트워크 진단 결과.
-- **처리:** 기존 호환 Ollama 탐지 → Release-approved Ollama Artifact 필요 시 설치 → Signed Local Model Profile의 model artifact 다운로드 → digest/identity 검증 → tier별 Structured Output Smoke Test → Runtime readiness 반영.
+- **처리:** 기존 호환 Ollama 탐지 → Release-approved Ollama Artifact 필요 시 설치 → Signed 단일 Local Model Profile의 model artifact 다운로드 → digest/identity 검증 → Structured Output Smoke Test → Runtime readiness 반영.
 - **출력:** 단계별 진행률, 남은 용량, 현재 준비 항목, 재시도 가능한 typed 오류, 최종 `READY | API_ONLY_FALLBACK | REPAIR_REQUIRED` 상태.
 - **규칙:** Browser·LLM이 URL·installer path·model name을 제출하지 않는다. `OperationalCommandReplayPort`와 provisioning Port가 crash-safe operation identity를 유지한다.
-- **모델 Profile:** Product LLM caller는 `WORKER | REASONING` tier만 요청한다. 초기 후보는 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`이며 13 Evaluation과 signed Release activation 전에는 제품 기본값으로 확정하지 않는다.
+- **모델 Profile:** Product LLM caller는 concrete model을 선택하지 않는다. closed `WORKER | REASONING` inference class는 관측·평가 metadata로 유지할 수 있지만 current profile에서는 둘 다 `qwen3.5:9b` 하나에 resolve하여 Run 중 model swap을 만들지 않는다. Signed Release activation은 13 Gate가 결정한다.
 - **완료 조건:** 사용자가 CLI를 실행하지 않고 승인된 Runtime과 모델이 검증되어 `LOCAL_GPU`가 선택 가능하거나, 실패 원인과 API 대체 경로가 안전하게 표시된다.
 
 ### FN-007 OAuth 배포 환경 관리

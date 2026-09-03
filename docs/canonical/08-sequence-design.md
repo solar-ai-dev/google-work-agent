@@ -235,9 +235,8 @@ React Onboarding
 → verified Ollama Artifact download/signature/hash check if required
 → controlled prerequisite install/readiness
 → Signed Local Model Profile resolve
-→ WORKER model download/digest verify
-→ REASONING model download/digest verify
-→ tier-specific structured inference smoke tests
+→ active single model download/digest verify
+→ structured inference smoke tests
 → Runtime Detail READY projection
 ```
 

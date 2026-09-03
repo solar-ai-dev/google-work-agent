@@ -29,6 +29,7 @@
 - 읽기·검색·분석은 사용자 요청 범위 안에서 자동 진행한다.
 - 쓰기 Action만 사용자 승인을 요구한다.
 - 앱이 자동으로 판단할 수 있는 값은 먼저 제안하고, 불명확하거나 정책상 필요한 경우에만 질문한다.
+- 인증 갱신, Runtime·Model 선택, 기본 Resource 결정, 재연결, 시작 복구와 종료 순서는 시스템이 결정한다. OAuth 계정 동의, 외부 전송 동의, Secret 입력, Write 승인처럼 사용자 권한이 필요한 값만 입력받는다.
 - 기술 로그 대신 현재 진행 상황을 이해할 수 있는 한 문장으로 표시한다.
 
 ## 3. 실행·화면 구조
@@ -138,10 +139,9 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 1. Google 로그인과 Scope 동의
 2. 개인정보·외부 LLM 전송 동의
 3. PC와 GPU 환경 자동 진단
-4. API LLM 연결
-5. Local 사용 가능 환경이면 `로컬 AI 준비`를 실행해 Ollama와 Signed Local Model Profile을 자동 설치·검증
-6. 기본 Calendar·Task List·Timezone 확인
-7. 메인 화면 진입
+4. API LLM 또는 Local LLM 선택
+5. 선택한 Runtime을 시스템이 자동 연결·준비하고 Local이면 Signed 단일 Model Profile을 설치·검증
+6. 메인 화면 자동 진입
 
 ### 6.3 Google 로그인
 
@@ -150,25 +150,25 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 - 로그인 완료 후 계정 이메일과 Gmail·Tasks·Calendar 권한 상태를 표시한다. P0 필수 Scope 하나라도 거절되면 연결 미완료로 표시하고 Agent Run을 차단한다.
 - Refresh Token은 OS Keyring에 저장해 다음 실행에서 자동 로그인 검증에 사용한다.
 
-### 6.4 API LLM 연결
+### 6.4 LLM 연결 방식 선택
 
-- 제품에서 지원하는 Provider와 고정 모델을 표시한다.
-- API Key 입력과 `PC에 안전하게 저장` 선택을 제공한다.
-- 기본 저장 위치는 OS Keyring이며, `이번 실행에서만 사용`을 선택할 수 있다.
-- 연결 검사는 입력 후 자동 실행한다.
+- 사용자는 `API LLM | Local LLM` 중 실행 방식을 고를 수 있지만 concrete Local model은 고르지 않는다.
+- API LLM은 제품에서 지원하는 Provider·고정 Model과 API Key 입력을 표시한다. API Key 기본 저장 위치는 OS Keyring이며 Secret 원문과 저장 세부는 화면 전환 후 다시 노출하지 않는다.
+- Local LLM은 verified Release의 Signed Local Model Profile과 Hardware gate를 교차 검증하고 제품이 승인된 단일 Model을 준비한다.
+- 선택 이후의 연결, readiness 검사, 실패 복구는 시스템이 수행하며 사용자가 endpoint·model tag·설치 명령을 입력하지 않는다.
+- 기본 Calendar·Task List·Timezone은 최초 설정 완료 조건이 아니며 필요 시 Settings 또는 실제 Action 계획에서 결정한다.
 
 ### 6.5 Local AI 자동 준비
 
 - GPU 기준을 충족한 `LOCAL_CAPABLE` 환경에서만 표시한다.
-- 기본 CTA는 `로컬 AI 준비`이며 사용자가 Ollama 설치 프로그램이나 터미널 명령을 직접 다루지 않는다.
-- 단계는 `환경 확인 → Ollama 준비 → 빠른 모델 준비 → 고성능 모델 준비 → 무결성 검증 → 테스트 추론` 순서로 표시한다.
+- Local LLM을 선택하면 준비를 자동 시작하며 Settings의 `로컬 AI 준비`는 중단된 준비·repair를 다시 확인하는 단일 진입점이다. 사용자가 Ollama 설치 프로그램이나 터미널 명령을 직접 다루지 않는다.
+- 단계는 `환경 확인 → Ollama 준비 → 승인 모델 준비 → 무결성 검증 → 테스트 추론` 순서로 표시한다.
 - 각 단계는 `대기 | 다운로드 중 | 설치 중 | 검증 중 | 완료 | 다시 시도 필요` 상태와 진행률·남은 용량을 제공한다.
-- 기본 사용자 문구는 `빠른 모델`, `고성능 모델`을 사용하고 model ID/digest는 진단 상세에서만 노출한다.
+- 기본 사용자 문구는 `로컬 AI 모델`을 사용하고 model ID/digest는 진단 상세에서만 노출한다.
 - 네트워크 단절·앱 재시작 뒤에는 같은 operation을 reconcile하고 완료 Artifact를 다시 다운로드하지 않는다.
 - Signature/hash/digest 불일치, 디스크 부족, 기존 Ollama 비호환은 정확한 조치와 `다시 시도`를 표시하며 검증 전 `LOCAL_GPU`를 활성화하지 않는다.
 - 기존 호환 Ollama는 보존하고 사용한다. 제품 제거 화면은 기존 Ollama를 자동 삭제하지 않으며 제품이 받은 모델 삭제는 별도 선택으로 제공한다.
 - API 사용 가능 시 provisioning 중에도 API_LLM 경로를 함께 표시한다. GPU가 없거나 기준 미달이면 Local provisioning UI와 Local 옵션을 표시하지 않는다.
-
 
 ### 6.6 두 번째 이후 실행
 
@@ -397,7 +397,7 @@ Local Agent Service가 응답하지 않으면 화면 전체를 초기화하지 �
 - Launcher 상태 확인
 - 진단 정보 보기
 - 마지막 저장 상태 표시
-- 앱 안전 종료
+- 시스템 재연결·복구 진행 상태
 
 ## 12. UI-007 오른쪽 대화 내역 패널
 
@@ -687,7 +687,9 @@ P0 Settings Drawer는 **로그 삭제나 전체 앱 초기화 Command를 제공�
 
 ### 18.6 Restore·Diagnostics·compatibility
 
-- Safe Mode Restore 대상은 `GET /api/v1/backups`의 opaque `backup_ref` 목록에서 사용자가 선택한다. raw path/latest 자동 선택 금지.
+- Safe Mode는 사용자 백업 선택·복원·종료 Control을 표시하지 않는다. 시스템은 integrity·schema-compatible 목록에서 최신 `created_at_ms`, 동률 시 `backup_ref` 순으로 정확히 하나를 선택해 자동 복구를 한 번만 시도한다.
+- 자동 Restore는 현재 DB를 먼저 Backup하고 대상 Manifest·Hash·SQLite·Schema를 검증한다. Post-restore Readiness가 실패하면 원본 DB로 자동 롤백하고 새 Run·Write는 계속 차단한다.
+- 자동 복구가 불가능하면 UI는 읽기 전용 상태와 sanitized 오류만 표시하며 데이터 삭제·새 DB 생성·무한 재시도·수동 raw path 입력을 제공하지 않는다.
 - 진단 Drawer는 protected `GET /api/v1/runtime`의 bounded diagnostics projection만 사용하고 Launcher-only `/health/ready`를 Browser가 직접 호출하지 않는다.
 - bootstrap 응답이 `compatibility=COMPATIBLE`인 뒤에만 mutation/SSE를 활성화한다.
 
@@ -720,7 +722,7 @@ Local Storage에는 Secret, Approval/Claim 실행 권위 값(`approval_id`, `cla
 ### LOCAL_CAPABLE
 
 - `AUTO`, `LOCAL_GPU`, `API_LLM` 제공
-- Local Runtime provisioning 진행·복구 상태와 `WORKER | REASONING` Signed Model Profile readiness 표시
+- Local Runtime provisioning 진행·복구 상태와 active single-model Signed Profile readiness 표시
 - 명시적 LOCAL_GPU 실패 시 자동 전환하지 않고 API 전환 Action 제공
 - AUTO fallback 발생 시 이유와 실제 Runtime 표시
 

@@ -110,38 +110,35 @@ FUSED_REFERENCE
 - Product LLM call count / token / p50·p95 latency
 - repair/revision localization: 한 atomic node 실패가 다른 responsibility 재호출로 번지는지 여부
 
-Release 판단은 single-model baseline `qwen2.5:7b`, single-model candidate `qwen3.5:9b`, tiered candidate `WORKER=qwen3.5:4b + REASONING=qwen3.5:9b`를 동일 Prompt·Schema·Policy·Fixture에서 비교한다. ATOMIC_SLLM Safety/BTS/first-pass 안정성과 tier-routing 이득이 provisioning·VRAM·latency 비용을 정당화해야 한다. 강한 API Runtime의 fusion은 atomic parity를 통과한 경우에만 허용한다. Product LLM hard cap은 24다.
+Release 판단은 current single-model profile `qwen3.5:9b`를 동일 Prompt·Schema·Policy·Fixture에서 검증한다. 이전 4B/9B switching 후보는 실제 Run latency에서 model load/swap 비용을 만들었으므로 active product candidate가 아니다. 강한 API Runtime의 fusion은 atomic parity를 통과한 경우에만 허용한다. Product LLM hard cap은 24다.
 
-### 1.3 Qwen3.5 dual-tier Local candidate decision
+### 1.3 Qwen3.5 single-model Local candidate decision
 
-Local Runtime 방향 후보는 다음 세 구성을 paired comparison한다.
+Local Runtime 방향 후보는 다음 단일 구성을 사용한다.
 
 ```text
-L0  qwen2.5:7b single-model current comparison baseline
-L1  qwen3.5:9b single-model candidate
-L2  qwen3_5_dual_tier_candidate_v1
-    WORKER    = qwen3.5:4b
-    REASONING = qwen3.5:9b
+profile_id  = qwen3.5-9b-single-model-v1
+WORKER      = qwen3.5:9b
+REASONING   = qwen3.5:9b
 ```
 
-`L2`는 product direction candidate지만 Release-active configuration이 아니다. 동일 PromptRef/Schema/Gold/Graph/Policy/Tool Registry를 고정하고 tier mapping만 독립변수로 비교한다.
+이 profile은 product direction candidate지만 Release-active configuration이 아니다. 동일 PromptRef/Schema/Gold/Graph/Policy/Tool Registry를 고정하고 실제 single-model runtime behavior를 평가한다. `WORKER | REASONING` class는 관측 metadata이며 같은 Run에서 concrete model을 바꾸지 않는다.
 
 최소 평가:
 
 - Node contract valid first pass, repair rate, schema failure isolation
 - semantic accuracy, selected-resource preservation, over-confirmation rate, repeated-question rate, forward-progress rate
-- 특히 현재 `qwen2.5:7b`에서 재현된 `RESOURCE_SELECTED → request.detect_ambiguity → Confirmation → same ambiguity` Case
+- 특히 현재 9B live path에서 재현된 `RESOURCE_SELECTED → request.detect_ambiguity → Confirmation → same ambiguity` Case
 - Tool Route exact/allowed route, Retrieval query/sufficiency, Work Analysis, Action objective/arguments, Review false PASS/REVISE
 - Gmail actual READ reachability와 approval-gated WRITE/Verification E2E
-- model load/swap overhead, peak VRAM/RAM, token throughput, p50/p95 latency, total Run latency, fallback rate
+- cold load overhead, same-Run model swap count 0, peak VRAM/RAM, token throughput, p50/p95 latency, total Run latency, fallback rate
 - provisioning download size/time, cold-start readiness, interrupted-download recovery
 
-Tier eligibility:
+Inference-class rules:
 
-- `WORKER`에는 slot-specific Contract/Gold Gate를 통과한 bounded extraction/classification만 둔다.
-- `request.detect_ambiguity`, Tool semantic selection, Retrieval plan/sufficiency, Analysis, Planning, Review는 기본 `REASONING` 후보다.
-- 4B가 한 slot에서 기준 미달이면 Agent code를 바꾸지 않고 Release Profile에서 해당 slot의 tier를 `REASONING`으로 재평가한다.
-- 9B도 Safety/Contract/BTS를 통과하지 못하면 dual profile은 탈락하며 더 큰/다른 approved candidate를 비교한다.
+- `WORKER | REASONING`은 Prompt responsibility와 측정 구간을 구분할 수 있지만 둘 다 exact `qwen3.5:9b` identity로 resolve한다.
+- Prompt, Agent, 사용자 설정은 concrete model이나 class→model mapping을 바꾸지 않는다.
+- 9B가 Safety/Contract/BTS를 통과하지 못하면 profile은 탈락하며 새로운 approved single-model candidate를 별도 Product Decision으로 평가한다.
 
 Release Gate:
 

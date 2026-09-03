@@ -331,7 +331,7 @@ AUTO는 다음 기술 오류에서 API로 최대 1회 fallback할 수 있다.
 
 제품 기본 Model은 current Release Gate를 통과한 Signed Local Model Profile만 사용한다. Product LLM caller·Agent·Prompt·사용자는 concrete model ID를 선택할 수 없고 `WORKER | REASONING` tier만 요청한다. `StructuredInferenceRuntimeRouter`가 verified profile에서 tier를 concrete model identity/digest로 resolve한다. 일반 사용자 UI에 임의 모델명 입력이나 평가용 후보 선택을 노출하지 않는다.
 
-초기 후보 Profile은 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`다. 이는 방향이 승인된 Evaluation candidate이며, 13의 Safety·Contract·BTS·Hardware Gate와 Release 서명 전에는 product-active authority가 아니다.
+현재 방향 Profile은 `WORKER=qwen3.5:9b`, `REASONING=qwen3.5:9b`인 단일 모델 구성이다. 두 class는 concrete model 선택 권한이 아니라 Prompt 책임 metadata이며 같은 Run에서 모델을 전환하지 않는다. 13의 Safety·Contract·BTS·Hardware Gate와 Release 서명 전에는 product-active authority가 아니다.
 
 ### POL-LLM-007 배포 프로필
 

@@ -413,7 +413,7 @@ Crash at page1→page2, detail fetch, normalize, evidence selection, sufficiency
 - User install, no admin, no Python·Node
 - Production·distributed test Signature
 - API_ONLY without Ollama
-- LOCAL_CAPABLE clean VM automatic provisioning: compatible existing Ollama reuse 또는 signed Ollama 준비 → WORKER/REASONING model download·digest verification → tier smoke test → READY; manual CLI·external install guidance 0
+- LOCAL_CAPABLE clean VM automatic provisioning: compatible existing Ollama reuse 또는 signed Ollama 준비 → active single model download·digest verification → smoke test → READY; manual CLI·external install guidance 0
 - Upgrade Backup·Migration·Safe Mode·Downgrade block
 - Default uninstall preserves DB·Backup·Settings and deletes OAuth·LLM credentials
 
@@ -422,14 +422,14 @@ Crash at page1→page2, detail fetch, normalize, evidence selection, sufficiency
 필수 regression:
 
 - `API_ONLY`는 provisioning endpoint가 side effect 0의 unsupported result를 반환하고 Ollama/model artifact를 요구하지 않는다.
-- `LOCAL_CAPABLE` clean Windows VM에서 사용자 CLI 없이 Ollama → WORKER model → REASONING model → Smoke Test → READY를 완료한다.
+- `LOCAL_CAPABLE` clean Windows VM에서 사용자 CLI 없이 Ollama → active single model → Smoke Test → READY를 완료한다.
 - compatible pre-existing Ollama는 보존·재사용하며 product uninstall/shutdown이 제거·강제 종료하지 않는다.
 - incompatible pre-existing version, insufficient disk, network interruption, partial download, installer failure, signature/hash/digest mismatch를 fail-closed한다.
 - same command/restart/crash에서 `OperationalCommandReplayPort`가 같은 operation을 reconcile하고 duplicate installer/model download를 만들지 않는다.
 - Browser/Prompt/Connector Source supplied URL/path/model/tag/digest/shell fragment가 provisioning effect에 반영되지 않는다.
 - Product LLM caller는 `StructuredInferenceRequestV2`의 exact `InferenceTierV1`을 보내고 Router만 `LocalModelProductDecisionV2.active_profile`을 resolve한다. Agent/Prompt/provider leaf에 concrete model branch/table이 있으면 실패다.
 - unknown tier, missing/duplicate profile row, Product Decision↔Model Manifest hash mismatch, tier model digest mismatch, unapproved installed model, mixed V1/V2 artifact set은 inference 전 차단한다.
-- tier별 repair/resume/revision이 model authority를 바꾸지 않고 actual tier/profile/model이 Trace와 Result에 일치한다.
+- repair/resume/revision이 model authority를 바꾸지 않고 actual inference class/profile/model이 Trace와 Result에 일치하며 같은 Run의 concrete model swap은 0이다.
 - uninstall에서 pre-existing Ollama 보존, product model cleanup 명시 선택, user data/credential 기존 정책을 함께 검증한다.
 - clean-VM/upgrade/uninstall Release Gate에서 Windows installer 본체에 Ollama executable/model weight가 포함되지 않았음을 검사한다.
 
@@ -940,7 +940,7 @@ Architecture/Release test는 16 `Launcher · Installer · Release exact manifest
 - product runtime import graph에서 `installer/**` 또는 `release/**` import 0.
 - Signed Build Config installed authority는 `release-manifest.json + .sig` 하나뿐이다. manifest는 closed `ReleaseManifestV1`이며 `oauth_env/oauth_client_id`를 포함하고 `release/generate_release_manifest.py`가 materialize, `launcher/verify_installation.py`가 signature/hash verify, `launcher/release_build_config.py`가 verified manifest에서만 `SignedBuildConfigV1`을 project해야 한다. competing `build-config.json`, unsigned production env/settings authority는 0이다. P0 manifest/Installer/Keyring/environment/CLI에 `client_secret` 또는 `OAUTH_CLIENT_SECRET` field/path가 있으면 실패다.
 - Production signed-locked field를 Launcher arg/User Settings/ambient env로 override 0. tampered/missing signature, wrong `oauth_env/oauth_client_id`, manifest-field mismatch는 MCP child spawn 전 fail-closed다. MCP child의 `GOOGLE_OAUTH_ENV/GOOGLE_OAUTH_CLIENT_ID`는 verified projection과 exact match해야 한다. Signed P0에는 `client_secret` 전달 경로가 없음을 유지한다. 별도로 `EXPLICIT_DEVELOPMENT`는 `.env.local` optional compatibility credential이 authorization-code/refresh grant에만 포함되고 `repr`·오류·connection projection·child environment에는 노출되지 않음을 검증한다.
-- `LOCAL_CAPABLE`은 `src/google_work_agent/ports/llm/approved_model_manifest.py`의 단일 parser를 사용해 `release/generate_model_manifest.py`가 생성하고 Release Manifest hash chain에 포함한 `ModelManifestV2 → model-manifest-v2.json(approved Ollama installer identity/hash + approved model ID/digest/parameter class/download size)`과, 그 canonical hash에서 exact `WORKER | REASONING` tier binding 및 hardware requirement를 선택한 `LocalModelProductDecisionV2 → local-model-product-decision-v2.json`을 요구한다. Product composition은 signed fixture로 tier별 Local provider resolution과 unapproved/digest-mismatch fail-closed를 증명한다. 같은 Ollama/model/profile authority가 `SignedBuildConfigV1`, User Settings, Prompt, Agent code에 중복되면 실패다. `API_ONLY`는 두 local artifact와 provisioning side effect를 모두 금지한다.
+- `LOCAL_CAPABLE`은 `src/google_work_agent/ports/llm/approved_model_manifest.py`의 단일 parser를 사용해 `release/generate_model_manifest.py`가 생성하고 Release Manifest hash chain에 포함한 `ModelManifestV2 → model-manifest-v2.json(approved Ollama installer identity/hash + approved model ID/digest/parameter class/download size)`과, 그 canonical hash에서 active single-model binding 및 hardware requirement를 선택한 `LocalModelProductDecisionV2 → local-model-product-decision-v2.json`을 요구한다. Product composition은 signed fixture로 모든 inference class가 같은 approved Local model로 resolve되고 unapproved/digest-mismatch가 fail-closed됨을 증명한다. 같은 Ollama/model/profile authority가 `SignedBuildConfigV1`, User Settings, Prompt, Agent code에 중복되면 실패다. `API_ONLY`는 두 local artifact와 provisioning side effect를 모두 금지한다.
 - Release CLI가 검증한 Prompt bundle과 `service_distribution` package 기본 Prompt가 달라도 signed output/runtime은 `manifests/prompt/`의 검증된 전자만 사용한다. Prompt manifest·input contract·source·activation evidence 각각의 tamper는 Release 또는 installed runtime에서 fail closed하고, signed composition의 package 기본 Prompt fallback은 0이어야 한다. `EXPLICIT_DEVELOPMENT`의 package DRAFT + `DEVELOPMENT_SMOKE` 경로는 그대로 유지한다.
 
 ### 27.3 Final structural negative tests

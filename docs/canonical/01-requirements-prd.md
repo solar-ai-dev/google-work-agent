@@ -111,7 +111,7 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 - 모델 weight는 Windows Installer에 포함하지 않고, verified Release Manifest가 허용한 source·identity·digest로 다운로드 후 검증한다.
 - 기존 호환 Ollama 설치는 `PREEXISTING`으로 재사용하며 사용자의 다른 Ollama 사용을 훼손하지 않는다. 제품이 준비한 Runtime/Model은 `PRODUCT_PROVISIONED` origin으로 구분한다.
 - Agent·Prompt·사용자는 concrete 모델을 고르지 않는다. `StructuredInferenceRuntimeRouter`만 Signed Local Model Profile을 통해 `WORKER | REASONING` tier를 실제 모델에 resolve한다.
-- 현재 제품 방향 후보는 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`이며 실제 Release 활성화는 Safety·Contract·BTS·자원 Gate를 통과한 13의 Product Decision Record가 결정한다.
+- 현재 제품 방향 후보는 모든 Product Prompt를 `qwen3.5:9b` 하나로 실행한다. `WORKER | REASONING` metadata가 존재해도 둘 다 같은 model identity로 resolve하며 실제 Release 활성화는 Safety·Contract·BTS·자원 Gate를 통과한 13의 Product Decision Record가 결정한다.
 
 ## 6. 비목표
 
@@ -184,7 +184,7 @@ Agent가 미완료 Task의 예정일, 관련 메일·사용자 요청의 실제 
 | FR-014 | 명시적 LOCAL_GPU 선택 시 자동 API 전환을 금지해야 한다. | 오류 화면에서 사용자가 전환을 직접 승인한다. |
 | FR-015 | Local LLM 제품 Runtime은 Ollama로 고정해야 한다. | 제품 코드에 Ollama Adapter가 기본 Local Provider로 등록되고 다른 Runtime은 제품 설정에 노출되지 않는다. |
 | FR-016 | API 전용 배포와 Local 지원 배포를 분리해야 한다. | `API_ONLY`는 Ollama provisioning을 포함하지 않는다. `LOCAL_CAPABLE`은 provisioning capability와 Signed Local Model Profile을 포함하되, Windows Installer 본체에는 Ollama 실행 파일과 모델 weight를 내장하지 않고 최초 설정에서 검증된 Artifact를 준비한다. |
-| FR-017 | Local LLM 호출은 Release-approved two-tier profile을 사용해야 한다. | Product LLM caller는 concrete model name이 아니라 `WORKER | REASONING` tier만 요청하고, Runtime Router가 verified profile에서 실제 모델을 결정한다. 초기 Release 후보는 `qwen3.5:4b`와 `qwen3.5:9b` 조합이며 13 Evaluation Gate 통과 전에는 활성 기본값으로 간주하지 않는다. |
+| FR-017 | Local LLM 호출은 Release-approved single-model profile을 사용해야 한다. | Product LLM caller와 사용자는 concrete model name을 선택하지 않고 Runtime Router가 verified profile의 단일 모델을 결정한다. 현재 후보는 `qwen3.5:9b`이며 `WORKER | REASONING` metadata는 동일 model identity로 resolve한다. 13 Evaluation Gate 통과 전에는 활성 signed 기본값으로 간주하지 않는다. |
 
 ### 9.3 요청·Context·Retrieval
 

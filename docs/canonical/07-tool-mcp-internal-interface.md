@@ -171,6 +171,13 @@ class LlmRuntimeStatusV1:
     model_id: str | None
     error_code: str | None
 
+class LocalModelOptionV1:
+    schema_version: Literal[1]
+    model_id: str
+    installed: bool
+    approved: bool
+    selected: bool
+
 # ComponentCircuitKeyV1 shape owner: 10 Infrastructure §8.21
 class ComponentCircuitStatusV1:
     schema_version: Literal[1]
@@ -261,6 +268,7 @@ class RuntimeDetailResponseV2:
     service_instance_id: str
     connectors: list[ConnectorRuntimeStatusV1]
     llm_providers: list[LlmRuntimeStatusV1]
+    local_models: list[LocalModelOptionV1]
     component_circuits: list[ComponentCircuitStatusV1]
     active_run_budget: RunBudgetSummaryV1 | None
     recovery_required: bool
@@ -1151,7 +1159,7 @@ Port 이름만 선언하고 callable shape를 Adapter 구현에 맡기지 않는
 | `MCPClientPort` | `list_tools(connector_id) -> list[MCPToolDescriptorV1]`; `call_tool(connector_id, tool_id, arguments: JSONValue, timeout_ms: int) -> MCPToolCallResultV1`; `restart_once(connector_id) -> MCPRestartResultV1`. restart/health는 해당 Connector child process만 대상으로 함 |
 | `StructuredInferencePort` | `infer(requested_mode, inference_tier, prompt_ref, input_projection, output_schema_ref) -> StructuredInferenceResultV2`; `inference_tier=WORKER|REASONING`, concrete provider/model 선택은 Router 내부 authority |
 | `LlmCredentialPort` | `store_credential(provider, secret, storage_mode, operation_ref) -> LlmCredentialStatusV1`; `delete_credential(provider, operation_ref) -> LlmCredentialStatusV1`; `get_credential_status(provider) -> LlmCredentialStatusV1`; `reconcile_credential(operation_ref, provider, target_state, storage_mode?) -> OperationalReconcileResultV1`. Secret 원문은 reconciliation result/journal에 저장하지 않으며 same-command overwrite/delete의 bounded read-back/marker로 COMPLETED 또는 SAFE_TO_RETRY를 증명한다 |
-| `LlmRuntimeStatusPort` | `get_status(provider) -> LlmRuntimeStatusV1` |
+| `LlmRuntimeStatusPort` | `get_status(provider) -> LlmRuntimeStatusV1`; `list_local_models() -> tuple[LocalModelOptionV1, ...]`. Local model 목록은 설치된 Ollama Model과 Release allowlist의 bounded 교집합 상태만 노출한다 |
 | `SecretStorePort` | `put(key: str, secret_bytes: bytes) -> None`; `get(key: str) -> bytes | None`; `delete(key: str) -> None` |
 | `CheckpointPort` | `create_workflow_binding(binding: WorkflowBindingV1) -> None`; `load_workflow_binding(run_id) -> WorkflowBindingV1 | None`; `store_same_run_checkpoint(checkpoint) -> None`; `load_same_run_checkpoint(run_id, thread_id) -> GraphCheckpointEnvelopeV1 | None`; `store_retrieval_head(head: RetrievalHeadV1) -> None`; `load_retrieval_head(run_id) -> RetrievalHeadV1 | None`; `store_external_llm_scope(scope: ExternalLlmTransferScopeV1) -> None`; `load_external_llm_scope(run_id) -> ExternalLlmTransferScopeV1 | None`; `flush() -> None`; `delete_run_checkpoints(run_id) -> None`. RetrievalHead/scope는 typed metadata이며 checkpoint_blob deserialize API가 아니다 |
 | `RunRetrievalCachePort` | `put_read_result(entry: RunRetrievalCacheEntryV1) -> str`; `resolve_read_result(read_result_handle, run_id, route_id, query_identity_hash) -> RunRetrievalCacheResolveResultV1`; `discard_run(run_id) -> None`. raw continuation의 유일한 runtime storage boundary이며 process restart 후 missing handle을 durable storage에서 복원하지 않는다 |
@@ -1267,7 +1275,7 @@ calendar_delete_event
 InferenceTierV1 = Literal["WORKER", "REASONING"]
 
 class LocalProvisioningComponentV1:
-    component_kind: Literal["OLLAMA_RUNTIME", "WORKER_MODEL", "REASONING_MODEL"]
+    component_kind: Literal["OLLAMA_RUNTIME", "ACTIVE_MODEL"]
     status: Literal["PENDING", "DOWNLOADING", "INSTALLING", "VERIFYING", "READY", "FAILED"]
     progress_percent: int | None
     downloaded_bytes: int | None
@@ -2122,6 +2130,7 @@ class SettingsViewV1:
     default_tasklist_id: str | None
     default_calendar_id: str | None
     preferred_llm_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
+    preferred_local_model_id: str | None  # deprecated read-only migration projection; current product value is null
     external_llm_consent: bool
     retention_days: int  # P0 current value: 1..30
     theme: Literal["LIGHT", "DARK"]
@@ -2217,7 +2226,7 @@ class StagedAttachmentDescriptorV1:
     expires_at_ms: int
 ```
 
-`SettingsPatchV1`은 **partial patch**다. `None`은 “변경 없음”을 뜻하며 secret field는 존재하지 않는다. field set/meaning은 10 §10.3과 exact-copy다. `timezone`은 IANA timezone, working-day field는 valid local `HH:MM` + start<end, `calendar_buffer_minutes>=0`, P0 `retention_days`는 **1 <= value <= 30**만 허용한다. 이 값은 01-B/04가 닫은 Conversation·Message·terminal Run 소유 데이터와 owning Checkpoint 보존 창에만 적용하며 Audit 90일·Secret·Session Cache에는 적용하지 않는다. runtime budget/circuit Positive/bounded validation과 Retrieval hard bound는 10 §8.21을 따른다. `preferred_llm_mode`는 persisted default preference이며 `POST /api/v1/runtime/mode`가 이를 암묵 수정하지 않는다. 알 수 없는 Settings key를 Browser/API/Adapter가 임의 확장하지 않는다.
+`SettingsPatchV1`은 **partial patch**다. `None`은 “변경 없음”을 뜻하며 secret field와 concrete Local model 선택 field는 존재하지 않는다. field set/meaning은 10 §10.3과 exact-copy다. `timezone`은 IANA timezone, working-day field는 valid local `HH:MM` + start<end, `calendar_buffer_minutes>=0`, P0 `retention_days`는 **1 <= value <= 30**만 허용한다. 이 값은 01-B/04가 닫은 Conversation·Message·terminal Run 소유 데이터와 owning Checkpoint 보존 창에만 적용하며 Audit 90일·Secret·Session Cache에는 적용하지 않는다. runtime budget/circuit Positive/bounded validation과 Retrieval hard bound는 10 §8.21을 따른다. `preferred_llm_mode`는 persisted default preference이며 `POST /api/v1/runtime/mode`가 이를 암묵 수정하지 않는다. V1 View의 nullable `preferred_local_model_id`는 이전 저장 데이터 호환을 위한 read-only migration projection이며 current product는 null로 정규화하고 Runtime Router authority로 사용하지 않는다. 알 수 없는 Settings key를 Browser/API/Adapter가 임의 확장하지 않는다.
 
 규칙:
 

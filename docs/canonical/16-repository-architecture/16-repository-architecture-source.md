@@ -452,6 +452,8 @@ new canonical owner is live
 
 ## Local Runtime provisioning and model-profile placement
 
+This is the direction-approved target placement, not a claim that the current exact production-owner manifest is implemented. Activation requires the complete owner/Port/Adapter/API/test cut-over and removal of the prior authority in one capability migration.
+
 ```text
 application/use_cases/runtime_status/provision_local_runtime.py
 → ProvisionLocalRuntimeCommandV1 / ProvisionLocalRuntimeResultV1 / ProvisionLocalRuntimeHandler
@@ -483,7 +485,7 @@ release/generate_local_model_product_decision.py
 The two signed artifacts have separate authority:
 
 - `ModelManifestV2`: approved Ollama installer artifact and approved model allowlist.
-- `LocalModelProductDecisionV2`: exact active `WORKER | REASONING` profile and evaluated platform/hardware thresholds, bound to canonical `ModelManifestV2` bytes by hash.
+- `LocalModelProductDecisionV2`: exact active single-model profile, same-model `WORKER | REASONING` class bindings, and evaluated platform/hardware thresholds, bound to canonical `ModelManifestV2` bytes by hash.
 
 `StructuredInferenceRuntimeRouter` is the only production owner of `InferenceTierV1 → concrete runtime/model` resolution. It reads `LocalModelProductDecisionV2.active_profile` and verifies every binding against `ModelManifestV2`. Agent operations, Prompt sources, API routes, Settings, provider leaves and model-name parsing may not own a competing mapping.
 

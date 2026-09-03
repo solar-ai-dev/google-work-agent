@@ -830,6 +830,7 @@ timezone                      # IANA timezone
 default_calendar_id
 default_tasklist_id
 preferred_llm_mode            # AUTO | LOCAL_GPU | API_LLM; 새 Run/UI 기본값
+preferred_local_model_id      # deprecated read-only migration field; current product normalizes to null
 external_llm_consent          # bool, default false; API_LLM/AUTO→API prior-consent authority
 retention_days
 theme                         # LIGHT | DARK
@@ -854,7 +855,7 @@ circuit_open_duration_ms
 
 `working_day_start_local < working_day_end_local`, `calendar_buffer_minutes >= 0`, P0 `retention_days`는 **1..30**을 검증한다. default는 30이고 31 이상 연장은 P1 policy change 전에는 거부한다. 이 setting은 01-B/04의 Conversation·Message·terminal Run 소유 데이터와 owning Checkpoint에만 적용하며 Audit 90일·Secret·Session Cache에는 적용하지 않는다. Calendar availability/conflict policy는 persisted `timezone + working_day_* + include_weekends + calendar_buffer_minutes`를 소비한다. `POL-CAL-004`의 초기 평일 09:00~18:00/주말 제외는 shipped default이지 별도 schema가 아니다.
 
-`preferred_llm_mode`는 **persisted default preference**다. `POST /api/v1/runtime/mode`는 Active Run이 없을 때 current Service requested runtime mode를 바꾸는 operational command이며 이 preference를 암묵적으로 persist하지 않는다. 이 process-local mutable value의 단일 authority는 `07 RuntimeModePort`이고 P0 binding은 `adapters/system/process_runtime_mode.py → ProcessRuntimeModeAdapter`다. Service restart 시 process-local mode는 startup에서 읽은 persisted `SettingsViewV1.preferred_llm_mode`로 초기화하며(Settings schema default는 `AUTO`), unresolved same-command replay는 `RuntimeModePort.reconcile_update(operation_ref, requested_mode)`가 current instance state를 비교해 `COMPLETED | SAFE_TO_RETRY`를 결정한다. UI가 기본 모드를 저장하려면 `PUT /api/v1/settings`를 사용한다.
+`preferred_llm_mode`는 **persisted default preference**다. `POST /api/v1/runtime/mode`는 Active Run이 없을 때 current Service requested runtime mode를 바꾸는 operational command이며 이 preference를 암묵적으로 persist하지 않는다. 이 process-local mutable value의 단일 authority는 `07 RuntimeModePort`이고 P0 binding은 `adapters/system/process_runtime_mode.py → ProcessRuntimeModeAdapter`다. Service restart 시 process-local mode는 startup에서 읽은 persisted `SettingsViewV1.preferred_llm_mode`로 초기화하며(Settings schema default는 `AUTO`), unresolved same-command replay는 `RuntimeModePort.reconcile_update(operation_ref, requested_mode)`가 current instance state를 비교해 `COMPLETED | SAFE_TO_RETRY`를 결정한다. UI가 기본 모드를 저장하려면 `PUT /api/v1/settings`를 사용한다. 사용자는 `API_LLM | LOCAL_GPU` mode만 선택할 수 있고 concrete Local model은 선택할 수 없다. nullable `preferred_local_model_id`는 이전 저장 데이터 호환을 위한 read-only migration field이며 current product는 null로 정규화하고 Router authority로 사용하지 않는다.
 
 사용자 설정은 Versioned JSON Schema로 검증한다. 알 수 없는 Key는 무시하지 않고 Migration 또는 오류로 처리한다.
 
@@ -949,8 +950,7 @@ NOT_STARTED
 → CHECKING_EXISTING_RUNTIME
 → DOWNLOADING_RUNTIME? → VERIFYING_RUNTIME → INSTALLING_RUNTIME?
 → WAITING_RUNTIME_READY
-→ DOWNLOADING_WORKER_MODEL → VERIFYING_WORKER_MODEL
-→ DOWNLOADING_REASONING_MODEL → VERIFYING_REASONING_MODEL
+→ DOWNLOADING_MODEL → VERIFYING_MODEL
 → RUNNING_SMOKE_TESTS
 → READY
 ```
@@ -978,7 +978,7 @@ Final `LOCAL_CAPABLE` provisioning uses two separately authenticated installed a
 
 %INSTALL_ROOT%/manifests/local-model-product-decision-v2.json
 → LocalModelProductDecisionV2
-→ one active WORKER/REASONING profile + evaluated hardware/platform thresholds
+→ one active single-model profile + evaluated hardware/platform thresholds
 ```
 
 ```python
@@ -1025,8 +1025,8 @@ class LocalModelProductDecisionV2:
 The direction-approved candidate is:
 
 ```text
-profile_id = qwen3_5_dual_tier_candidate_v1
-WORKER     = qwen3.5:4b
+profile_id = qwen3.5-9b-single-model-v1
+WORKER     = qwen3.5:9b
 REASONING  = qwen3.5:9b
 ```
 
@@ -1078,7 +1078,6 @@ Program File Rollback과 DB Restore를 분리한다. 새 Schema로 Migration된 
 - DB Migration 전
 - Restore 전
 - DB 복구 작업 전
-- 사용자 수동 Backup 요청
 
 ### 14.2 보존
 
@@ -1098,8 +1097,12 @@ Program File Rollback과 DB Restore를 분리한다. 새 Schema로 Migration된 
 → Schema Version 확인
 → DB 교체
 → 필요한 Migration 적용
-→ Service 재시작
+→ Readiness 검증
+→ 실패 시 Restore 전 DB로 자동 Rollback
+→ Service 재개
 ```
+
+Safe Mode 자동 Restore는 `MIGRATION_FAILED | DB_INTEGRITY_FAILED`에서만 integrity·schema-compatible Backup을 최신 `created_at_ms`, 동률 `backup_ref` 순으로 정확히 하나 선택해 1회 수행한다. Artifact·Prompt·MCP·Keyring·Frontend failure에는 DB Restore를 적용하지 않는다.
 
 
 ## 15. Health Check와 Safe Mode
@@ -1154,18 +1157,17 @@ Safe Mode 허용:
 - Restore
 - Sanitized Log Export
 - Settings 확인
-- 앱 종료
 
 Safe Mode 금지:
 
 - 새 Run
 - 승인
 - Google Write
-- 자동 Migration 재시도
+- 동일 DB에 대한 자동 Migration 반복 재시도
 
 ## 16. 정상 종료·강제 종료
 
-브라우저 탭 종료는 제품 종료가 아니다. 사용자는 Launcher 또는 앱 UI의 종료 Command로 제품을 종료한다.
+브라우저 탭 종료는 제품 종료가 아니다. Launcher가 OS session·window lifecycle을 관찰해 정상 종료 순서를 자동 수행하며 일반 사용자 UI는 Process 종료 Command를 노출하지 않는다.
 
 Graceful Shutdown Timeout 30초를 초과하면 다음을 수행한다.
 
@@ -1303,7 +1305,7 @@ RECOVERY_REQUIRED
 - 관리자 권한 없이 설치
 - Chrome·Edge UI 시작
 - API_ONLY가 Ollama 없이 실행
-- LOCAL_CAPABLE clean VM에서 manual CLI 없이 Ollama·WORKER·REASONING model을 provision하고 재시작 후 READY 복원
+- LOCAL_CAPABLE clean VM에서 manual CLI 없이 Ollama·active single model을 provision하고 재시작 후 READY 복원
 - Production Signature 검증
 - 사용자 DB·Settings 보존 Upgrade
 
