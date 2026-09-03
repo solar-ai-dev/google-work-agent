@@ -112,7 +112,7 @@ test("E2E_005_REJECT_WRITE_ZERO_PASS", async () => {
 
   const card = await actionCard("tasks_create_task");
   expect(writeCount(waiting) - writeCount(baseline)).toBe(0);
-  await card.getByRole("button", { name: "거절", exact: true }).click();
+  await card.getByRole("button", { name: "이번에는 실행하지 않을게요", exact: true }).click();
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
   await assertCompletedUi();
@@ -172,7 +172,7 @@ test("E2E_007_PARTIAL_APPROVAL_PASS", async () => {
   expect(waiting.action_dependencies).toHaveLength(0);
   const taskCard = await actionCard("tasks_create_task");
   const calendarCard = await actionCard("calendar_create_event");
-  const rejectCalendar = calendarCard.getByRole("button", { name: "거절", exact: true });
+  const rejectCalendar = calendarCard.getByRole("button", { name: "이번에는 실행하지 않을게요", exact: true });
   await approve(taskCard);
   await expect(rejectCalendar).toBeEnabled();
   await rejectCalendar.click();

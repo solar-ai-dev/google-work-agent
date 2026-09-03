@@ -23,6 +23,21 @@ export function UserMessageBubble({
   );
 }
 
+export function AssistantMessageBubble({
+  content,
+  createdAtMs,
+}: {
+  content: string;
+  createdAtMs: number;
+}): JSX.Element {
+  return (
+    <article className="message-row message-row--assistant" aria-label="에이전트 응답">
+      <p className="message-bubble message-bubble--assistant">{content}</p>
+      <span className="message-timestamp">{formatMessageTime(createdAtMs)}</span>
+    </article>
+  );
+}
+
 function formatMessageTime(value: number): string {
   return new Date(value).toLocaleString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
 }

@@ -361,7 +361,7 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   };
   expect(body.entry_mode).toBe("RESOURCE_SELECTED");
   expect(body.selected_resource_handles).toEqual(["handle-resource-1"]);
-  expect(await screen.findByText("실행 실패")).toBeInTheDocument();
+  expect(await screen.findByText("메인 에이전트 · 작업을 완료하지 못했습니다.")).toBeInTheDocument();
   expect(screen.getByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
 });
 
@@ -370,13 +370,11 @@ test("clears the previous conversation projection when starting a new conversati
   const user = userEvent.setup();
   render(<App />);
 
-  expect(await screen.findByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
-  expect(screen.getByText("Verified 0")).toBeInTheDocument();
+  expect(await screen.findByRole("region", { name: "에이전트 진행" })).toHaveTextContent("작업을 완료하지 못했습니다.");
 
   await user.click(screen.getByRole("button", { name: "새 대화" }));
 
-  expect(screen.queryByText("작업을 완료하지 못했습니다.")).not.toBeInTheDocument();
-  expect(screen.queryByText("Verified 0")).not.toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "에이전트 진행" })).not.toBeInTheDocument();
 });
 
 test("keeps the last selected conversation when an earlier history response arrives late", async () => {
@@ -461,7 +459,7 @@ test("restores every stored turn of a selected conversation in order", async () 
 
   const cards = await screen.findAllByText(/^(요청|응답) \d$/);
   expect(cards.map((card) => card.textContent)).toEqual(["요청 1", "응답 1", "요청 2", "응답 2", "요청 3", "응답 3"]);
-  expect(screen.getAllByText("에이전트 응답")).toHaveLength(3);
+  expect(screen.getAllByRole("article", { name: "에이전트 응답" })).toHaveLength(3);
 });
 
 test("groups the message timeline by date and shows one separator per day", async () => {
@@ -786,7 +784,7 @@ test("shows approve button for write actions and posts approve command", async (
   const user = userEvent.setup();
   render(<App />);
 
-  const approveButton = await screen.findByRole("button", { name: "승인" });
+  const approveButton = await screen.findByRole("button", { name: "네, 실행해 주세요" });
   await user.click(approveButton);
 
   await waitFor(() =>
@@ -1291,7 +1289,7 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
   await screen.findByText("결과 불명 작업 1건을 확인하고 있습니다.");
   await user.click(screen.getByRole("button", { name: "취소" }));
   await user.click(screen.getByRole("button", { name: "재개" }));
-  await user.click(screen.getByRole("button", { name: "다시 준비" }));
+  await user.click(screen.getByRole("button", { name: "다시 준비해 주세요" }));
 
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
@@ -1485,11 +1483,11 @@ test("TST-UI-201 header shows product, connection, account, help, settings, and 
 
   await waitFor(() => expect(document.querySelector(".topbar-connection .connection-connected")).not.toBeNull());
 
-  await screen.findByText("승인이 필요합니다.");
+  await screen.findByText("메인 에이전트 · 실행 전 승인을 기다리고 있습니다.");
   expect(screen.getByText("user@example.com")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "도움말" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "설정" })).toBeInTheDocument();
-  expect(screen.getByText("승인이 필요합니다.")).toBeInTheDocument();
+  expect(screen.getByText("메인 에이전트 · 실행 전 승인을 기다리고 있습니다.")).toBeInTheDocument();
   expect(screen.queryByText("WAITING_APPROVAL")).not.toBeInTheDocument();
 });
 
@@ -2693,7 +2691,7 @@ test("TST-UI-208 Gmail viewer and approval use only available projection fields"
   expect(await screen.findByText("실제 메일 본문입니다.")).toBeInTheDocument();
   expect(screen.getByText("김대리 <kim@example.com>")).toBeInTheDocument();
   expect(screen.getByText(/받는 사람 user@example.com/)).toBeInTheDocument();
-  expect(screen.getByText("승인 상세")).toBeInTheDocument();
+  expect(screen.getByText("무엇을 실행하나요?")).toBeInTheDocument();
   expect(screen.queryByText("Evidence")).not.toBeInTheDocument();
 });
 
@@ -2705,7 +2703,7 @@ test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON"
   installUiContractFetch(options);
   render(<App />);
 
-  await screen.findByText("승인 상세");
+  await screen.findByText("무엇을 실행하나요?");
   expect(screen.queryByText(/서버 검증에서 확인된 위험 정보/)).not.toBeInTheDocument();
 
   options.actionRisk = {
@@ -2744,7 +2742,7 @@ test.each([
   expect(document.body.textContent).not.toContain("private-deadline");
   expect(document.body.textContent).not.toContain("PRIVATE_REASON");
   if (decision === "INFEASIBLE") {
-    expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "네, 실행해 주세요" })).not.toBeInTheDocument();
   }
 });
 
@@ -2763,7 +2761,7 @@ test("similar Task duplicate requires an acknowledgement without exposing resour
 
   expect(await screen.findByText("비슷한 기존 작업이 있습니다.")).toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
-  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+  await user.click(screen.getByRole("button", { name: "위험을 확인하고 실행해 주세요" }));
 
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2786,9 +2784,9 @@ test("clear Task duplicate is blocked by default and offers an explicit override
   render(<App />);
 
   expect(await screen.findByText(/동일한 작업이 이미 있습니다/)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "네, 실행해 주세요" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
-  await user.click(screen.getByRole("button", { name: "그래도 새로 만들기" }));
+  await user.click(screen.getByRole("button", { name: "그래도 새로 만들어 주세요" }));
 
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2810,7 +2808,7 @@ test("NOT_DUPLICATE shows no warning and uses ordinary approval", async () => {
   });
   render(<App />);
 
-  await user.click(await screen.findByRole("button", { name: "승인" }));
+  await user.click(await screen.findByRole("button", { name: "네, 실행해 주세요" }));
   expect(screen.queryByText(/기존 작업이 있습니다/)).not.toBeInTheDocument();
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2836,7 +2834,7 @@ test("Calendar WARNING requires explicit acknowledgement without exposing author
     await screen.findByText("겹칠 가능성이 있거나 업무 시간 밖의 일정입니다."),
   ).toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "일정 충돌 가능성을 확인했습니다." }));
-  await user.click(screen.getByRole("button", { name: "확인하고 승인" }));
+  await user.click(screen.getByRole("button", { name: "위험을 확인하고 실행해 주세요" }));
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
     calendar_conflict_acknowledged: true,
@@ -2859,9 +2857,9 @@ test("Calendar HARD_CONFLICT offers an explicit override", async () => {
   render(<App />);
 
   expect(await screen.findByText("해당 시간에 기존 일정이 있습니다.")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "네, 실행해 주세요" })).not.toBeInTheDocument();
   await user.click(screen.getByRole("checkbox", { name: "일정 충돌 가능성을 확인했습니다." }));
-  await user.click(screen.getByRole("button", { name: "충돌을 알고도 진행" }));
+  await user.click(screen.getByRole("button", { name: "충돌을 알고도 실행해 주세요" }));
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
     calendar_conflict_acknowledged: true,
@@ -2879,7 +2877,7 @@ test("Calendar NO_CONFLICT shows ordinary approval", async () => {
   });
   render(<App />);
 
-  await user.click(await screen.findByRole("button", { name: "승인" }));
+  await user.click(await screen.findByRole("button", { name: "네, 실행해 주세요" }));
   expect(screen.queryByText(/기존 일정/)).not.toBeInTheDocument();
   const approve = requests.find((request) => request.path.endsWith("/actions/action-1/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({
@@ -2990,13 +2988,13 @@ test("TST-UI-209 renders independent approval commands with versions and disable
   const requests = installUiContractFetch({ action: true });
   render(<App />);
 
-  await screen.findByRole("button", { name: "승인" });
-  await user.click(screen.getByRole("button", { name: "승인" }));
+  await screen.findByRole("button", { name: "네, 실행해 주세요" });
+  await user.click(screen.getByRole("button", { name: "네, 실행해 주세요" }));
   const approve = requests.find((request) => request.path.endsWith("/approve"));
   expect(JSON.parse(String(approve?.init?.body))).toMatchObject({ expected_version: 7 });
-  expect(screen.getByText("승인 상세")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "수정" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "거절" })).toBeInTheDocument();
+  expect(screen.getByText("무엇을 실행하나요?")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "이 내용으로 바꿀게요" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "이번에는 실행하지 않을게요" })).toBeInTheDocument();
 });
 
 test("approved Action can be rejected and refreshes to a non-executable rejected state", async () => {
@@ -3004,15 +3002,15 @@ test("approved Action can be rejected and refreshes to a non-executable rejected
   const requests = installUiContractFetch({ action: true, actionStatus: "APPROVED" });
   render(<App />);
 
-  await user.click(await screen.findByRole("button", { name: "거절" }));
+  await user.click(await screen.findByRole("button", { name: "이번에는 실행하지 않을게요" }));
   const reject = requests.find((request) => request.path.endsWith("/reject"));
   expect(JSON.parse(String(reject?.init?.body))).toMatchObject({
     expected_version: 7,
     reason_code: null,
   });
-  expect(await screen.findByText("REJECTED")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "승인" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "거절" })).not.toBeInTheDocument();
+  expect(await screen.findByText(/사용자 선택에 따라 실행하지 않았습니다/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "네, 실행해 주세요" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "이번에는 실행하지 않을게요" })).not.toBeInTheDocument();
 });
 
 test("TST-UI-210 filters conversations and shows recent execution fallback", async () => {
@@ -3056,14 +3054,14 @@ test("simple Gmail focus prioritizes the viewer and only shows the run header fo
   await user.click(await screen.findByRole("button", { name: /첫 번째 자료/ }));
   expect(await screen.findByText("실제 메일 본문입니다.")).toBeInTheDocument();
   expect(screen.queryByText("새 요청")).not.toBeInTheDocument();
-  expect(screen.queryByText("작업을 처리하고 있습니다.")).not.toBeInTheDocument();
+  expect(screen.queryByText("메인 에이전트 · 작업을 처리하고 있습니다.")).not.toBeInTheDocument();
 });
 
 test("TST-UI-213 hides raw runtime status and has no native window controls", async () => {
   installUiContractFetch({ status: "SINGLE" });
   render(<App />);
 
-  await screen.findByText("작업을 처리하고 있습니다.");
+  await screen.findByText("메인 에이전트 · 작업을 처리하고 있습니다.");
   expect(screen.queryByText("SINGLE")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: /최소화|최대화|닫기/ })).not.toBeInTheDocument();
 });
@@ -3166,7 +3164,8 @@ test("renders snapshot context/disclosure and sends a context adjustment command
   const user = userEvent.setup();
   render(<App />);
 
-  expect(await screen.findByRole("article", { name: "외부 LLM 전송 범위" })).toHaveTextContent("gmail");
+  expect(await screen.findByRole("status", { name: "외부 LLM 전송 안내" })).toHaveTextContent("외부 API LLM 전송 안내");
+  await user.click(screen.getByRole("button", { name: "사용 컨텍스트 1개" }));
   await user.click(screen.getByRole("checkbox", { name: "마감 메일 제외 선택" }));
   await user.click(screen.getByRole("button", { name: "선택한 근거 제외" }));
   await waitFor(() => expect(requests.some((request) => request.path === "/api/v1/runs/run-1/context-adjustments")).toBe(true));

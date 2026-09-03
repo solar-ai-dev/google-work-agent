@@ -10,7 +10,8 @@ test("ActionPlanCard sends only explicit server-projected acknowledgement", asyn
   const onApprove = vi.fn();
   render(<ActionPlanCard snapshot={snapshot} busy={null} retryActionIds={new Set()} formatTime={String} onApprove={onApprove} onModify={vi.fn()} onReject={vi.fn()} onRetry={vi.fn()} onAttachDescriptors={vi.fn()} />);
   const user = userEvent.setup();
-  const approve = screen.getByRole("button", { name: "확인하고 승인" });
+  const approve = screen.getByRole("button", { name: "위험을 확인하고 실행해 주세요" });
+  expect(screen.queryByText("Action Plan")).not.toBeInTheDocument();
   expect(approve).toBeDisabled();
   await user.click(screen.getByRole("checkbox", { name: "중복 가능성을 확인했습니다." }));
   expect(approve).toBeEnabled();
