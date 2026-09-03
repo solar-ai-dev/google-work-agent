@@ -1037,11 +1037,14 @@ test("starts Google OAuth from the disconnected status action", async () => {
   await user.click(screen.getByRole("button", { name: "설정" }));
   await user.click(screen.getByRole("button", { name: "Google 연결" }));
 
-  expect(window.open).toHaveBeenCalledWith(
-    "http://127.0.0.1:43123/oauth/authorize?state=flow-1",
-    "_blank",
-    "noopener,noreferrer",
-  );
+  expect(window.open).toHaveBeenCalledOnce();
+  const [openedUrl, target, features] = vi.mocked(window.open).mock.calls[0];
+  const oauthUrl = new URL(String(openedUrl));
+  expect(target).toBe("_blank");
+  expect(features).toBe("noopener,noreferrer");
+  expect(`${oauthUrl.origin}${oauthUrl.pathname}`).toBe("http://127.0.0.1:43123/oauth/authorize");
+  expect(oauthUrl.searchParams.get("state")).toBe("flow-1");
+  expect(oauthUrl.searchParams.get("return_to")).toBe(new URL("/", window.location.origin).toString());
   expect(await screen.findByText("Google 연결 완료를 기다리고 있습니다.")).toBeInTheDocument();
 });
 

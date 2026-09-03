@@ -63,7 +63,6 @@ def test_development_container__serves_health_and__closes_mcp_child(tmp_path: Pa
     assert base_transport._config.extra_environment == {
         ATTACHMENT_STAGING_DIR_ENV: str(staging_dir.resolve()),
         "GOOGLE_OAUTH_ENV": "DEVELOPMENT",
-        "GOOGLE_OAUTH_CLIENT_ID": "test-client-id",
     }
 
     with TestClient(create_app(container), base_url="http://127.0.0.1:8000") as client:
