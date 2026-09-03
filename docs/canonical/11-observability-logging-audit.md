@@ -1,7 +1,7 @@
 # 11. 관측성 · 로그 · 감사 설계서
 
 > **Authority:** observability/log/trace/audit projection, sanitization과 retention. Domain/Workflow lifecycle 의미는 관측 event로 재정의하지 않는다.  
-> **상태:** Draft v2.23 · **기준일:** 2026-08-25 · **외부 Telemetry:** Production 기본 OFF
+> **상태:** Draft v2.24 · **기준일:** 2026-09-03 · **외부 Telemetry:** Production 기본 OFF
 
 ## 0. 사람이 먼저 볼 것
 
@@ -159,6 +159,23 @@ Runtime operational event identity:
 - `RUN_BUDGET_EXHAUSTED(run_id, budget_kind, used, limit)`
 
 Metric/Diagnostic projection은 `circuit_kind + connector_id? + llm_runtime? + state + retry_at_ms` 및 bounded used/limit만 노출한다. `CONNECTOR` key는 connector_id로 correlation하고 Provider 이름을 Core circuit enum으로 승격하지 않는다. OAuth/LLM secret, raw MCP/Provider payload, Prompt text는 event attribute에 넣지 않는다. Circuit event는 Domain truth가 아니며 06/10 operational control state를 관측한다.
+
+### 5.2 Local Runtime provisioning Trace
+
+다음 event identity를 사용한다.
+
+```text
+LOCAL_RUNTIME_PROVISIONING_STARTED
+LOCAL_RUNTIME_COMPONENT_DOWNLOAD_STARTED
+LOCAL_RUNTIME_COMPONENT_DOWNLOAD_COMPLETED
+LOCAL_RUNTIME_COMPONENT_VERIFIED
+LOCAL_RUNTIME_COMPONENT_INSTALL_FAILED
+LOCAL_RUNTIME_PROVISIONING_READY
+LOCAL_RUNTIME_PROVISIONING_RECONCILED
+LOCAL_MODEL_PROFILE_RESOLVED
+```
+
+기록 허용값은 `operation_ref`, component kind, origin, approved version/profile ID, expected/observed digest의 bounded mismatch code, bytes/progress, duration, result code다. Raw download URL, installer command line, local user path, model binary, Prompt/Completion은 기록하지 않는다. `LOCAL_MODEL_PROFILE_RESOLVED`는 requested `inference_tier`와 resolved model ID/profile hash를 Trace에 남기되 API key나 raw model response는 포함하지 않는다. Provisioning Trace는 Domain lifecycle/Audit authority가 아니며 실패가 기존 Domain Write를 재실행시키지 않는다.
 
 ## 6. Audit 필수 Event
 

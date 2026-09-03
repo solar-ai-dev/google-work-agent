@@ -50,6 +50,18 @@ Required enforcement families:
 
 Architecture enforcement complements, but does not replace, behavioral tests. Enforcement allowlists may only encode exceptions already present in the Repository Architecture Exception Registry; an enforcement-only exception is itself a contract violation.
 
+## Local Runtime provisioning enforcement additions
+
+- `runtime_status.provision_local_runtime` exact Application owner/file/symbol/test; alternate install/service/manager authority zero.
+- `LocalRuntimeProvisioningPort` has exactly one production binding `OllamaLocalRuntimeProvisioningAdapter`; Application/API/Agent direct filesystem/download/subprocess/Ollama CLI access zero.
+- installer source exact `installer/windows/local_runtime_provisioning_definition.py → WindowsLocalRuntimeProvisioningDefinition`; generic installer manager/script root zero.
+- `ModelManifestV2` owns Ollama installer identity/hash and approved model digest set only; `LocalModelProductDecisionV2` alone owns the active WORKER/REASONING profile and hardware/platform thresholds. Cross-artifact hash/release/tier binding mismatch, mixed V1/V2 production set, and duplicate values in SignedBuildConfig, Prompt source, Settings, Agent code are structural failures.
+- `StructuredInferenceRequestV2.inference_tier` closed set exact `WORKER|REASONING`; unknown/free-string tier and model-name parsing authority zero.
+- Product LLM caller supplies PromptRef+tier; concrete model resolution occurs only in `StructuredInferenceRuntimeRouter` using verified `LocalModelProductDecisionV2.active_profile` and `ModelManifestV2` validation.
+- `API_ONLY` provisioning artifact/side effect zero; `LOCAL_CAPABLE` model weights and Ollama executable are not embedded in the Windows Installer.
+- Browser/LLM/Connector Source supplied URL/path/model tag/shell argument cannot reach provisioning Adapter.
+- pre-existing Ollama uninstall/update authority and product shutdown kill path zero by default.
+
 ## Structural closure enforcement gate
 
 The final architecture suite must prove both presence and absence. Positive discovery of canonical files is insufficient.

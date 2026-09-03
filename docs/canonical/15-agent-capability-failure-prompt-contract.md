@@ -1,7 +1,7 @@
 # 15. Agent Capability · Failure · Prompt 공통 계약
 
 > **Authority:** Agent capability·normalized failure·Prompt runtime contract. 승인/Claim/Write/Verification/Domain lifecycle의 최종 판정은 해당 owner를 따른다.  
-> **상태:** Approved v1.31 · **기준일:** 2026-08-25 · **대상:** P0 Product Agent/Prompt Runtime
+> **상태:** Approved v1.32 · **기준일:** 2026-09-03 · **대상:** P0 Product Agent/Prompt Runtime
 
 ## 0. 문서 목적
 
@@ -24,6 +24,15 @@
 - Failure-specific Prompt는 별도 전체 Prompt가 아니라 **Base Slot + Failure Instruction Block**으로 조립한다.
 - Evaluation diagnostic decomposition에서도 Product Prompt 입력과 Gold/Grader metadata를 파일·schema 수준에서 분리한다.
 - Current Prompt Runtime은 `06 Workflow`의 current LLM responsibility set과 본 문서의 PromptRef/Input Contract에서 파생한다. required PromptRef = runtime caller = manifest = source = assembled = input-contract exact-set equality를 만족해야 하며 numeric Slot count나 non-current bundle version을 current authority로 사용하지 않는다. DEV·Holdout·Safety Gate는 구현된 Prompt artifact의 release activation만 결정한다.
+
+### Inference tier input boundary
+
+- Product Prompt에는 concrete provider/model 선택 지시나 installed model 목록을 넣지 않는다.
+- Runtime caller가 PromptRef와 별도로 closed `InferenceTierV1 = WORKER | REASONING`을 선택한다. Tier는 Prompt semantic input이 아니라 signed runtime binding metadata다.
+- Prompt source·failure instruction·LLM output은 tier/model을 변경하거나 더 큰 모델 재호출을 요구할 수 없다.
+- `WORKER`는 13에서 해당 Prompt slot의 bounded extraction/classification 안정성이 검증된 경우에만 허용한다. ambiguity, Tool Routing, Retrieval planning/sufficiency, Analysis, Planning, Review는 기본 `REASONING` 후보다.
+- Schema Repair/Semantic Revision/Confirmation resume은 원 invocation tier를 유지한다. allowed fallback/substitution은 Router/Release policy가 결과 Metadata로만 투영한다.
+- 현재 반복 Confirmation 결함은 `request.detect_ambiguity`의 Projection→candidate→validator→disposition을 qwen2.5:7b/L1/L2로 비교하는 required evaluation case다.
 
 ### Conversation · Run Prompt 입력 경계
 
@@ -138,7 +147,7 @@ Graph Profile 간 semantic responsibility parity를 유지한다. 특히 `SINGLE
 
 ### 1.4 Local SLLM Responsibility·Complexity 계약
 
-P0 Local 기준 모델은 `qwen2.5:7b`다. 모델 크기를 이유로 업무 의미를 heuristic으로 삭제하거나 등록 Tool을 임의 shortlist하지 않는다. 대신 각 LLM Node가 한 번에 해결해야 하는 **semantic branching과 Output Schema 복잡도**를 작게 유지하고, 실제 허용 한계는 Model·Runtime별 Contract Complexity Gate에서 측정한다.
+P0 Local current comparison baseline은 `qwen2.5:7b`다. 방향 승인 후보는 Signed Local Model Profile `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`이며 13 Gate/Release 서명 전에는 active product binding이 아니다. 모델 크기를 이유로 업무 의미를 heuristic으로 삭제하거나 등록 Tool을 임의 shortlist하지 않는다. 대신 각 LLM Node가 한 번에 해결해야 하는 **semantic branching과 Output Schema 복잡도**를 작게 유지하고, 실제 허용 한계는 Model·Runtime별 Contract Complexity Gate에서 측정한다.
 
 설계 원칙:
 

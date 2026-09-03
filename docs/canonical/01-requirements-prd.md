@@ -1,7 +1,7 @@
 # 01. 요구사항 정의서 · PRD
 
 > **Authority:** 제품 목표·범위와 완료 조건. 상세 기능은 `01-A`, 정책은 `01-B`, 전문 runtime/domain/repository 의미는 `00 Project Source Guide`의 Concern Owner를 따른다.  
-> **상태:** Draft v2.13 · **기준일:** 2026-08-23 · **대상:** P0 MVP
+> **상태:** Draft v2.14 · **기준일:** 2026-09-03 · **대상:** P0 MVP
 
 ## 0. 한눈에 보기
 
@@ -104,6 +104,15 @@ Graph Profile의 독립변수는 **Agent Subgraph 분해 수준**이다. `SINGLE
 - Launcher가 Local Agent Service 시작, Health Check, 브라우저 열기와 종료를 조정한다.
 - Frontend 새로고침·중복 Command·이벤트 재연결이 외부 Connector의 중복 Write로 이어지지 않게 한다.
 
+### 5.1 Local Runtime provisioning 제품 결정
+
+- `LOCAL_CAPABLE` 사용자는 Ollama 또는 승인 모델을 별도로 설치하지 않는다.
+- 제품 설치·최초 설정 흐름이 외부 Ollama Runtime의 설치·준비를 조정하지만 Ollama는 Product Core에 내장되지 않은 별도 Loopback Process로 유지한다.
+- 모델 weight는 Windows Installer에 포함하지 않고, verified Release Manifest가 허용한 source·identity·digest로 다운로드 후 검증한다.
+- 기존 호환 Ollama 설치는 `PREEXISTING`으로 재사용하며 사용자의 다른 Ollama 사용을 훼손하지 않는다. 제품이 준비한 Runtime/Model은 `PRODUCT_PROVISIONED` origin으로 구분한다.
+- Agent·Prompt·사용자는 concrete 모델을 고르지 않는다. `StructuredInferenceRuntimeRouter`만 Signed Local Model Profile을 통해 `WORKER | REASONING` tier를 실제 모델에 resolve한다.
+- 현재 제품 방향 후보는 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`이며 실제 Release 활성화는 Safety·Contract·BTS·자원 Gate를 통과한 13의 Product Decision Record가 결정한다.
+
 ## 6. 비목표
 
 - SaaS 또는 원격 멀티 사용자 서비스
@@ -168,13 +177,14 @@ Agent가 미완료 Task의 예정일, 관련 메일·사용자 요청의 실제 
 
 | ID | 요구사항 | 완료 조건 |
 | --- | --- | --- |
-| FR-010 | 앱은 시작 시 Ollama 기반 Local LLM 사용 가능 여부를 진단해야 한다. | Ollama 연결, 승인 Model 존재, 최소 하드웨어, 테스트 추론 결과를 기록한다. 앱은 Ollama·Model을 설치·시작·종료·업데이트하지 않는다. |
+| FR-010 | `LOCAL_CAPABLE` 앱은 최초 설정에서 Ollama 기반 Local LLM을 자동 준비해야 한다. | GPU·디스크·네트워크를 사전 검사하고, Release Manifest가 승인한 Ollama 설치 Artifact와 Signed Local Model Profile만 다운로드·검증·설치한다. 사용자는 터미널이나 `ollama pull`을 직접 실행하지 않는다. |
 | FR-011 | CPU-only 또는 GPU 기준 미달 PC는 API LLM으로 고정해야 한다. | Local 옵션과 Ollama·Model 설정·진단 UI가 노출되지 않는다. |
 | FR-012 | P0의 검증된 GPU 환경에서는 AUTO, LOCAL_GPU, API_LLM을 제공해야 한다. | 사용자가 모드를 선택하고 현재 실제 실행 모드를 확인할 수 있다. |
 | FR-013 | AUTO는 기술적 Local 실패 시 API로 최대 1회 fallback할 수 있어야 한다. | 외부 LLM 전송 동의가 있을 때만 fallback하며 이유와 사용된 Provider가 Trace에 기록된다. |
 | FR-014 | 명시적 LOCAL_GPU 선택 시 자동 API 전환을 금지해야 한다. | 오류 화면에서 사용자가 전환을 직접 승인한다. |
 | FR-015 | Local LLM 제품 Runtime은 Ollama로 고정해야 한다. | 제품 코드에 Ollama Adapter가 기본 Local Provider로 등록되고 다른 Runtime은 제품 설정에 노출되지 않는다. |
-| FR-016 | API 전용 배포와 Local 지원 배포를 분리해야 한다. | API_ONLY는 Ollama 의존성을 포함하지 않는다. LOCAL_CAPABLE은 Adapter·진단·승인 Model Manifest만 포함하며 Ollama·Model 자체는 Bundle하지 않는다. |
+| FR-016 | API 전용 배포와 Local 지원 배포를 분리해야 한다. | `API_ONLY`는 Ollama provisioning을 포함하지 않는다. `LOCAL_CAPABLE`은 provisioning capability와 Signed Local Model Profile을 포함하되, Windows Installer 본체에는 Ollama 실행 파일과 모델 weight를 내장하지 않고 최초 설정에서 검증된 Artifact를 준비한다. |
+| FR-017 | Local LLM 호출은 Release-approved two-tier profile을 사용해야 한다. | Product LLM caller는 concrete model name이 아니라 `WORKER | REASONING` tier만 요청하고, Runtime Router가 verified profile에서 실제 모델을 결정한다. 초기 Release 후보는 `qwen3.5:4b`와 `qwen3.5:9b` 조합이며 13 Evaluation Gate 통과 전에는 활성 기본값으로 간주하지 않는다. |
 
 ### 9.3 요청·Context·Retrieval
 

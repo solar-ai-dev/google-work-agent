@@ -1,7 +1,7 @@
 # 01-A. 기능 정의서
 
 > **Authority:** 사용자 기능 동작. 제품 범위는 `01 PRD`, 정책은 `01-B`, 전문 runtime/domain/repository 의미는 `00 Project Source Guide`의 Concern Owner를 따른다.  
-> **상태:** Draft v2.20 · **기준일:** 2026-08-23
+> **상태:** Draft v2.21 · **기준일:** 2026-09-03
 
 ## 1. 문서 목적
 
@@ -78,7 +78,7 @@
 - **입력:** 하드웨어, Ollama 상태, 설치 모델, API Key.
 - **처리:** CPU-only 여부, GPU 기준 충족, Ollama 연결, Local 테스트 추론, API 연결을 확인한다.
 - **출력:** 사용 가능한 모드, 배포 프로필, 고정된 실행 모드.
-- **규칙:** CPU-only 또는 GPU 기준 미달은 API_LLM 고정. Local 제품 Runtime은 Ollama만 지원한다. 앱은 Ollama·Model을 설치·시작·종료·업데이트하지 않고 존재·Version·승인 Model 상태만 진단한다.
+- **규칙:** CPU-only 또는 GPU 기준 미달은 API_LLM 고정. Local 제품 Runtime은 Ollama만 지원한다. `LOCAL_CAPABLE` 최초 설정은 Release-approved Ollama와 Signed Local Model Profile을 자동 준비하고, 이후 실행은 Version·모델 digest·Structured Output 상태를 다시 검증한다. Ollama는 별도 Process로 유지하며 제품 종료 시 공유 Runtime을 강제 종료하지 않는다.
 
 ### FN-005 LLM 모드 선택
 
@@ -94,10 +94,21 @@
 - **상태:** P0 배포 기능
 - **프로필:** `API_ONLY`, `LOCAL_CAPABLE`.
 - **API_ONLY:** Ollama 의존성 없이 실행하며 GPU가 없는 팀원과 CPU-only 사용자에게 제공한다.
-- **LOCAL_CAPABLE:** Local Runtime 사용 가능성 진단, 승인 Model 정보와 설치 안내 기능을 제공하되 Ollama·Model·실험 Runner·후보 모델 자체를 제품 Bundle에 포함하지 않는다.
+- **LOCAL_CAPABLE:** Local Runtime 진단과 자동 provisioning UI를 제공한다. Windows Installer 본체에는 Ollama 실행 파일·모델 weight·실험 Runner·미승인 후보를 포함하지 않지만, 최초 설정에서 verified Artifact를 다운로드·설치·검증해 사용자가 별도 터미널 작업 없이 Local Runtime을 사용할 수 있게 한다.
 - **완료 조건:** 동일 제품 Core/Policy 의미를 유지하면서 배포 Artifact 의존성과 Runtime capability가 프로필별로 분리된다.
 - **Infrastructure authority reference:** profile별 bundle/dependency/runtime composition은 `10 Infrastructure`가 소유한다.
 - **Repository mapping reference:** Local runtime adapter/diagnostic placement·naming은 `16 Repository Architecture`가 소유한다.
+
+### FN-006A Local Runtime 자동 준비
+
+- **상태:** P0 배포 기능
+- **사용자 목적:** Ollama와 제품 Local Model을 직접 설치하지 않고 `LOCAL_CAPABLE` 제품을 사용할 수 있게 한다.
+- **입력:** `로컬 AI 준비` 사용자 행동 또는 최초 설정의 자동 시작, 현재 Hardware/디스크/네트워크 진단 결과.
+- **처리:** 기존 호환 Ollama 탐지 → Release-approved Ollama Artifact 필요 시 설치 → Signed Local Model Profile의 model artifact 다운로드 → digest/identity 검증 → tier별 Structured Output Smoke Test → Runtime readiness 반영.
+- **출력:** 단계별 진행률, 남은 용량, 현재 준비 항목, 재시도 가능한 typed 오류, 최종 `READY | API_ONLY_FALLBACK | REPAIR_REQUIRED` 상태.
+- **규칙:** Browser·LLM이 URL·installer path·model name을 제출하지 않는다. `OperationalCommandReplayPort`와 provisioning Port가 crash-safe operation identity를 유지한다.
+- **모델 Profile:** Product LLM caller는 `WORKER | REASONING` tier만 요청한다. 초기 후보는 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`이며 13 Evaluation과 signed Release activation 전에는 제품 기본값으로 확정하지 않는다.
+- **완료 조건:** 사용자가 CLI를 실행하지 않고 승인된 Runtime과 모델이 검증되어 `LOCAL_GPU`가 선택 가능하거나, 실패 원인과 API 대체 경로가 안전하게 표시된다.
 
 ### FN-007 OAuth 배포 환경 관리
 

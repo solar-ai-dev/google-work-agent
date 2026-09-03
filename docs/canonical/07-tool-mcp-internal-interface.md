@@ -4,8 +4,8 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.32
-- **기준일:** 2026-08-26
+- **상태:** Draft v2.34
+- **기준일:** 2026-09-03
 - **대상:** P0 MVP
 - **배포 형태:** Windows 설치 파일 기반 로컬 애플리케이션
 
@@ -107,7 +107,7 @@ Windows Installer
 - 운영 UI와 API는 same-origin이다.
 - Endpoint별 인증은 20. 인증 Matrix를 따른다. Bootstrap·Health·OAuth Callback은 기존 Local Session을 요구하지 않는다.
 - **Domain Aggregate mutation Command**는 `command_id + 대상 Aggregate ID + expected_version`을 포함한다. `expected_version`은 해당 Domain Aggregate의 optimistic concurrency authority다.
-- **Non-Domain operational Command**(Connection/Credential/Settings/Runtime Mode/Backup·Restore/Diagnostics/Shutdown/Attachment staging)는 `command_id + operation-specific Versioned Request Schema`를 사용한다. Concern owner가 별도의 versioned target/revision을 정의한 경우에만 그 revision을 요구하며, Domain `expected_version`을 임의 생성·재사용하지 않는다.
+- **Non-Domain operational Command**(Connection/Credential/Settings/Runtime Mode/Local Runtime Provisioning/Backup·Restore/Diagnostics/Shutdown/Attachment staging)는 `command_id + operation-specific Versioned Request Schema`를 사용한다. Concern owner가 별도의 versioned target/revision을 정의한 경우에만 그 revision을 요구하며, Domain `expected_version`을 임의 생성·재사용하지 않는다.
 - `command_id`가 있는 Local API Command는 Application에서 Versioned Request Schema를 canonicalize해 request hash를 계산한다. 같은 ID+같은 hash는 같은 operation result로 replay하고 같은 ID+다른 hash는 conflict다. Domain Aggregate mutation만 04의 durable `command_receipts` 계약을 사용하며, non-Domain side effect의 replay/idempotency는 해당 Application owner가 **`OperationalCommandReplayPort`**로 동일 command identity/hash/result를 adjudicate한 뒤 operation Port를 호출하는 단일 경로로 보장한다.
 - API Handler는 Domain 상태를 직접 수정하거나 concrete Port/Adapter를 직접 호출하지 않고 Application Command를 호출한다.
 - 응답 유실·재전송에도 동일 Command의 side effect를 중복 적용하지 않는다.
@@ -121,7 +121,8 @@ Windows Installer
 | --- | --- | --- |
 | Liveness | `GET /health/live` | FastAPI Process 응답 여부 |
 | Core Readiness | `GET /health/ready` | Manifest·Asset·API Contract·SQLite·Migration·Domain·Keyring Adapter·MCP Executable·Tool Schema |
-| Runtime Detail | `GET /api/v1/runtime` | Local Session 이후 Connector별 Credential·Scope/Permission·LLM Provider·Ollama·Model·Recovery 상태. P0에는 Google Workspace 상태를 포함 |
+| Runtime Detail | `GET /api/v1/runtime` | `RuntimeDetailResponseV2`: Connector별 Credential·Scope/Permission·LLM Provider·Ollama·signed Local profile·provisioning summary·Recovery 상태. P0에는 Google Workspace 상태를 포함 |
+| Local Runtime Provisioning | `POST /api/v1/runtime/local/provision` | `LOCAL_CAPABLE`에서 Release-approved Ollama와 Signed Local Model Profile 준비를 시작·reconcile하는 non-Domain operational Command |
 | Session | `POST /api/v1/session/bootstrap` | Launcher Bootstrap으로 Local Session 수립 |
 | Conversation | `GET/POST /api/v1/conversations` | 대화 조회·생성 |
 | Conversation History | `GET /api/v1/conversations/{conversation_id}/history` | 저장된 Message·Run Timeline 조회. Agent 새 Run Context 입력용이 아님 |
@@ -255,8 +256,8 @@ class AttachmentMetadataV1:
     mime_type: str
     size_bytes: int | None
 
-class RuntimeDetailResponseV1:
-    schema_version: Literal[1]
+class RuntimeDetailResponseV2:
+    schema_version: Literal[2]
     service_instance_id: str
     connectors: list[ConnectorRuntimeStatusV1]
     llm_providers: list[LlmRuntimeStatusV1]
@@ -278,6 +279,7 @@ class RuntimeDetailResponseV1:
     safe_mode: bool
     last_backup_status: str | None
     last_migration_status: str | None
+    local_runtime_provisioning: "LocalRuntimeProvisioningStatusV1"
 
 class SessionBootstrapRequestV1:
     schema_version: Literal[1]
@@ -374,7 +376,7 @@ class CalendarResourceDetailResponseV1:
 
 - `GET /api/v1/conversations`는 `ConversationListRequestV1 → ConversationListResponseV1`이며 04의 `(timestamp_ms,id)` keyset cursor를 opaque `cursor`로 노출한다. `search`는 title/message-index read projection의 bounded query이며 Agent Prompt 입력이 아니다.
 - `POST /api/v1/conversations`는 `CreateConversationRequestV1 → ConversationItemV1`이다.
-- `GET /api/v1/runtime`은 `RuntimeDetailResponseV1`, `POST /api/v1/session/bootstrap`은 `SessionBootstrapRequestV1 → SessionBootstrapResponseV1`이다. bootstrap secret은 성공/실패와 무관하게 응답·Log·DB에 저장하지 않는다.
+- `GET /api/v1/runtime`은 `RuntimeDetailResponseV2`, `POST /api/v1/session/bootstrap`은 `SessionBootstrapRequestV1 → SessionBootstrapResponseV1`이다. bootstrap secret은 성공/실패와 무관하게 응답·Log·DB에 저장하지 않는다.
 - `GET /api/v1/resources/{source}`는 `ResourceListRequestV1 → ResourceListResponseV1`이며 Provider raw page token을 Browser contract로 노출하지 않는다. Local API continuation은 opaque다. `source`와 filter union variant가 일치하지 않으면 `INVALID_RESOURCE_FILTER`로 fail closed한다. Gmail/Tasks Browser page size는 configured `SIDEBAR_PAGE_SIZE`의 bounded value를 사용하고 Calendar는 explicit time window/grid contract를 사용한다.
 - `ComponentCircuitStatusV1`은 connector-neutral `key`, `state`, `retry_at_ms?`만 노출한다. `key.kind=CONNECTOR`이면 `connector_id`가 필수이고 `llm_runtime=None`; `key.kind=LLM_RUNTIME`이면 `llm_runtime=API_LLM|LOCAL_GPU`가 필수이고 `connector_id=None`이다. Provider 이름을 Core circuit enum으로 추가하지 않는다. `RunBudgetSummaryV1`은 limit/used/remaining 및 `max_execution_ms`의 bounded operational projection이다. raw secret/Prompt/Provider payload는 Runtime Detail에 포함하지 않는다.
 
@@ -1147,7 +1149,7 @@ Port 이름만 선언하고 callable shape를 Adapter 구현에 맡기지 않는
 | `ConnectorWritePort` | `execute_write(binding: ValidatedConnectorToolBindingV1, tool_arguments, claim_token) -> ConnectorWriteResultV1`; 오직 `execution_attempt.dispatch_connector_write`가 same-Attempt `BeginExecutionAttempt(applied=true)`와 current Attempt=`EXECUTING`을 확인하고 Application-side `SignedToolRegistry.bind_required(..., expected_effect=<WRITE_EFFECT>)`로 만든 binding을 전달한 뒤 호출 |
 | `OAuthCredentialPort` | 모든 Core-facing callable이 `connector_id`를 첫 identity로 사용: `start_authorization(connector_id, environment, requested_scopes, operation_ref)`, `reconcile_authorization_start(connector_id, operation_ref) -> OperationalReconcileResultV1`, `refresh_access(connector_id, account_id)`, `get_connection_status(connector_id)`, `revoke_connection(connector_id, account_id, operation_ref)`, `reconcile_revoke_connection(connector_id, account_id, operation_ref) -> OperationalReconcileResultV1`. Loopback callback의 `code/state/PKCE/token exchange`는 MCP Credential Provider 내부 operation이며 Core-facing Port callable이 아니다 |
 | `MCPClientPort` | `list_tools(connector_id) -> list[MCPToolDescriptorV1]`; `call_tool(connector_id, tool_id, arguments: JSONValue, timeout_ms: int) -> MCPToolCallResultV1`; `restart_once(connector_id) -> MCPRestartResultV1`. restart/health는 해당 Connector child process만 대상으로 함 |
-| `StructuredInferencePort` | `infer(requested_mode, prompt_ref, input_projection, output_schema_ref) -> StructuredInferenceResultV1`; `requested_mode=AUTO|LOCAL_GPU|API_LLM`, concrete provider 선택은 Router 내부 authority |
+| `StructuredInferencePort` | `infer(requested_mode, inference_tier, prompt_ref, input_projection, output_schema_ref) -> StructuredInferenceResultV2`; `inference_tier=WORKER|REASONING`, concrete provider/model 선택은 Router 내부 authority |
 | `LlmCredentialPort` | `store_credential(provider, secret, storage_mode, operation_ref) -> LlmCredentialStatusV1`; `delete_credential(provider, operation_ref) -> LlmCredentialStatusV1`; `get_credential_status(provider) -> LlmCredentialStatusV1`; `reconcile_credential(operation_ref, provider, target_state, storage_mode?) -> OperationalReconcileResultV1`. Secret 원문은 reconciliation result/journal에 저장하지 않으며 same-command overwrite/delete의 bounded read-back/marker로 COMPLETED 또는 SAFE_TO_RETRY를 증명한다 |
 | `LlmRuntimeStatusPort` | `get_status(provider) -> LlmRuntimeStatusV1` |
 | `SecretStorePort` | `put(key: str, secret_bytes: bytes) -> None`; `get(key: str) -> bytes | None`; `delete(key: str) -> None` |
@@ -1158,6 +1160,7 @@ Port 이름만 선언하고 callable shape를 Adapter 구현에 맡기지 않는
 | `OperationalCommandReplayPort` | `reserve_or_replay(context: OperationalCommandContextV1) -> OperationalReplayDecisionV2`; `mark_uncertain(context, recovery_ref) -> None`; `store_result(context, result_ref, bounded_result) -> None`; the reservation creates/persists one opaque server-owned `operation_ref` before side effect and returns the same ref on same-command recovery; non-Domain command crash/replay only, Domain lifecycle receipt 0 |
 | `SettingsPort` | `get_settings() -> SettingsViewV1`; `update_settings(settings_patch: SettingsPatchV1, operation_ref: str) -> SettingsViewV1`; `reconcile_settings(operation_ref: str, settings_patch: SettingsPatchV1) -> OperationalReconcileResultV1`. Settings file update와 non-secret operation marker는 adapter가 같은 atomic replace에 기록한다 |
 | `RuntimeModePort` | `get_requested_mode() -> Literal["AUTO","LOCAL_GPU","API_LLM"]`; `set_requested_mode(requested_mode, operation_ref) -> Literal["AUTO","LOCAL_GPU","API_LLM"]`; `reconcile_update(operation_ref, requested_mode) -> OperationalReconcileResultV1`. current Service process-local requested-mode의 단일 mutable authority이며 Settings/Run/StructuredInferenceRouter 내부 field가 아니다 |
+| `LocalRuntimeProvisioningPort` | `provision(operation_ref, model_manifest: ModelManifestV2, product_decision: LocalModelProductDecisionV2) -> LocalRuntimeProvisioningStatusV1`; `get_status() -> LocalRuntimeProvisioningStatusV1`; `reconcile_provision(operation_ref, model_manifest: ModelManifestV2, product_decision: LocalModelProductDecisionV2) -> OperationalReconcileResultV1`. Download/install/process invocation/model-pull/digest verification은 concrete Adapter 내부에만 존재한다. |
 | `BackupPort` | `create_backup(operation_ref) -> BackupMetadataV1`; `reconcile_backup(operation_ref) -> OperationalReconcileResultV1`; `restore_backup(backup_ref, operation_ref) -> RestoreResultV1`; `reconcile_restore(backup_ref, operation_ref) -> OperationalReconcileResultV1`; `list_backups() -> list[BackupMetadataV1]` |
 | `DiagnosticsPort` | `create_bundle(scope, run_id?, operation_ref) -> DiagnosticBundleMetadataV1`; `reconcile_bundle(operation_ref) -> OperationalReconcileResultV1` |
 | `ShutdownPort` | `request_shutdown(operation_ref) -> ShutdownAcceptedV1`; `reconcile_shutdown(operation_ref) -> OperationalReconcileResultV1`. Adapter는 process exit trigger 전에 operation_ref bounded acceptance marker를 durable하게 기록해 restart 후 previous shutdown completion을 판정한다 |
@@ -1257,6 +1260,43 @@ calendar_delete_event
 ```
 
 `calendar_update_event`는 승인된 참석자 추가·수정을 지원한다. `calendar_delete_event`는 승인 필수 DELETE Effect다. 반복 Event 전체 일괄 수정은 등록하지 않는다.
+
+### 9-A. Local Runtime provisioning wire contract
+
+```python
+InferenceTierV1 = Literal["WORKER", "REASONING"]
+
+class LocalProvisioningComponentV1:
+    component_kind: Literal["OLLAMA_RUNTIME", "WORKER_MODEL", "REASONING_MODEL"]
+    status: Literal["PENDING", "DOWNLOADING", "INSTALLING", "VERIFYING", "READY", "FAILED"]
+    progress_percent: int | None
+    downloaded_bytes: int | None
+    total_bytes: int | None
+    error_code: str | None
+
+class LocalRuntimeProvisioningStatusV1:
+    schema_version: Literal[1]
+    overall_status: Literal["NOT_REQUIRED", "NOT_STARTED", "IN_PROGRESS", "READY", "REPAIR_REQUIRED", "FAILED"]
+    runtime_origin: Literal["NONE", "PREEXISTING", "PRODUCT_PROVISIONED"]
+    active_profile_id: str | None
+    components: list[LocalProvisioningComponentV1]
+    retryable: bool
+
+class ProvisionLocalRuntimeRequestV1:
+    schema_version: Literal[1]
+    command_id: str
+
+class ProvisionLocalRuntimeResponseV1:
+    schema_version: Literal[1]
+    operation_ref: str
+    status: LocalRuntimeProvisioningStatusV1
+```
+
+- Browser는 URL, installer path, version, model ID, digest 또는 shell argument를 보내지 않는다.
+- Application은 `OperationalCommandReplayPort`로 command/hash/result를 판정하고 verified `ModelManifestV2 + LocalModelProductDecisionV2`의 hash/profile binding을 검증한 뒤 `LocalRuntimeProvisioningPort`만 호출한다.
+- same command replay는 같은 `operation_ref`와 현재 status를 반환하며, unresolved reservation은 Adapter reconciliation 후에만 재개한다.
+- `RuntimeDetailResponseV2.local_runtime_provisioning`이 current operation/profile/component progress를 bounded projection한다. V1 response에 필드를 소급 추가하지 않는다.
+- `API_ONLY`에서는 `NOT_REQUIRED`이며 provisioning Command는 deterministic unsupported result를 반환하고 side effect 0이다.
 
 ## 10. 내부 결정 인터페이스
 
@@ -1560,11 +1600,21 @@ class ConnectorWriteResultV1:
     response_metadata: dict[str, JSONScalar] | None
     error_code: str | None
 
-class StructuredInferenceResultV1:
-    schema_version: Literal[1]
+class StructuredInferenceRequestV2:
+    schema_version: Literal[2]
+    requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
+    inference_tier: InferenceTierV1
+    prompt_ref: PromptRefV1
+    input_projection: JSONValue
+    output_schema_ref: str
+
+class StructuredInferenceResultV2:
+    schema_version: Literal[2]
     structured_output: dict[str, JSONValue]
     provider: str
     model: str
+    inference_tier: InferenceTierV1
+    local_model_profile_id: str | None
     actual_runtime: Literal["LOCAL_GPU", "API_LLM"]
     input_tokens: int
     output_tokens: int
