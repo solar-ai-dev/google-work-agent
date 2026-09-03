@@ -12,6 +12,10 @@ from google_work_agent.adapters.connectors.google.workspace.mcp_server.credentia
 )
 
 
+def test_development_oauth__configuration_root_is__repository_root() -> None:
+    assert Path(__file__).resolve().parents[3] == settings.PROJECT_ROOT
+
+
 def test_google_credential__provider_load_from__local_env_file(
     tmp_path: Path, monkeypatch: MonkeyPatch
 ) -> None:
@@ -31,7 +35,7 @@ def test_google_credential__provider_load_from__local_env_file(
     )
 
     assert credential_provider.google_oauth_client_id == "dev-desktop-client-id"
-    assert not hasattr(credential_provider, "google_oauth_client_secret")
+    assert credential_provider.google_oauth_client_secret == "compatibility-client-secret"
     assert "dev-desktop-client-id" not in repr(credential_provider)
     assert "compatibility-client-secret" not in repr(credential_provider)
 
@@ -54,7 +58,7 @@ def test_process_environment__overrides_local__env_file(
     )
 
     assert credential_provider.google_oauth_client_id == "environment-client-id"
-    assert not hasattr(credential_provider, "google_oauth_client_secret")
+    assert credential_provider.google_oauth_client_secret == "environment-client-secret"
 
 
 def test_google_oauth_client__id_is_optional_at__import_and_load_time(
@@ -68,7 +72,7 @@ def test_google_oauth_client__id_is_optional_at__import_and_load_time(
     )
 
     assert credential_provider.google_oauth_client_id is None
-    assert not hasattr(credential_provider, "google_oauth_client_secret")
+    assert credential_provider.google_oauth_client_secret is None
 
 
 def test_whitespace_google__oauth_client_id__is_not_configured() -> None:
@@ -93,10 +97,10 @@ def test_production_does__not_load__local_env_file(
     credential_provider = GoogleOAuthSettings.load(runtime_environment="PRODUCTION", environment={})
 
     assert credential_provider.google_oauth_client_id is None
-    assert not hasattr(credential_provider, "google_oauth_client_secret")
+    assert credential_provider.google_oauth_client_secret is None
 
 
-def test_desktop_oauth__secret_environment__value_is_ignored() -> None:
+def test_whitespace_desktop_oauth_secret__in_development__is_not_configured() -> None:
     credential_provider = GoogleOAuthSettings.load(
         runtime_environment="DEVELOPMENT",
         environment={
@@ -106,4 +110,17 @@ def test_desktop_oauth__secret_environment__value_is_ignored() -> None:
     )
 
     assert credential_provider.google_oauth_client_id == "desktop-client-id"
-    assert not hasattr(credential_provider, "google_oauth_client_secret")
+    assert credential_provider.google_oauth_client_secret is None
+
+
+def test_production_oauth__secret_environment__value_is_ignored() -> None:
+    credential_provider = GoogleOAuthSettings.load(
+        runtime_environment="PRODUCTION",
+        environment={
+            "GOOGLE_OAUTH_CLIENT_ID": "desktop-client-id",
+            "GOOGLE_OAUTH_CLIENT_SECRET": "compatibility-client-secret",
+        },
+    )
+
+    assert credential_provider.google_oauth_client_id == "desktop-client-id"
+    assert credential_provider.google_oauth_client_secret is None

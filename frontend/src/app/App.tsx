@@ -321,6 +321,7 @@ function requireOAuthLaunchUrl(value: string): string {
   ) {
     throw new Error("Unexpected OAuth authorization URL");
   }
+  url.searchParams.set("return_to", new URL("/", window.location.origin).toString());
   return url.toString();
 }
 

@@ -274,8 +274,8 @@ Tentative는 경고로 처리하고, Declined 또는 Free Event는 Busy에서 �
 - `state` 검증 필수
 - OOB 수동 코드 복사 방식 금지
 - Refresh Token은 OS Keyring 저장
-- P0 Installed/Desktop OAuth는 non-secret `oauth_client_id`와 PKCE·`state`·ephemeral loopback만 사용하며 `client_secret`을 요구하지 않는다.
-- Provider/downloaded client configuration에 `client_secret` field가 있어도 current P0 loader는 무시하고 Token request, MCP child environment, React/Vite, FastAPI wire, SQLite, Log, Trace, Diagnostic, OS Keyring으로 전달·저장하지 않는다.
+- Signed P0 Installed/Desktop OAuth는 non-secret `oauth_client_id`와 PKCE·`state`·ephemeral loopback만 사용하며 `client_secret`을 요구하지 않는다.
+- `EXPLICIT_DEVELOPMENT`에서는 Google token endpoint가 해당 Desktop Client에 요구하는 경우에만 `.env.local`의 optional `GOOGLE_OAUTH_CLIENT_SECRET`을 MCP Credential Provider가 직접 읽어 authorization-code/refresh grant에 사용할 수 있다. 값은 React/Vite, FastAPI wire, SQLite, Log, Trace, Diagnostic, OS Keyring 또는 MCP child environment로 전달·저장하지 않는다.
 
 ### POL-OAUTH-004 팀 테스트
 
@@ -793,7 +793,7 @@ LOCAL_CAPABLE Release는 검증된 Ollama Version, Model ID, Model Hash와 Runti
 ### POL-OAUTH-008 Credential Provider 소유권
 
 - Google Authorization Code 교환, Refresh Token 저장·갱신·폐기는 MCP Credential Provider가 소유한다.
-- Authorization-code/refresh-token grant는 `oauth_client_id`와 PKCE/state/loopback contract만 소비하며 `client_secret` load/use branch를 두지 않는다.
+- Signed P0 authorization-code/refresh-token grant는 `oauth_client_id`와 PKCE/state/loopback contract만 소비한다. `EXPLICIT_DEVELOPMENT`만 MCP-owned `.env.local`에서 optional compatibility credential을 로드해 두 grant에 사용할 수 있다.
 - FastAPI와 React에는 계정·Scope·연결 상태 Metadata만 반환한다.
 - Refresh Token 원문을 FastAPI Process Memory나 React로 복사하는 구현은 금지한다.
 

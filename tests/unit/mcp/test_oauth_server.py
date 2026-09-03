@@ -3,9 +3,10 @@ from __future__ import annotations
 import json
 import threading
 from email.message import Message
+from http.client import HTTPConnection
 from io import BytesIO
 from urllib.error import HTTPError
-from urllib.parse import parse_qs, urlencode
+from urllib.parse import parse_qs, urlencode, urlparse
 from urllib.request import Request, urlopen
 
 import pytest
@@ -68,6 +69,7 @@ def test_authorization_code_grant_binds__the_callback_uri_and__reports_only_reda
         expires_at_ms=server._now_ms() + 60_000,
         client_id="desktop-client",
         operation_ref="operation-1",
+        client_secret="compatibility-client-secret",
     )
     captured: Request | None = None
 
@@ -108,6 +110,7 @@ def test_authorization_code_grant_binds__the_callback_uri_and__reports_only_reda
         b"code_verifier",
         b"grant_type",
         b"redirect_uri",
+        b"client_secret",
     }
     request_fields = parse_qs(request_body.decode("ascii"))
     assert set(request_fields) == {
@@ -116,6 +119,7 @@ def test_authorization_code_grant_binds__the_callback_uri_and__reports_only_reda
         "code_verifier",
         "grant_type",
         "redirect_uri",
+        "client_secret",
     }
     assert request_fields["grant_type"] == ["authorization_code"]
     assert request_fields["redirect_uri"] == [flow.callback_url]
@@ -223,10 +227,12 @@ def test_refresh_grant_rotates__keyring_and_keeps_access__token_in_mcp_memory(
 ) -> None:
     store = _MemorySecretStorePort({"refresh": "stored-value"})
     state = _state(store)
-    calls: list[tuple[str, str | None]] = []
+    calls: list[tuple[str, str | None, str | None]] = []
 
-    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
-        calls.append((value, client_id))
+    def refresh(
+        value: str, client_id: str | None, client_secret: str | None
+    ) -> tuple[str, int, str | None, str | None]:
+        calls.append((value, client_id, client_secret))
         return "access-value", server._now_ms() + 10_000, "rotated-value", None
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
@@ -234,6 +240,7 @@ def test_refresh_grant_rotates__keyring_and_keeps_access__token_in_mcp_memory(
 
     assert len(calls) == 1
     assert calls[0][1] == "desktop-client"
+    assert calls[0][2] == "compatibility-client-secret"
     assert state.access_token == "access-value"
     assert store.values["refresh"] == "rotated-value"
     assert "access-value" not in repr(state.connection_payload())
@@ -251,8 +258,10 @@ def test_ensure_access_token__self_heals_account_email__from_refresh_id_token(
     state = _state(store)
     assert state.account_email is None
 
-    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
-        del value, client_id
+    def refresh(
+        value: str, client_id: str | None, client_secret: str | None
+    ) -> tuple[str, int, str | None, str | None]:
+        del value, client_id, client_secret
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
 
     monkeypatch.setattr(server, "_refresh_access_token", refresh)
@@ -684,6 +693,7 @@ def test_refresh_grant_uses__form_encoded_mcp__only_client_credentials(
     access_token, _, rotated_refresh_token, _ = server._refresh_access_token(
         "stored-refresh-token",
         "desktop-client",
+        "compatibility-client-secret",
     )
 
     assert access_token == "access-value"
@@ -699,8 +709,11 @@ def test_refresh_grant_uses__form_encoded_mcp__only_client_credentials(
         b"client_id",
         b"refresh_token",
         b"grant_type",
+        b"client_secret",
     }
-    assert parse_qs(request_body.decode("ascii"))["grant_type"] == ["refresh_token"]
+    request_fields = parse_qs(request_body.decode("ascii"))
+    assert request_fields["grant_type"] == ["refresh_token"]
+    assert request_fields["client_secret"] == ["compatibility-client-secret"]
 
 
 def test_desktop_oauth__starts_with_public__client_id_only() -> None:
@@ -712,6 +725,112 @@ def test_desktop_oauth__starts_with_public__client_id_only() -> None:
     )
     assert result["flow_id"]
     assert state.active_flow is not None
+    assert urlparse(state.active_flow.callback_url).path == ""
+
+
+def test_unrelated_loopback_request__does_not_expire__active_oauth_flow() -> None:
+    state = server.GoogleWorkspaceCredentialProvider(keyring=_MemorySecretStorePort({}))
+    state.oauth_settings = GoogleOAuthSettings(google_oauth_client_id="desktop-client")
+    server._control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
+    flow = state.active_flow
+    assert flow is not None
+    parsed_callback = urlparse(flow.callback_url)
+    assert parsed_callback.hostname is not None
+    assert parsed_callback.port is not None
+
+    unrelated = HTTPConnection(parsed_callback.hostname, parsed_callback.port, timeout=2)
+    try:
+        unrelated.request("GET", "/favicon.ico")
+        response = unrelated.getresponse()
+        assert response.status == 404
+        response.read()
+    finally:
+        unrelated.close()
+
+    assert state.active_flow is flow
+
+    invalid_callback = HTTPConnection(parsed_callback.hostname, parsed_callback.port, timeout=2)
+    try:
+        invalid_callback.request("GET", "/?state=invalid")
+        response = invalid_callback.getresponse()
+        assert response.status == 400
+        response.read()
+    finally:
+        invalid_callback.close()
+
+
+def test_successful_callback__with_validated_loopback_return__redirects_browser_to_app(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _state(_MemorySecretStorePort({}))
+    server._control_call(
+        state, method="google.oauth.start", arguments={"operation_ref": "operation-1"}
+    )
+    flow = state.active_flow
+    assert flow is not None
+    parsed_callback = urlparse(flow.callback_url)
+    assert parsed_callback.hostname is not None
+    assert parsed_callback.port is not None
+    return_url = "http://127.0.0.1:18775/"
+
+    authorize = HTTPConnection(parsed_callback.hostname, parsed_callback.port, timeout=2)
+    try:
+        authorize.request(
+            "GET",
+            f"/oauth/authorize?{urlencode({'state': flow.state, 'return_to': return_url})}",
+        )
+        response = authorize.getresponse()
+        assert response.status == 302
+        assert response.getheader("Location", "").startswith(
+            server.GOOGLE_AUTHORIZATION_ENDPOINT
+        )
+        response.read()
+    finally:
+        authorize.close()
+
+    active_flow = state.active_flow
+    assert active_flow is not None
+    assert active_flow.return_url == return_url
+    monkeypatch.setattr(
+        server,
+        "_exchange_authorization_code",
+        lambda _flow, _code: ("refresh-value", "access-value", "user@example.com"),
+    )
+
+    callback = HTTPConnection(parsed_callback.hostname, parsed_callback.port, timeout=2)
+    try:
+        callback.request(
+            "GET",
+            f"/?{urlencode({'state': flow.state, 'code': 'authorization-code'})}",
+        )
+        response = callback.getresponse()
+        assert response.status == 303
+        assert response.getheader("Location") == return_url
+        assert response.getheader("Cache-Control") == "no-store"
+        assert response.read() == b""
+    finally:
+        callback.close()
+
+    assert state.connection_state is CredentialState.CONNECTED
+    assert state.active_flow is None
+
+
+@pytest.mark.parametrize(
+    "return_url",
+    (
+        "https://127.0.0.1:18775/",
+        "http://localhost:18775/",
+        "http://127.0.0.1/",
+        "http://user@127.0.0.1:18775/",
+        "http://127.0.0.1:18775/app",
+        "http://127.0.0.1:18775/?source=oauth",
+        "http://127.0.0.1:18775/#connected",
+    ),
+)
+def test_oauth_return_url__with_noncanonical_target__is_rejected(return_url: str) -> None:
+    assert server._validated_oauth_return_url(return_url) is None
 
 
 def test_concurrent_expired__access_token__refreshes_once(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -721,9 +840,11 @@ def test_concurrent_expired__access_token__refreshes_once(monkeypatch: pytest.Mo
     calls = 0
     call_lock = threading.Lock()
 
-    def refresh(value: str, client_id: str | None) -> tuple[str, int, str | None, str | None]:
+    def refresh(
+        value: str, client_id: str | None, client_secret: str | None
+    ) -> tuple[str, int, str | None, str | None]:
         nonlocal calls
-        del value, client_id
+        del value, client_id, client_secret
         with call_lock:
             calls += 1
         return "access-value", server._now_ms() + 10_000, None, "user@example.com"
@@ -755,8 +876,10 @@ def test_concurrent_expired__access_token__refreshes_once(monkeypatch: pytest.Mo
 def test_invalid_grant__requires__reauthentication(monkeypatch: pytest.MonkeyPatch) -> None:
     state = _state(_MemorySecretStorePort({"refresh": "stored-value"}))
 
-    def invalid(value: str, client_id: str | None) -> tuple[str, int, str | None]:
-        del value, client_id
+    def invalid(
+        value: str, client_id: str | None, client_secret: str | None
+    ) -> tuple[str, int, str | None]:
+        del value, client_id, client_secret
         raise server._OAuthReauthenticationRequired
 
     monkeypatch.setattr(server, "_refresh_access_token", invalid)
@@ -790,6 +913,7 @@ def _state(store: _MemorySecretStorePort) -> server.GoogleWorkspaceCredentialPro
     state = server.GoogleWorkspaceCredentialProvider(keyring=store)
     state.oauth_settings = GoogleOAuthSettings(
         google_oauth_client_id="desktop-client",
+        google_oauth_client_secret="compatibility-client-secret",
     )
     return state
 

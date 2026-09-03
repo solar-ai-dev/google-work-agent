@@ -489,7 +489,7 @@ TEMP
 TMP
 ```
 
-Production의 `GOOGLE_OAUTH_ENV`와 `GOOGLE_OAUTH_CLIENT_ID`는 ambient user/process environment에서 읽는 configuration source가 아니다. Launcher가 검증한 `SignedBuildConfigV1`에서 Service startup composition으로 전달된 non-secret value를 Connector MCP child environment에 allowlist injection한다. LLM API Key, Bootstrap Secret, Local Session, 전체 Parent Environment를 전달하지 않는다. Google user Credential은 Keyring Adapter를 통해 필요한 시점에만 읽는다. `GOOGLE_OAUTH_CLIENT_SECRET`은 allowlist/config schema에 존재하지 않으며 P0 child process에 주입하는 대체 provisioning path도 없다.
+Production의 `GOOGLE_OAUTH_ENV`와 `GOOGLE_OAUTH_CLIENT_ID`는 ambient user/process environment에서 읽는 configuration source가 아니다. Launcher가 검증한 `SignedBuildConfigV1`에서 Service startup composition으로 전달된 non-secret value를 Connector MCP child environment에 allowlist injection한다. LLM API Key, Bootstrap Secret, Local Session, 전체 Parent Environment를 전달하지 않는다. Google user Credential은 Keyring Adapter를 통해 필요한 시점에만 읽는다. `GOOGLE_OAUTH_CLIENT_SECRET`은 allowlist/signed-config schema에 존재하지 않으며 P0 child process에 주입하는 대체 provisioning path도 없다. `EXPLICIT_DEVELOPMENT`에서만 MCP Credential Provider가 repository-root `.env.local`의 optional compatibility credential을 직접 읽고 process memory에서 token grant input으로 사용할 수 있다.
 
 ### 8.12 `SEC-INF-012` Installer Signature
 

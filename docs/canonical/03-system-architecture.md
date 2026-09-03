@@ -836,7 +836,7 @@ sequenceDiagram
     A-->>R: ConnectionMetadataV1
 ```
 
-- Loopback callback의 Authorization Code/state/PKCE/token 처리는 MCP Credential Provider 내부 operation이며 Core-facing `OAuthCredentialPort`에 raw code/state를 전달하지 않는다. OAuth 완료 관측의 canonical Core/UI 경로는 기존 `GET /api/v1/connections/google/status`의 bounded polling/refresh 하나다. 별도 MCP→Application reverse notification authority를 만들지 않는다.
+- Loopback callback의 Authorization Code/state/PKCE/token 처리는 MCP Credential Provider 내부 operation이며 Core-facing `OAuthCredentialPort`에 raw code/state를 전달하지 않는다. OAuth 완료 관측의 canonical Core/UI 경로는 기존 `GET /api/v1/connections/google/status`의 bounded polling/refresh 하나다. 성공 callback은 UI가 시작 URL에 함께 보낸 query/fragment 없는 exact `http://127.0.0.1:{app_port}/`로만 Browser를 복귀시킬 수 있으며, 이는 navigation일 뿐 연결 상태 authority가 아니다. 별도 MCP→Application reverse notification authority를 만들지 않는다.
 - Browser, React, FastAPI Response에 Access·Refresh Token 원문을 반환하지 않는다.
 - Google Refresh Token은 MCP Credential Provider만 OS Keyring에서 읽고 갱신한다.
 - LLM API Key는 `storage_mode=KEYRING`이면 FastAPI Local Agent Service의 LLM credential adapter가 별도 Keyring Entry로 관리하고, `SESSION_ONLY`이면 같은 Local Agent process memory에만 보관해 process/session 종료 시 폐기한다.

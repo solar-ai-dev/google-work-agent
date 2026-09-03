@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from email import policy
 from email.header import decode_header, make_header
 from email.message import EmailMessage
@@ -46,15 +46,16 @@ from google_work_agent.ports.connector.contracts.google_workspace import Deliver
 from google_work_agent.ports.connector.oauth_credential_port import OAuthEnvironment
 from google_work_agent.ports.keyring.secret_store_port import SecretStorePort
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[7]
 DEVELOPMENT_ENVIRONMENT = "DEVELOPMENT"
 
 
 @dataclass(frozen=True, slots=True)
 class GoogleOAuthSettings:
-    """Desktop OAuth configuration; only the public client ID is configurable."""
+    """Desktop OAuth configuration retained only inside the MCP process."""
 
     google_oauth_client_id: str | None = field(repr=False)
+    google_oauth_client_secret: str | None = field(default=None, repr=False)
 
     @classmethod
     def load(
@@ -70,7 +71,15 @@ class GoogleOAuthSettings:
         )
         values.update(dict(os.environ) if environment is None else environment)
         client_id = values.get("GOOGLE_OAUTH_CLIENT_ID", "").strip()
-        return cls(google_oauth_client_id=client_id or None)
+        client_secret = (
+            values.get("GOOGLE_OAUTH_CLIENT_SECRET", "").strip()
+            if runtime_environment.upper() == DEVELOPMENT_ENVIRONMENT
+            else ""
+        )
+        return cls(
+            google_oauth_client_id=client_id or None,
+            google_oauth_client_secret=client_secret or None,
+        )
 
 
 def _load_env_file(path: Path) -> dict[str, str]:
@@ -149,6 +158,8 @@ class _OAuthFlow:
     expires_at_ms: int
     client_id: str
     operation_ref: str
+    client_secret: str | None = field(default=None, repr=False)
+    return_url: str | None = None
 
 
 class _OAuthConfigurationError(RuntimeError):
@@ -283,6 +294,7 @@ class GoogleWorkspaceCredentialProvider:
                 _refresh_access_token(
                     refresh_token,
                     self.oauth_settings.google_oauth_client_id,
+                    self.oauth_settings.google_oauth_client_secret,
                 )
             )
             self.access_token = access_token
@@ -317,6 +329,7 @@ class GoogleWorkspaceCredentialProvider:
                 _refresh_access_token(
                     refresh_token,
                     self.oauth_settings.google_oauth_client_id,
+                    self.oauth_settings.google_oauth_client_secret,
                 )
             )
         except _OAuthReauthenticationRequired:
@@ -1083,6 +1096,7 @@ def _start_oauth_flow(
         expires_at_ms=_now_ms() + OAUTH_FLOW_TTL_MS,
         client_id=state.oauth_settings.google_oauth_client_id or "",
         operation_ref=operation_ref,
+        client_secret=state.oauth_settings.google_oauth_client_secret,
     )
 
 
@@ -1115,19 +1129,41 @@ def _google_authorization_url(flow: _OAuthFlow) -> str:
     return f"{GOOGLE_AUTHORIZATION_ENDPOINT}?{query}"
 
 
+def _validated_oauth_return_url(value: str) -> str | None:
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "http"
+        or parsed.hostname != "127.0.0.1"
+        or port is None
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.path != "/"
+        or parsed.params
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    return f"http://127.0.0.1:{port}/"
+
+
 def _exchange_authorization_code(
     flow: _OAuthFlow,
     code: str,
 ) -> tuple[str, str | None, str | None]:
-    body = urlencode(
-        {
-            "client_id": flow.client_id,
-            "code": code,
-            "code_verifier": flow.verifier,
-            "grant_type": "authorization_code",
-            "redirect_uri": flow.callback_url,
-        }
-    ).encode("ascii")
+    fields = {
+        "client_id": flow.client_id,
+        "code": code,
+        "code_verifier": flow.verifier,
+        "grant_type": "authorization_code",
+        "redirect_uri": flow.callback_url,
+    }
+    if flow.client_secret is not None:
+        fields["client_secret"] = flow.client_secret
+    body = urlencode(fields).encode("ascii")
     request = Request(
         GOOGLE_TOKEN_ENDPOINT,
         data=body,
@@ -1146,6 +1182,7 @@ def _exchange_authorization_code(
                 flow.verifier,
                 flow.state,
                 flow.callback_url,
+                flow.client_secret or "",
             ),
         ) from error
     except (URLError, TimeoutError, json.JSONDecodeError) as error:
@@ -1285,16 +1322,18 @@ def _redact_provider_error_description(
 def _refresh_access_token(
     refresh_token: str,
     client_id: str | None,
+    client_secret: str | None = None,
 ) -> tuple[str, int, str | None, str | None]:
     if client_id is None:
         raise _OAuthConfigurationError("GOOGLE_OAUTH_CLIENT_ID_MISSING")
-    body = urlencode(
-        {
-            "client_id": client_id,
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-        }
-    ).encode("ascii")
+    fields = {
+        "client_id": client_id,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token,
+    }
+    if client_secret is not None:
+        fields["client_secret"] = client_secret
+    body = urlencode(fields).encode("ascii")
     request = Request(
         GOOGLE_TOKEN_ENDPOINT,
         data=body,
@@ -1353,6 +1392,9 @@ class _OAuthCallbackServer:
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 parsed = urlparse(self.path)
+                if parsed.path not in {"/oauth/authorize", "/"}:
+                    self._respond(404, b"not found")
+                    return
                 params = parse_qs(parsed.query)
                 state_value = params.get("state", [""])[0]
                 if not hmac.compare_digest(state_value, outer._expected_state):
@@ -1360,7 +1402,17 @@ class _OAuthCallbackServer:
                     outer._finish_flow()
                     return
                 if parsed.path == "/oauth/authorize":
-                    flow = outer._state.active_flow
+                    raw_return_url = params.get("return_to", [""])[0]
+                    return_url = _validated_oauth_return_url(raw_return_url)
+                    if raw_return_url and return_url is None:
+                        self._respond(400, b"invalid return URL")
+                        outer._finish_flow()
+                        return
+                    with outer._state._oauth_flow_lock:
+                        flow = outer._state.active_flow
+                        if flow is not None:
+                            flow = replace(flow, return_url=return_url)
+                            outer._state.active_flow = flow
                     if flow is None:
                         self._respond(400, b"oauth flow unavailable")
                         outer._finish_flow()
@@ -1368,10 +1420,6 @@ class _OAuthCallbackServer:
                     self.send_response(302)
                     self.send_header("Location", _google_authorization_url(flow))
                     self.end_headers()
-                    return
-                if parsed.path != "/oauth/callback":
-                    self._respond(404, b"not found")
-                    outer._finish_flow()
                     return
                 code = params.get("code", [""])[0]
                 with outer._state._oauth_flow_lock:
@@ -1407,8 +1455,18 @@ class _OAuthCallbackServer:
                 outer._state.last_checked_at_ms = _now_ms()
                 outer._state.last_oauth_error_code = None
                 outer._state.last_oauth_error_description = None
-                self._respond(200, b"Google account connected. You can close this window.")
+                if flow.return_url is not None:
+                    self._redirect(flow.return_url)
+                else:
+                    self._respond(200, b"Google account connected. You can close this window.")
                 outer._shutdown()
+
+            def _redirect(self, location: str) -> None:
+                self.send_response(303)
+                self.send_header("Location", location)
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
 
             def _respond(self, status: int, body: bytes) -> None:
                 self.send_response(status)
@@ -1423,7 +1481,7 @@ class _OAuthCallbackServer:
 
     def start(self) -> str:
         self._thread.start()
-        return f"http://127.0.0.1:{self._server.server_port}/oauth/callback"
+        return f"http://127.0.0.1:{self._server.server_port}"
 
     def _finish_flow(self) -> None:
         self._state.active_flow = None

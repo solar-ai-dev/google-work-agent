@@ -1500,6 +1500,12 @@ def _build_connectors(
         module_name = mcp_module_name
         connector_working_directory = working_directory
     runtime_registry = ConnectorRuntimeRegistry()
+    connector_environment = {
+        ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
+        "GOOGLE_OAUTH_ENV": environment,
+    }
+    if configuration_source == "SIGNED_RELEASE_MANIFEST":
+        connector_environment["GOOGLE_OAUTH_CLIENT_ID"] = oauth_client_id
     descriptor = build_google_workspace_connector_descriptor(
         MCPArtifactConfig(
             executable_path=str(executable_path),
@@ -1516,11 +1522,7 @@ def _build_connectors(
             service_instance_id=service_instance_id,
             module_name=module_name,
             working_directory=str(connector_working_directory),
-            extra_environment={
-                ATTACHMENT_STAGING_DIR_ENV: str(attachment_staging_dir),
-                "GOOGLE_OAUTH_ENV": environment,
-                "GOOGLE_OAUTH_CLIENT_ID": oauth_client_id,
-            },
+            extra_environment=connector_environment,
         ),
         expected_tool_descriptors=tuple(
             tool_registry.descriptor_expectations(GOOGLE_WORKSPACE_CONNECTOR_ID)

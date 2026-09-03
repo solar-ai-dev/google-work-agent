@@ -180,5 +180,6 @@ function errorMessage(error: unknown, fallback: string): string {
 function requireOAuthUrl(value: string): string {
   const url = new URL(value);
   if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.port || url.pathname !== "/oauth/authorize") throw new Error("Unexpected OAuth authorization URL");
+  url.searchParams.set("return_to", new URL("/", window.location.origin).toString());
   return url.toString();
 }
