@@ -1,19 +1,10 @@
-"""Canonical Run-scoped SSE wire envelope."""
+"""Serialize the canonical Run-scoped SSE wire envelope without redefining it."""
 
-from typing import Literal
-
-from google_work_agent.api.schemas.model import ApiModel
+from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
 
 
-class RunSseEventResponseV1(ApiModel):
-    schema_version: Literal[1]
-    event_id: str
-    run_id: str
-    action_id: str | None
-    occurred_at_ms: int
-    event_type: str
-    payload: dict[str, object]
-    projection_version: int
+def serialize_run_sse_event(event: RunSseEventV1) -> dict[str, object]:
+    return event.model_dump(mode="json")
 
 
-__all__ = ["RunSseEventResponseV1"]
+__all__ = ["serialize_run_sse_event"]

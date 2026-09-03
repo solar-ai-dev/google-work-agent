@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -35,7 +36,10 @@ from google_work_agent.ports.system.contracts.external_llm_transfer_scope import
     ExternalLlmTransferScopeV1,
 )
 from google_work_agent.ports.system.run_retrieval_cache_port import RunRetrievalCacheEntryV1
-from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    RunStatusSsePayloadV1,
+)
 
 
 @dataclass(frozen=True)
@@ -139,25 +143,28 @@ def test_component_circuit__opens_at_threshold__and_success_resets() -> None:
     assert reset.consecutive_technical_failures == 0
 
 
-def test_sse_buffer__sanitizes_replays_expires__cursor_and_clears() -> None:
+def test_sse_buffer__preserves_typed_events_replays_expires__cursor_and_clears() -> None:
     buffer = InMemorySseEventBuffer(service_instance_id="service-1", capacity_per_run=2)
     for index in range(3):
         buffer.append(
             RunSseEventV1(
-                1,
-                "caller-value-is-replaced",
-                "run-1",
-                None,
-                index,
-                "RUN_EVENT",
-                {"index": index, "access_token": "secret"},
-                1,
+                schema_version=1,
+                event_id="caller-value-is-replaced",
+                run_id="run-1",
+                action_id=None,
+                occurred_at_ms=index,
+                event_type="run_status",
+                payload=RunStatusSsePayloadV1(
+                    status="ANALYZING", snapshot_version=index
+                ),
+                projection_version=1,
             )
         )
 
     page = buffer.list_after("run-1", None, 10)
     assert [event.event_id for event in page.events] == ["service-1:2", "service-1:3"]
-    assert "access_token" not in page.events[0].payload
+    payload = cast(RunStatusSsePayloadV1, page.events[0].payload)
+    assert payload.snapshot_version == 1
     assert buffer.list_after("run-1", "service-1:1", 10).cursor_status == "OK"
     assert buffer.list_after("run-1", "other:1", 10).cursor_status == "CURSOR_EXPIRED"
     buffer.clear_run("run-1")

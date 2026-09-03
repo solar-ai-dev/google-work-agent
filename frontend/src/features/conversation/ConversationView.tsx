@@ -4,6 +4,7 @@ import type { StagedAttachmentDescriptor } from "../attachment";
 import { ActionPlanCard } from "../approval";
 import { RecoveryCard } from "../recovery";
 import { ConfirmationCard, ContextPreviewCard, ExecutionStatusCard, ExternalLlmDisclosureCard, RequestComposer, RunProgress } from "../run";
+import type { RunSseEvent } from "../run/api/run_sse_event";
 import { DateSeparator, UserMessageBubble } from "./MessageBubble";
 
 type RecoveryKind = NonNullable<RunSnapshot["recovery"]>["allowed_resolution_kinds"][number];
@@ -14,6 +15,7 @@ export type ConversationViewModel = {
     historyMessages: ConversationMessage[];
     runSnapshot: RunSnapshot | null;
     runContext: RunContext | null;
+    latestRunEvent?: RunSseEvent | null;
     confirmationText: string;
     setConfirmationText: Dispatch<SetStateAction<string>>;
     composerText: string;
@@ -41,7 +43,7 @@ export type ConversationViewProps = { children: ReactNode; viewModel: Conversati
 
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
   const { controller, resourceContext, formatTime, onOpenSettings, onOpenDiagnostics } = viewModel;
-  const { selectedConversationId, historyMessages, runSnapshot, runContext, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachDescriptors, handleCancelRun, handleResumeRun, handleAdjustContext, handleConfirmation, handleResolveRecovery } = controller;
+  const { selectedConversationId, historyMessages, runSnapshot, runContext, latestRunEvent, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachDescriptors, handleCancelRun, handleResumeRun, handleAdjustContext, handleConfirmation, handleResolveRecovery } = controller;
   const showTransientRequest = Boolean(runContext?.request_text)
     && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -53,7 +55,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
 
   return (
     <>
-      {runSnapshot ? <RunProgress snapshot={runSnapshot} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
+      {runSnapshot ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
       <div className="panel-body">
         <div className="central-scroll-area" ref={timelineRef}>
           {children}

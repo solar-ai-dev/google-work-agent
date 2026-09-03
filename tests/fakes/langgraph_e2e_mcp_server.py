@@ -219,6 +219,8 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
                 ).values()
                 if query in json.dumps(item, sort_keys=True)
             ]
+            if not items and tool_name == "gmail_search_threads":
+                items = [_read_fixture(tool_name, arguments)]
             _save_state(state)
             return {"items": items, "next_page_token": None}
         _save_state(state)
@@ -276,7 +278,12 @@ def _read_fixture(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
             {"title": "E2E task", "status": "needsAction"},
         )
     if tool_name == "calendar_list_calendars":
-        return _snapshot("calendar", "calendar-e2e", None, {"title": "E2E Calendar"})
+        return _snapshot(
+            "calendar",
+            "calendar-e2e",
+            None,
+            {"summary": "E2E Calendar", "primary": True},
+        )
     return _snapshot(
         "calendar_event",
         "event-read-e2e",

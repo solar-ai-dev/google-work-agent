@@ -7,6 +7,9 @@ from google_work_agent.application.use_cases.run.project_external_llm_transfer_s
     ProjectExternalLlmTransferScopeHandler,
     ProjectExternalLlmTransferScopeQueryV1,
 )
+from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
+    EmitTraceEventCommand,
+)
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
 )
@@ -30,15 +33,17 @@ class _Checkpoint:
 
 
 @dataclass
-class _Events:
+class _TraceEvents:
     calls: list[str]
     fail: bool = False
 
-    def __call__(self, command: object) -> None:
-        del command
-        self.calls.append("event")
+    commands: list[EmitTraceEventCommand] = field(default_factory=list)
+
+    def __call__(self, command: EmitTraceEventCommand) -> None:
+        self.commands.append(command)
+        self.calls.append("trace")
         if self.fail:
-            raise RuntimeError("SSE_UNAVAILABLE")
+            raise RuntimeError("TRACE_UNAVAILABLE")
 
 
 def test_external_llm_transfer__scope_uses_exact__canonical_list_contract() -> None:
@@ -104,14 +109,14 @@ def test_project_external_llm__transfer_scope_changes__hash_and_revision() -> No
     assert second.scope_hash != first.scope_hash
 
 
-def test_scope_checkpoint__remains_durable_when__sse_append_fails() -> None:
+def test_scope_checkpoint__remains_durable_when__trace_append_fails() -> None:
     checkpoint = _Checkpoint()
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
-        _Events(checkpoint.calls, fail=True),  # type: ignore[arg-type]
+        _TraceEvents(checkpoint.calls, fail=True),  # type: ignore[arg-type]
     )
 
-    with pytest.raises(RuntimeError, match="SSE_UNAVAILABLE"):
+    with pytest.raises(RuntimeError, match="TRACE_UNAVAILABLE"):
         handler(
             ProjectExternalLlmTransferScopeQueryV1(
                 1,
@@ -122,15 +127,16 @@ def test_scope_checkpoint__remains_durable_when__sse_append_fails() -> None:
             )
         )
 
-    assert checkpoint.calls == ["store", "flush", "event"]
+    assert checkpoint.calls == ["store", "flush", "trace"]
     assert checkpoint.scope is not None
 
 
-def test_scope_checkpoint__is_flushed__before_sse_append() -> None:
+def test_scope_checkpoint__is_flushed__before_trace_append() -> None:
     checkpoint = _Checkpoint()
+    trace = _TraceEvents(checkpoint.calls)
     handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
-        _Events(checkpoint.calls),  # type: ignore[arg-type]
+        trace,  # type: ignore[arg-type]
     )
 
     handler(
@@ -143,14 +149,21 @@ def test_scope_checkpoint__is_flushed__before_sse_append() -> None:
         )
     )
 
-    assert checkpoint.calls == ["store", "flush", "event"]
+    assert checkpoint.calls == ["store", "flush", "trace"]
+    assert trace.commands[0].event_name == "EXTERNAL_LLM_SCOPE_PUBLISHED"
+    assert trace.commands[0].attributes == {
+        "scope_revision": 1,
+        "scope_hash": checkpoint.scope.scope_hash,  # type: ignore[union-attr]
+        "source_kinds": ["USER_REQUEST"],
+        "data_classes": ["USER_REQUEST"],
+    }
 
 
-def test_scope_event_is__retried_after_checkpoint_first__crash_without_rewriting_scope() -> None:
+def test_scope_trace_is__retried_after_checkpoint_first__crash_without_rewriting_scope() -> None:
     checkpoint = _Checkpoint()
     failing_handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
-        _Events(checkpoint.calls, fail=True),  # type: ignore[arg-type]
+        _TraceEvents(checkpoint.calls, fail=True),  # type: ignore[arg-type]
     )
     query = ProjectExternalLlmTransferScopeQueryV1(
         1,
@@ -160,14 +173,14 @@ def test_scope_event_is__retried_after_checkpoint_first__crash_without_rewriting
         occurred_at_ms=1,
     )
 
-    with pytest.raises(RuntimeError, match="SSE_UNAVAILABLE"):
+    with pytest.raises(RuntimeError, match="TRACE_UNAVAILABLE"):
         failing_handler(query)
 
     recovered_handler = ProjectExternalLlmTransferScopeHandler(
         checkpoint,  # type: ignore[arg-type]
-        _Events(checkpoint.calls),  # type: ignore[arg-type]
+        _TraceEvents(checkpoint.calls),  # type: ignore[arg-type]
     )
     recovered = recovered_handler(query)
 
     assert recovered == checkpoint.scope
-    assert checkpoint.calls == ["store", "flush", "event", "event"]
+    assert checkpoint.calls == ["store", "flush", "trace", "trace"]

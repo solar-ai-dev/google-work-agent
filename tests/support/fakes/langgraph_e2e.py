@@ -256,6 +256,7 @@ def _scenario(value: object) -> str:
         "VERIFICATION_MISMATCH",
         "CONTEXT_ADJUSTMENT",
         "PARTIAL_APPROVAL",
+        "CALENDAR_WRITE",
         "REVIEW_BACK_EDGE",
         "RESTART_RESUME",
         "UNKNOWN_RESULT",
@@ -299,7 +300,7 @@ def _route_semantics(scenario: str) -> tuple[list[str], list[str], list[str]]:
         return ["CALENDAR"], [], []
     if scenario == "PARTIAL_APPROVAL":
         return ["TASK", "CALENDAR"], ["TASK", "CALENDAR"], ["CREATE", "CREATE"]
-    if scenario in {"VERIFICATION_MISMATCH", "RECOVERY"}:
+    if scenario in {"CALENDAR_WRITE", "VERIFICATION_MISMATCH", "RECOVERY"}:
         return ["CALENDAR"], ["CALENDAR"], ["CREATE"]
     return ["TASK"], ["TASK"], ["CREATE"]
 

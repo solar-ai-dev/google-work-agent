@@ -115,10 +115,8 @@ class _CurrentUserPipeListener:
             self._pending_handle = None
         connection = PipeConnection(handle)
         try:
-            # typeshed narrows these helpers to socket Connection even though AF_PIPE
-            # PipeConnection implements the same challenge byte protocol on Windows.
-            deliver_challenge(connection, self._authkey)  # type: ignore[arg-type]
-            answer_challenge(connection, self._authkey)  # type: ignore[arg-type]
+            deliver_challenge(connection, self._authkey)
+            answer_challenge(connection, self._authkey)
         except Exception:
             connection.close()
             raise

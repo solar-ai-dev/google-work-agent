@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteRunResponse,
@@ -16,12 +16,13 @@ from google_work_agent.application.use_cases.sse_event.project_run_event import 
     ProjectRunEventHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
-from google_work_agent.domain.recovery.model import RecoveryReasonV1
+from google_work_agent.domain.recovery.model import RECOVERY_RESOLUTION_MATRIX, RecoveryReasonV1
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowOutcome
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     RegisteredResumeTargetRefV2,
 )
+from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventTypeV1
 
 
 class WorkflowOutcomeProjector:
@@ -43,25 +44,17 @@ class WorkflowOutcomeProjector:
         self._recovery_target = recovery_target
 
     def publish_cancel_response(self, response: WriteRunResponse) -> None:
-        event_type = (
-            "completed"
-            if response.run_status == RunStatusV1.CANCELLED.value
-            else "recovery_required"
-            if response.run_status == RunStatusV1.RECOVERY_REQUIRED.value
-            else "run_status"
-        )
-        self.publish(
-            ProjectRunEventCommand(
-                run_id=response.run_id,
-                occurred_at_ms=self._now_ms(),
-                event_type=event_type,
-                payload={
-                    "result_code": response.result_code,
-                    "run_status": response.run_status,
-                    "run_version": response.run_version,
-                    "result_kind": response.result_kind,
-                },
+        if response.run_status == RunStatusV1.CANCELLED.value:
+            self._publish(
+                response.run_id,
+                "completed",
+                {"status": "CANCELLED", "result_kind": "CANCELLED"},
             )
+            return
+        self._publish(
+            response.run_id,
+            "run_status",
+            {"status": response.run_status, "snapshot_version": response.run_version},
         )
 
     def handle_result(
@@ -80,14 +73,7 @@ class WorkflowOutcomeProjector:
                 expected_version=expected_version,
                 reason="CHECKPOINT_MISMATCH",
             )
-            self.publish(
-                ProjectRunEventCommand(
-                    run_id=run_id,
-                    occurred_at_ms=self._now_ms(),
-                    event_type="recovery_required",
-                    payload={"outcome": outcome.value},
-                )
-            )
+            self._publish(run_id, "recovery_required", _recovery_payload("CHECKPOINT_MISMATCH"))
             return
         if outcome is WorkflowOutcome.FAILED:
             self._require_recovery_result(
@@ -102,20 +88,30 @@ class WorkflowOutcomeProjector:
             WorkflowOutcome.RECOVERY_REQUIRED: "recovery_required",
             WorkflowOutcome.FAILED: "error",
         }[outcome]
-        self.publish(
-            ProjectRunEventCommand(
-                run_id=run_id,
-                occurred_at_ms=self._now_ms(),
-                event_type=event_type,
-                payload={"outcome": outcome.value, **payload},
-            )
-        )
+        event_payload = _canonical_payload(event_type, payload, expected_version)
+        if event_payload is not None:
+            self._publish(run_id, event_type, event_payload)
 
     def publish(self, event: ProjectRunEventCommand) -> None:
         try:
             self._project_run_event(event)
         except Exception:
             return
+
+    def _publish(
+        self,
+        run_id: str,
+        event_type: RunSseEventTypeV1,
+        payload: dict[str, object],
+    ) -> None:
+        self.publish(
+            ProjectRunEventCommand(
+                run_id=run_id,
+                occurred_at_ms=self._now_ms(),
+                event_type=event_type,
+                payload=payload,
+            )
+        )
 
     def _require_recovery_result(
         self,
@@ -147,17 +143,71 @@ class WorkflowOutcomeProjector:
             raise RuntimeError(result.conflict_detail or "RequireRecovery was not applied")
 
 
-def accepted_event_type(payload: dict[str, object]) -> str:
+def accepted_event_type(payload: dict[str, object]) -> RunSseEventTypeV1:
     interrupt_payload = payload.get("user_interrupt")
     if isinstance(interrupt_payload, dict):
         interrupt_kind = interrupt_payload.get("interrupt_kind")
         if interrupt_kind == "CONFIRMATION":
             return "confirmation_required"
-        if interrupt_kind == "APPROVAL":
+        action_ids = interrupt_payload.get("action_ids")
+        if (
+            interrupt_kind == "APPROVAL"
+            and isinstance(action_ids, list)
+            and all(isinstance(item, str) for item in action_ids)
+        ):
             return "approval_required"
     phase = payload.get("phase")
     if phase == "WAITING_CONFIRMATION":
         return "confirmation_required"
     if phase == "WAITING_APPROVAL":
-        return "approval_required"
+        return "run_status"
     return "run_status"
+
+
+def _canonical_payload(
+    event_type: RunSseEventTypeV1,
+    payload: Mapping[str, object],
+    snapshot_version: int,
+) -> dict[str, object] | None:
+    if event_type == "run_status" and isinstance(payload.get("run_status"), str):
+        return {"status": payload["run_status"], "snapshot_version": snapshot_version}
+    if event_type == "phase_changed" and isinstance(payload.get("phase"), str):
+        return {"phase": payload["phase"]}
+    if event_type == "error":
+        error_code = payload.get("error_code")
+        return {
+            "error_code": error_code if isinstance(error_code, str) else "WORKFLOW_FAILED",
+            "recoverable": True,
+        }
+    interrupt = payload.get("user_interrupt")
+    if event_type == "confirmation_required" and isinstance(interrupt, Mapping):
+        interrupt_id, question, options = (
+            interrupt.get("interrupt_id"),
+            interrupt.get("question"),
+            interrupt.get("options"),
+        )
+        if (
+            isinstance(interrupt_id, str)
+            and isinstance(question, str)
+            and isinstance(options, list)
+        ):
+            labels = [item.get("label") for item in options if isinstance(item, Mapping)]
+            if all(isinstance(label, str) for label in labels):
+                return {"interrupt_id": interrupt_id, "question": question, "options": labels}
+    if event_type == "approval_required" and isinstance(interrupt, Mapping):
+        action_ids = interrupt.get("action_ids")
+        if isinstance(action_ids, list) and all(isinstance(item, str) for item in action_ids):
+            return {"action_ids": action_ids}
+    return None
+
+
+def _recovery_payload(reason: RecoveryReasonV1) -> dict[str, object]:
+    return {
+        "recovery": {
+            "reason_code": reason,
+            "target": {"target_kind": "RUN"},
+            "allowed_resolution_kinds": [
+                item.value for item in RECOVERY_RESOLUTION_MATRIX[reason]
+            ],
+        }
+    }

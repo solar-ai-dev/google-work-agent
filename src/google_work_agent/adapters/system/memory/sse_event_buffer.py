@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Lock
 from typing import Literal, cast
@@ -46,13 +46,18 @@ class InMemorySseEventBuffer(SseEventBufferPort):
         self._lock = Lock()
 
     def append(self, event: RunSseEventV1) -> None:
+        validated = RunSseEventV1.model_validate(event)
         with self._lock:
             event_id = f"{self._service_instance_id}:{self._next_counter}"
             self._next_counter += 1
-            sanitized = cast(dict[str, object], sanitize_event_attributes(event.payload).values)
-            published = replace(event, event_id=event_id, payload=sanitized)
-            self._buffers[event.run_id].append(published)
-            subscribers = tuple(self._subscribers[event.run_id])
+            values = validated.model_dump(mode="python")
+            values["event_id"] = event_id
+            values["payload"] = sanitize_event_attributes(
+                validated.payload.model_dump(mode="python")
+            ).values
+            published = RunSseEventV1.model_validate(values)
+            self._buffers[validated.run_id].append(published)
+            subscribers = tuple(self._subscribers[validated.run_id])
         for subscriber in subscribers:
             subscriber.queue.put_nowait(published)
 

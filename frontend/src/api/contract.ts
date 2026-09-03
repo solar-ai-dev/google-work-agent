@@ -404,9 +404,3 @@ export type CalendarContainer = {
   title: string;
   primary: boolean;
 };
-
-export type EventEnvelope = {
-  eventId: string;
-  eventType: string;
-  payload: Record<string, unknown>;
-};

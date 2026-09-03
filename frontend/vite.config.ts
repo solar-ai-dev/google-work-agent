@@ -23,6 +23,7 @@ export default defineConfig({
     }
   },
   test: {
+    include: ["tests/**/*.test.{ts,tsx}"],
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",
     coverage: {

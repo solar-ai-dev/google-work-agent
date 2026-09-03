@@ -4,14 +4,19 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import Literal
 
-from google_work_agent.application.use_cases.sse_event.project_run_event import (
-    ProjectRunEventCommand,
-    ProjectRunEventHandler,
+from google_work_agent.application.use_cases.trace_event.emit_trace_event import (
+    EmitTraceEventCommand,
+    EmitTraceEventHandler,
 )
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.external_llm_transfer_scope import (
     ExternalLlmTransferScopeV1,
+)
+from google_work_agent.ports.system.contracts.observability import (
+    EventCategory,
+    ObservabilityContext,
+    Severity,
 )
 
 
@@ -34,12 +39,12 @@ class ProjectExternalLlmTransferScopeHandler:
     def __init__(
         self,
         checkpoint: CheckpointPort,
-        project_run_event: ProjectRunEventHandler | None = None,
+        emit_trace_event: EmitTraceEventHandler | None = None,
     ) -> None:
         self._checkpoint = checkpoint
-        self._project_run_event = project_run_event
+        self._emit_trace_event = emit_trace_event
         self._publication_lock = Lock()
-        self._announced_scopes: set[tuple[str, int, str]] = set()
+        self._traced_scopes: set[tuple[str, int, str]] = set()
 
     def __call__(
         self, query: ProjectExternalLlmTransferScopeQueryV1
@@ -54,10 +59,10 @@ class ProjectExternalLlmTransferScopeHandler:
         data_classes = sorted(set(query.data_classes))
         if not source_kinds or not data_classes or any(not item.strip() for item in source_kinds):
             raise ValueError("external-LLM scope must be non-empty")
-        if self._project_run_event is not None and (
+        if self._emit_trace_event is not None and (
             query.occurred_at_ms is None or query.occurred_at_ms < 0
         ):
-            raise ValueError("scope publication event requires occurred_at_ms")
+            raise ValueError("scope trace requires occurred_at_ms")
         scope_hash = calculate_canonical_json_hash(
             {
                 "run_id": query.run_id,
@@ -81,25 +86,28 @@ class ProjectExternalLlmTransferScopeHandler:
                 self._checkpoint.store_external_llm_scope(scope)
                 self._checkpoint.flush()
             publication_key = (scope.run_id, scope.scope_revision, scope.scope_hash)
-            if (
-                self._project_run_event is not None
-                and publication_key not in self._announced_scopes
-            ):
+            if self._emit_trace_event is not None and publication_key not in self._traced_scopes:
                 assert query.occurred_at_ms is not None
-                self._project_run_event(
-                    ProjectRunEventCommand(
-                        run_id=query.run_id,
+                self._emit_trace_event(
+                    EmitTraceEventCommand(
+                        correlation=ObservabilityContext(run_id=query.run_id),
+                        event_name="EXTERNAL_LLM_SCOPE_PUBLISHED",
+                        event_category=EventCategory.LLM,
                         occurred_at_ms=query.occurred_at_ms,
-                        event_type="EXTERNAL_LLM_SCOPE_PUBLISHED",
-                        payload={
+                        severity=Severity.INFO,
+                        component="external-llm-transfer-scope",
+                        attributes={
                             "scope_revision": scope.scope_revision,
                             "scope_hash": scope.scope_hash,
                             "source_kinds": list(scope.source_kinds),
                             "data_classes": list(scope.data_classes),
                         },
+                        result_code="SCOPE_PUBLISHED",
+                        status="SUCCESS",
+                        required=True,
                     )
                 )
-                self._announced_scopes.add(publication_key)
+                self._traced_scopes.add(publication_key)
             return scope
 
 

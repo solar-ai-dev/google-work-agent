@@ -1,7 +1,9 @@
 import type { RunSnapshot } from "../../api/contract";
+import type { RunSseEvent } from "./api/run_sse_event";
 
-export function RunProgress({ snapshot, busy, onCancel, onResume }: {
+export function RunProgress({ snapshot, latestEvent = null, busy, onCancel, onResume }: {
   snapshot: RunSnapshot;
+  latestEvent?: RunSseEvent | null;
   busy: string | null;
   onCancel: () => void;
   onResume: (resumeKind: "SAFE_CHECKPOINT_RESUME") => void;
@@ -9,6 +11,7 @@ export function RunProgress({ snapshot, busy, onCancel, onResume }: {
   const resumeAction = snapshot.error?.actions.find(
     (action) => action.kind === "RESUME_SAFE_CHECKPOINT" && action.resume_kind === "SAFE_CHECKPOINT_RESUME",
   );
+  const eventLabel = latestEvent ? eventProgressLabel(latestEvent) : null;
   return (
     <div className={`panel-header run-header${snapshot.run.status === "FAILED" ? " run-header--failed" : ""}`}>
       <div>
@@ -17,6 +20,7 @@ export function RunProgress({ snapshot, busy, onCancel, onResume }: {
         <div className="muted">
           작업 {snapshot.execution_status.terminal_action_count}/{snapshot.execution_status.action_count}
         </div>
+        {eventLabel ? <div className="muted" data-testid="run-event-progress">{eventLabel}</div> : null}
         {snapshot.run.status === "FAILED" ? <div className="status-warn">작업을 완료하지 못했습니다.</div> : null}
         {snapshot.terminal_result_kind === "PARTIAL" ? <div className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</div> : null}
       </div>
@@ -30,6 +34,15 @@ export function RunProgress({ snapshot, busy, onCancel, onResume }: {
       </div>
     </div>
   );
+}
+
+function eventProgressLabel(event: RunSseEvent): string | null {
+  switch (event.event_type) {
+    case "tool_routing": return `도구 경로 ${event.payload.input_route_count}개 분석 완료`;
+    case "retrieval_progress": return `자료 확인 ${event.payload.completed_sources}/${event.payload.total_sources}`;
+    case "analysis_progress": return `분석 완료: ${event.payload.completed_stage}`;
+    default: return null;
+  }
 }
 
 function statusLabel(status: string): string {

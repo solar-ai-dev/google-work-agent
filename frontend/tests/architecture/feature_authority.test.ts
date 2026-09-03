@@ -1,11 +1,19 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, extname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 
 const FRONTEND_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const REPOSITORY_ROOT = join(FRONTEND_ROOT, "..");
 const SOURCE_ROOT = join(FRONTEND_ROOT, "src");
 const FEATURE_ROOT = join(SOURCE_ROOT, "features");
+const DIRECTORY_OWNERSHIP_SOURCE = join(
+  REPOSITORY_ROOT,
+  "docs",
+  "canonical",
+  "16-repository-architecture",
+  "02-directory-ownership.md",
+);
 
 const FEATURE_OWNERS = [
   "approval",
@@ -18,41 +26,29 @@ const FEATURE_OWNERS = [
   "settings",
 ];
 
-const RESPONSIBILITY_MODULES = [
-  "startup_flow",
-  "startup_check",
-  "first_run_onboarding",
-  "session_bootstrap",
-  "api_compatibility_gate",
-  "main_shell",
-  "top_bar",
-  "resource_sidebar",
-  "resource_viewer",
-  "list_resources",
-  "session_page_cache",
-  "selected_resource_context",
-  "request_composer",
-  "subscribe_run_events",
-  "run_progress",
-  "confirmation_card",
-  "execution_status_card",
-  "conversation_history_panel",
-  "get_conversation_history",
-  "action_plan_card",
-  "recovery_card",
-  "settings_drawer",
-  "diagnostics_panel",
-  "attachment_list",
-  "download_attachment",
-  "attachment_picker",
-  "stage_attachment",
-];
-
 function sourceFiles(root: string): string[] {
   return readdirSync(root, { withFileTypes: true }).flatMap((entry) => {
     const path = join(root, entry.name);
     return entry.isDirectory() ? sourceFiles(path) : [path];
   }).filter((path) => [".ts", ".tsx"].includes(extname(path)) && !path.endsWith(".test.ts") && !path.endsWith(".test.tsx"));
+}
+
+function canonicalResponsibilityManifest(): readonly (readonly [string, string, string])[] {
+  const markdown = readFileSync(DIRECTORY_OWNERSHIP_SOURCE, "utf8");
+  const section = markdown
+    .split("### Frontend exact responsibility manifest", 2)[1]
+    ?.split("Frontend naming is deterministic", 1)[0];
+  expect(section, "canonical Frontend responsibility manifest").toBeDefined();
+  return section!.split("\n")
+    .filter((line) => line.startsWith("|") && !line.includes("---") && !line.includes("UI / Functional surface"))
+    .map((line) => {
+      const cells = line.slice(1, -1).split("|").map((cell) => cell.trim());
+      return [
+        cells[2].replaceAll("`", "").replace(/^frontend\//, ""),
+        cells[3].replaceAll("`", "").replace(/\(\)$/, ""),
+        cells[4].replaceAll("`", "").replace(/^frontend\//, ""),
+      ] as const;
+    });
 }
 
 describe("frontend canonical authority", () => {
@@ -66,9 +62,24 @@ describe("frontend canonical authority", () => {
     expect(actual).not.toEqual(expect.arrayContaining(["gmail", "tasks", "calendar"]));
   });
 
-  test("the canonical P0 responsibility manifest is present exactly once", () => {
+  test("the canonical P0 responsibility manifest fixes exact paths, symbols, and test owners", () => {
+    const responsibilityManifest = canonicalResponsibilityManifest();
+    expect(responsibilityManifest.length).toBeGreaterThan(0);
     const modules = sourceFiles(SOURCE_ROOT).map((path) => relative(SOURCE_ROOT, path).replace(/\\/g, "/").replace(/\.[^.]+$/, ""));
-    for (const responsibility of RESPONSIBILITY_MODULES) {
+    for (const [productionPath, primarySymbol, testOwnerPath] of responsibilityManifest) {
+      const production = join(FRONTEND_ROOT, productionPath);
+      const testOwner = join(FRONTEND_ROOT, testOwnerPath);
+      expect(existsSync(production), productionPath).toBe(true);
+      expect(existsSync(testOwner), testOwnerPath).toBe(true);
+
+      const productionSource = readFileSync(production, "utf8");
+      const escapedSymbol = primarySymbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      expect(productionSource, `${productionPath}::${primarySymbol}`).toMatch(
+        new RegExp(`\\bexport\\s+(?:default\\s+)?(?:async\\s+)?(?:function|class|const|let|var)\\s+${escapedSymbol}\\b`),
+      );
+      expect(readFileSync(testOwner, "utf8"), testOwnerPath).toContain("expect(");
+
+      const responsibility = productionPath.split("/").at(-1)?.replace(/\.[^.]+$/, "");
       const owners = modules.filter((module) => module.split("/").at(-1) === responsibility);
       expect(owners, responsibility).toHaveLength(1);
     }

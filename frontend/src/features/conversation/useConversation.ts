@@ -79,6 +79,7 @@ export function useConversation({ currentAccount, selectedResourceHandles, onSta
     historyMessages: history.historyMessages,
     runSnapshot: run.runSnapshot,
     runContext: run.runContext,
+    latestRunEvent: run.latestRunEvent,
     composerText: composer.composerText,
     composerError: composer.composerError,
     busyCommand,

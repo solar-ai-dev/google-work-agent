@@ -1,9 +1,9 @@
 """Run routes."""
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import asdict
 from json import dumps
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Header, Request, Response, status
 from fastapi.responses import StreamingResponse
@@ -28,6 +28,7 @@ from google_work_agent.api.schemas.runs.get_run_context import (
     RunContextResponse,
 )
 from google_work_agent.api.schemas.runs.get_run_snapshot import RunSnapshotResponseV1
+from google_work_agent.api.schemas.runs.list_run_events import serialize_run_sse_event
 from google_work_agent.api.schemas.runs.resolve_recovery import ResolveRecoveryRequestV1
 from google_work_agent.api.schemas.runs.resume_run import ResumeRunRequestV2
 from google_work_agent.api.schemas.runs.start_run import StartRunRequest, StartRunResponseV1
@@ -67,6 +68,10 @@ from google_work_agent.application.use_cases.run.start_run import StartRunComman
 from google_work_agent.application.use_cases.sse_event.list_run_events import ListRunEventsQuery
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.ports.system.api_access_port import EndpointPolicy
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventTypeV1,
+    RunSseEventV1,
+)
 
 router = APIRouter(prefix="/api/v1")
 
@@ -209,7 +214,7 @@ def stream_events(
         )
     if replay.cursor_status == "CURSOR_EXPIRED":
         return StreamingResponse(
-            iter((_format_sse("", "snapshot_required", {"run_id": run_id}),)),
+            iter((_format_transport_sse("", "snapshot_required", {"run_id": run_id}),)),
             media_type="text/event-stream",
             headers={"Cache-Control": "no-cache"},
         )
@@ -225,7 +230,7 @@ def stream_events(
         try:
             for event in catchup.events:
                 emitted_ids.add(event.event_id)
-                yield _format_sse(event.event_id, event.event_type, event.payload)
+                yield _format_run_sse(event)
             while True:
                 maybe_event = subscription.poll(0.1)
                 if maybe_event is None:
@@ -234,7 +239,7 @@ def stream_events(
                 if maybe_event.event_id in emitted_ids:
                     continue
                 emitted_ids.add(maybe_event.event_id)
-                yield _format_sse(maybe_event.event_id, maybe_event.event_type, maybe_event.payload)
+                yield _format_run_sse(maybe_event)
         finally:
             transport.close_subscription(subscription)
 
@@ -243,7 +248,19 @@ def stream_events(
     )
 
 
-def _format_sse(event_id: str, event_type: str, payload: dict[str, object]) -> str:
+def _format_run_sse(event: RunSseEventV1) -> str:
+    return _format_transport_sse(
+        event.event_id,
+        event.event_type,
+        serialize_run_sse_event(event),
+    )
+
+
+def _format_transport_sse(
+    event_id: str,
+    event_type: RunSseEventTypeV1 | Literal["snapshot_required"],
+    payload: Mapping[str, object],
+) -> str:
     return f"id: {event_id}\nevent: {event_type}\ndata: {dumps(payload, sort_keys=True)}\n\n"
 
 

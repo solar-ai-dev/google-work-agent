@@ -1,9 +1,23 @@
 from google_work_agent.adapters.system.memory.sse_event_buffer import InMemorySseEventBuffer
-from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    RunStatusSsePayloadV1,
+)
 
 
 def _event(*, event_id: str, occurred_at_ms: int) -> RunSseEventV1:
-    return RunSseEventV1(1, event_id, "run-1", None, occurred_at_ms, "RUN_UPDATED", {}, 1)
+    return RunSseEventV1(
+        schema_version=1,
+        event_id=event_id,
+        run_id="run-1",
+        action_id=None,
+        occurred_at_ms=occurred_at_ms,
+        event_type="run_status",
+        payload=RunStatusSsePayloadV1(
+            status="ANALYZING", snapshot_version=occurred_at_ms
+        ),
+        projection_version=1,
+    )
 
 
 def test_in_memory_event__buffer_assigns_monotonic__ids_and_lists() -> None:

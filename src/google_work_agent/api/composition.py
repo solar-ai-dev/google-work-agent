@@ -2303,7 +2303,11 @@ def build_production_runtime(
 
     project_external_llm_transfer_scope = ProjectExternalLlmTransferScopeHandler(
         checkpoint,
-        ProjectRunEventHandler(event_publisher),
+        EmitTraceEventHandler(
+            unit_of_work_factory=unit_of_work_factory,
+            environment=oauth_environment.value,
+            release_version=release_version,
+        ),
     )
     project_context_preview = ProjectContextPreviewHandler(
         unit_of_work_factory=read_unit_of_work_factory,

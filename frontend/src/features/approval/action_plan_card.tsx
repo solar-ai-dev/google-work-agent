@@ -55,13 +55,13 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
         <label key={item}><input type="checkbox" checked={acknowledgements.has(item)} onChange={(event) => setAcknowledgements((current) => { const next = new Set(current); if (event.target.checked) next.add(item); else next.delete(item); return next; })} /> {item === "TASK_DUPLICATE" ? "중복 가능성을 확인했습니다." : "일정 충돌 가능성을 확인했습니다."}</label>
       ))}
       {action.next_allowed_commands.includes("MODIFY_ACTION") && editableFields.some((field) => field !== "attachments") ? (
-        <fieldset><legend>수정</legend>{editableFields.filter((field) => field !== "attachments").map((field) => <label key={field}>{field}<input value={editValues[field] ?? ""} onChange={(event) => setEditValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<button className="button-secondary" type="button" disabled={busy === `modify-${action.action_id}` || Object.keys(patch).length === 0} onClick={() => onModify(action, patch)}>수정</button></fieldset>
+        <fieldset><legend>수정</legend>{editableFields.filter((field) => field !== "attachments").map((field) => <label key={field}>{field}<input value={editValues[field] ?? ""} onChange={(event) => setEditValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<button className="button-secondary" type="button" disabled={busy !== null || Object.keys(patch).length === 0} onClick={() => onModify(action, patch)}>수정</button></fieldset>
       ) : null}
-      {action.attachment_allowed && action.next_allowed_commands.includes("MODIFY_ACTION") ? <AttachmentPicker disabled={busy === `modify-${action.action_id}`} onStaged={(descriptors) => onAttachDescriptors(action, descriptors)} /> : null}
+      {action.attachment_allowed && action.next_allowed_commands.includes("MODIFY_ACTION") ? <AttachmentPicker disabled={busy !== null} onStaged={(descriptors) => onAttachDescriptors(action, descriptors)} /> : null}
       <div className="button-row">
-        {action.next_allowed_commands.includes("APPROVE_ACTION") ? <button className="button-primary" type="button" disabled={busy === `approve-${action.action_id}` || missingAcknowledgement} onClick={() => onApprove(action, acknowledgements)}>{approvalLabel(duplicate, conflict)}</button> : null}
-        {action.next_allowed_commands.includes("REJECT_ACTION") ? <button className="button-danger" type="button" disabled={busy === `reject-${action.action_id}`} onClick={() => onReject(action)}>거절</button> : null}
-        {canRetry ? <button className="button-secondary" type="button" disabled={busy === `retry-${action.action_id}`} onClick={() => onRetry(action)}>다시 준비</button> : null}
+        {action.next_allowed_commands.includes("APPROVE_ACTION") ? <button className="button-primary" type="button" disabled={busy !== null || missingAcknowledgement} onClick={() => onApprove(action, acknowledgements)}>{approvalLabel(duplicate, conflict)}</button> : null}
+        {action.next_allowed_commands.includes("REJECT_ACTION") ? <button className="button-danger" type="button" disabled={busy !== null} onClick={() => onReject(action)}>거절</button> : null}
+        {canRetry ? <button className="button-secondary" type="button" disabled={busy !== null} onClick={() => onRetry(action)}>다시 준비</button> : null}
       </div>
       {action.status === "UNKNOWN_RESULT" ? <p className="status-warn">실제 결과를 확인하는 중입니다. 새 쓰기 실행은 잠시 막혀 있습니다.</p> : null}
     </article>

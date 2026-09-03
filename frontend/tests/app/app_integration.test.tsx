@@ -102,7 +102,17 @@ class FakeEventSource {
   }
 
   emit(type: string, payload: Record<string, unknown>, eventId = `${type}-1`): void {
-    const event = { data: JSON.stringify(payload), lastEventId: eventId } as MessageEvent<string>;
+    const data = type === "snapshot_required" ? payload : {
+      schema_version: 1,
+      event_id: eventId,
+      run_id: "run-1",
+      action_id: null,
+      occurred_at_ms: 1,
+      event_type: type,
+      payload,
+      projection_version: 1,
+    };
+    const event = { data: JSON.stringify(data), lastEventId: eventId } as MessageEvent<string>;
     for (const listener of this.listeners.get(type) ?? []) {
       listener(event);
     }
@@ -686,12 +696,12 @@ test("adds the stored assistant answer once the open run reaches a terminal stat
   const requestsBeforeCompletion = historyRequests;
 
   runFinished = true;
-  FakeEventSource.instances[0].emit("completed", { outcome: "COMPLETED" }, "evt-completed");
+  FakeEventSource.instances[0].emit("completed", { status: "COMPLETED", result_kind: "SUCCESS" }, "evt-completed");
 
   expect(await screen.findByText("요약 결과입니다.")).toBeInTheDocument();
   expect(screen.getAllByText("이번 주 요약")).toHaveLength(1);
 
-  FakeEventSource.instances[0].emit("run_status", { run_status: "COMPLETED" }, "evt-status");
+  FakeEventSource.instances[0].emit("run_status", { status: "COMPLETED", snapshot_version: 2 }, "evt-status");
   await waitFor(() => expect(historyRequests).toBe(requestsBeforeCompletion + 1));
 });
 
@@ -953,7 +963,7 @@ test("confirms an interrupt and explicitly resolves a mismatch", async () => {
   await screen.findByText("Which task should be updated?");
   expect(screen.getByLabelText("확인 응답")).toBeEnabled();
   FakeEventSource.instances[0].emit("confirmation_required", {
-    user_interrupt: { interrupt_id: "interrupt-1", question: "Which task should be updated?" },
+    interrupt_id: "interrupt-1", question: "Which task should be updated?", options: [],
   });
   await user.type(screen.getByLabelText("확인 응답"), "Use the follow-up task");
   await user.click(screen.getByRole("button", { name: "응답 보내기" }));
@@ -2697,7 +2707,7 @@ test("Action risk follows the SSE-refreshed snapshot without rendering raw JSON"
   options.actionRisk = {
     schedule: { outcome: "WARNING", candidate_resource_ids: ["task-sensitive-1"] },
   };
-  FakeEventSource.instances[0]?.emit("action_status", { action_id: "action-1" });
+  FakeEventSource.instances[0]?.emit("action_status", { action_id: "action-1", status: "PROPOSED" });
 
   expect(
     await screen.findByText("서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요."),

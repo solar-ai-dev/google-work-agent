@@ -8,7 +8,25 @@ from google_work_agent.application.use_cases.sse_event.list_run_events import (
     ListRunEventsHandler,
     ListRunEventsQuery,
 )
-from google_work_agent.ports.system.sse_event_buffer_port import RunSseEventV1
+from google_work_agent.ports.system.sse_event_buffer_port import (
+    RunSseEventV1,
+    RunStatusSsePayloadV1,
+)
+
+
+def _event(run_id: str, occurred_at_ms: int) -> RunSseEventV1:
+    return RunSseEventV1(
+        schema_version=1,
+        event_id="",
+        run_id=run_id,
+        action_id=None,
+        occurred_at_ms=occurred_at_ms,
+        event_type="run_status",
+        payload=RunStatusSsePayloadV1(
+            status="ANALYZING", snapshot_version=occurred_at_ms
+        ),
+        projection_version=1,
+    )
 
 
 def _handler(tmp_path: Path) -> tuple[ListRunEventsHandler, InMemorySseEventBuffer]:
@@ -33,7 +51,7 @@ def _handler(tmp_path: Path) -> tuple[ListRunEventsHandler, InMemorySseEventBuff
 def test_lists_bounded__events_and__projects_cursor_expiry(tmp_path: Path) -> None:
     handler, buffer = _handler(tmp_path)
     for index in range(1, 4):
-        buffer.append(RunSseEventV1(1, "", "run-1", None, index, "RUN_UPDATED", {}, 1))
+        buffer.append(_event("run-1", index))
     current = handler(ListRunEventsQuery("run-1", "svc:2"))
     expired = handler(ListRunEventsQuery("run-1", "invalid"))
     assert [event.event_id for event in current.events] == ["svc:3"]
@@ -43,7 +61,7 @@ def test_lists_bounded__events_and__projects_cursor_expiry(tmp_path: Path) -> No
 
 def test_missing_run__never_exposes__buffer_content(tmp_path: Path) -> None:
     handler, buffer = _handler(tmp_path)
-    buffer.append(RunSseEventV1(1, "", "missing", None, 1, "RUN_UPDATED", {}, 1))
+    buffer.append(_event("missing", 1))
     result = handler(ListRunEventsQuery("missing"))
     assert result.run_exists is False
     assert result.events == ()
