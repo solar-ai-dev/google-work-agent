@@ -53,6 +53,7 @@ Canonical non-persistence Port↔Adapter mapping required by the current behavio
 | System | `ports/system/workflow_execution_port.py` | `WorkflowExecutionPort` | `adapters/langgraph/runtime/background_run_executor.py` | `BackgroundRunExecutorAdapter` |
 | System | `ports/system/settings_port.py` | `SettingsPort` | `adapters/system/json_settings.py` | `JsonSettingsAdapter` |
 | System | `ports/system/runtime_mode_port.py` | `RuntimeModePort` | `adapters/system/process_runtime_mode.py` | `ProcessRuntimeModeAdapter` |
+| System | `ports/system/local_runtime_provisioning_port.py` | `LocalRuntimeProvisioningPort` | `adapters/system/ollama_local_runtime_provisioning.py` | `OllamaLocalRuntimeProvisioningAdapter` |
 | System | `ports/system/backup_port.py` | `BackupPort` | `adapters/system/filesystem_backup.py` | `FilesystemBackupAdapter` |
 | System | `ports/system/diagnostics_port.py` | `DiagnosticsPort` | `adapters/system/filesystem_diagnostics.py` | `FilesystemDiagnosticsAdapter` |
 | System | `ports/system/shutdown_port.py` | `ShutdownPort` | `adapters/system/process_shutdown.py` | `ProcessShutdownAdapter` |
@@ -117,6 +118,14 @@ tests/unit/adapters/llm/ollama/test_runtime_status.py
 ```
 
 Composition wiring만 concrete implementation을 선택할 수 있다.
+
+## Local Runtime provisioning Adapter rule
+
+`OllamaLocalRuntimeProvisioningAdapter` is the only concrete owner of runtime/model download, staging, Authenticode/hash/digest verification, installer invocation, existing-install detection, Ollama readiness and model preparation. It consumes a verified `ModelManifestV2`, a verified `LocalModelProductDecisionV2`, and stable `operation_ref`; Browser strings and Prompt/Agent output never reach command-line/download authority. It validates `product_decision.model_manifest_hash`, exact release version, two-tier completeness, and every tier binding against the Model Manifest before any side effect. The Adapter distinguishes `PREEXISTING` from `PRODUCT_PROVISIONED`, does not remove shared Ollama on product shutdown/uninstall, and exposes reconciliation through `LocalRuntimeProvisioningPort`.
+
+`StructuredInferenceRuntimeRouter` receives `InferenceTierV1` and resolves it only through `LocalModelProductDecisionV2.active_profile`, then validates the resolved model identity/digest against `ModelManifestV2`. Leaf adapters receive an already-resolved model identity; no Application/Agent/provider leaf owns a competing tier→model table.
+
+V1 parser/generator paths are migration baseline only. V2 activation requires old production caller/export/artifact authority zero.
 
 ## Connector Runtime Registry exact authority
 

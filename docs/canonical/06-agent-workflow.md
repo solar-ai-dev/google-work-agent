@@ -1,7 +1,7 @@
 # 06. Agent · Workflow 설계서
 
 > **Authority:** Agent·Workflow runtime topology, State projection, Node/Edge/Interrupt와 registered continuation semantics. Domain lifecycle은 State Contract, Retrieval은 `05`, typed interface는 `07`을 따른다.  
-> **상태:** Draft v7.28 · **기준일:** 2026-08-24 · **DB Schema:** v1.9 · **대상:** P0 MVP
+> **상태:** Draft v7.29 · **기준일:** 2026-09-03 · **DB Schema:** v1.9 · **대상:** P0 MVP
 
 ## 0. 먼저 이해할 것
 
@@ -1750,3 +1750,16 @@ Main State의 `RunInputV1.requested_mode`와 `WorkflowBindingV1.requested_mode`�
 ### 19.2 Post-Claim pre-dispatch reconciliation
 
 `PREFLIGHT/ACTION_EXECUTION` 진입 시 current Attempt가 `CLAIMED`인데 APPLIED BeginExecutionAttempt가 없고 cancel/restart/invalid ClaimContext/credential failure 때문에 Begin을 적용할 수 없으면 external Write를 시도하지 않고 `AbortClaimedExecution`으로 settle한다. `Attempt=EXECUTING` + APPLIED BeginExecutionAttempt인데 terminal dispatch result가 없는 채 process가 재시작되면 pre-Begin Abort 경로로 되감지 않는다. Startup-only `execution_attempt.reconcile_inflight_executions` batch coordinator가 이를 `MAY_HAVE_BEEN_SENT → MarkUnknownResult`로 보수적으로 고정한다. 그 coordinator는 기존 durable Action/Attempt/Recovery/Verification facts를 phase marker로 사용해 `UNKNOWN_RESULT` lookup과 recovered `EXECUTED`→Verification entry까지 재개 가능하게 만들며 Connector Write replay는 0이다. Live workflow reconciliation loop는 current-process `EXECUTING` Attempt를 이 orphan path로 분류하지 않는다. cancel outcome은 `FinalizeCancel`, non-cancel FAILED는 독립 executable Action continuation 또는 FAILWAIT 규칙을 따른다. hidden CLAIMED→FAILED/CANCELLED mutation을 만들지 않는다.
+
+## 19-A. Product LLM inference tier binding
+
+각 Product LLM runtime caller는 PromptRef와 함께 closed `InferenceTierV1 = WORKER | REASONING`을 결정적으로 전달한다. Tier는 모델 이름이 아니라 호출 복잡도·책임 등급이며 Graph Edge, Agent owner, Prompt semantics를 바꾸지 않는다.
+
+- `WORKER`: 13 Gate에서 bounded extraction/classification이 검증된 Prompt slot만 허용한다.
+- `REASONING`: ambiguity 판정, Tool Route semantic selection, Retrieval planning/sufficiency, Work Analysis, Planning, Review를 기본으로 한다.
+- 동일 Prompt slot의 tier는 signed Prompt/Model release binding에서 고정하며 LLM 출력, free text, Runtime confidence가 바꿀 수 없다.
+- `request.detect_ambiguity`는 현재 반복 Confirmation 결함 재현 Case가 닫힐 때까지 `REASONING` 후보로 평가한다.
+- Resume/Repair/Revision은 원 호출의 tier를 유지한다. tier fallback이나 model substitution은 03/10 Router policy와 13 Gate만 소유한다.
+- Agent State와 Checkpoint에는 concrete model name을 실행 권위로 저장하지 않고 PromptRef/tier/release-profile identity와 관측 결과만 보존한다.
+
+초기 candidate binding은 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`지만 Evaluation/Release 활성화 전에는 current production binding을 대체하지 않는다.

@@ -1,7 +1,7 @@
 # 08. 시퀀스 설계서
 
 > **Authority:** cross-layer participant interaction order와 crash/replay cut. State/Workflow/API/Infrastructure semantics는 해당 owner를 따른다.  
-> **상태:** Draft v3.28 · **기준일:** 2026-08-26 · **대상:** P0 MVP
+> **상태:** Draft v3.29 · **기준일:** 2026-09-03 · **대상:** P0 MVP
 
 ## 1. 목적과 범위
 
@@ -222,6 +222,40 @@ Crash windows:
 - newer checkpoint generation caused by lower settled handoffs: immutable target + current Domain guard를 재검증한 ordered checkpoint rebind만 허용; arbitrary latest-target guessing은 금지.
 - binding mismatch: release 시 Run authority epoch가 current일 때만 `BLOCKED_BINDING` durable commit → startup/live reconciler가 deterministic `system:handoff-binding-recovery:<handoff_id>` Recovery reconciliation → SUPERSEDED settlement. newer Reauth/Recovery/Cancel/terminal로 epoch가 이미 stale이면 old NORMAL handoff를 직접 SUPERSEDED하여 false CHECKPOINT_MISMATCH Recovery를 만들지 않는다.
 - CONSUMED 이후 crash: latest descendant checkpoint에 `active_handoff_id` lineage가 남고 current Domain/child-fact fence가 허용하면 `CONSUMED_CONTINUATION_RECOVERY`, not SAFE_CHECKPOINT_RESUME. `REAUTH_REQUIRED|RECOVERY_REQUIRED|terminal` 또는 non-cancel-compatible CANCEL_REQUESTED이면 old continuation 0.
+
+### 3.4 LOCAL_CAPABLE first-run provisioning sequence
+
+```text
+React Onboarding
+→ POST /api/v1/runtime/local/provision(command_id)
+→ runtime_status.provision_local_runtime
+→ OperationalCommandReplayPort reserve/reconcile
+→ LocalRuntimeProvisioningPort
+→ existing Ollama compatibility probe
+→ verified Ollama Artifact download/signature/hash check if required
+→ controlled prerequisite install/readiness
+→ Signed Local Model Profile resolve
+→ WORKER model download/digest verify
+→ REASONING model download/digest verify
+→ tier-specific structured inference smoke tests
+→ Runtime Detail READY projection
+```
+
+외부 download/installer/model operation 중 Domain SQLite transaction을 유지하지 않는다. Stable `operation_ref`와 adapter-owned staging/reconciliation으로 crash를 복구하며 same command는 installer/model effect를 중복 적용하지 않는다. Browser가 URL/path/model tag를 공급하지 않는다. 실패하면 typed provisioning status를 저장·표시하고 API fallback 가능 여부를 투영한다.
+
+### 3.5 Product LLM inference sequence
+
+```text
+Agent/Application semantic operation
+→ PromptRef + requested_mode + InferenceTierV1
+→ StructuredInferencePort
+→ StructuredInferenceRuntimeRouter
+→ verified LocalModelProductDecisionV2.active_profile lookup + ModelManifestV2 binding validation
+→ resolved Ollama model OR allowed API runtime
+→ StructuredInferenceResultV2(actual_runtime, provider, model, local_model_profile_id, inference_tier)
+```
+
+LLM output은 tier/model을 선택하지 않는다. `WORKER` failure가 자동으로 `REASONING` 재호출을 만드는 규칙은 두지 않으며, 허용된 substitution/fallback은 03/10 Release policy와 13 Gate에서만 정의한다.
 
 ## 4. 앱 시작·Local Session·상태 복원
 

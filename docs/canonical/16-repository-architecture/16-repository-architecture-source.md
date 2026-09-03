@@ -6,9 +6,9 @@
 
 **Status:** CANONICAL_FOR_REFACTOR
 
-**Version:** 1.15
+**Version:** 1.17
 
-**Effective:** 2026-08-26
+**Effective:** 2026-09-03
 
 **Scope owner:** repository placement, module responsibility, naming grammar, repository import/export dependency realization and enforcement, repository semantic-owner/package mapping, single production authority, refactor procedure, architecture enforcement. Behavioral semantic authority itself remains with the applicable concern-owning sources in 01–15, the Domain State Transition Contract, and 04 Domain·DB required DB invariant contract. The State Transition Test Matrix is normative verification authority for those lifecycle contracts and does not independently define behavior.
 
@@ -449,6 +449,49 @@ new canonical owner is live
 ```
 
 `_compat` is forbidden on `main`.
+
+## Local Runtime provisioning and model-profile placement
+
+```text
+application/use_cases/runtime_status/provision_local_runtime.py
+→ ProvisionLocalRuntimeCommandV1 / ProvisionLocalRuntimeResultV1 / ProvisionLocalRuntimeHandler
+
+ports/system/local_runtime_provisioning_port.py
+→ LocalRuntimeProvisioningPort
+
+adapters/system/ollama_local_runtime_provisioning.py
+→ OllamaLocalRuntimeProvisioningAdapter
+
+installer/windows/local_runtime_provisioning_definition.py
+→ WindowsLocalRuntimeProvisioningDefinition
+
+src/google_work_agent/ports/llm/approved_model_manifest.py
+→ ApprovedModelEntryV2 / ModelManifestV2
+
+src/google_work_agent/ports/llm/local_model_product_decision.py
+→ LocalModelTierBindingV1 / LocalModelProfileV1 / LocalModelProductDecisionV2
+
+release/generate_model_manifest.py
+→ generate_model_manifest()
+
+release/generate_local_model_product_decision.py
+→ generate_local_model_product_decision()
+```
+
+`runtime_status` remains the existing Application owner for local runtime readiness/provisioning. Do not create a new `model`, `ollama`, `provisioning`, `installer` Application owner. Existing `runtime_status.get_runtime_status` projects `RuntimeDetailResponseV2`; no second general runtime-status authority is created.
+
+The two signed artifacts have separate authority:
+
+- `ModelManifestV2`: approved Ollama installer artifact and approved model allowlist.
+- `LocalModelProductDecisionV2`: exact active `WORKER | REASONING` profile and evaluated platform/hardware thresholds, bound to canonical `ModelManifestV2` bytes by hash.
+
+`StructuredInferenceRuntimeRouter` is the only production owner of `InferenceTierV1 → concrete runtime/model` resolution. It reads `LocalModelProductDecisionV2.active_profile` and verifies every binding against `ModelManifestV2`. Agent operations, Prompt sources, API routes, Settings, provider leaves and model-name parsing may not own a competing mapping.
+
+`OllamaLocalRuntimeProvisioningAdapter` alone owns download/staging/signature/hash/digest verification, existing-runtime detection, controlled installer invocation, readiness and model preparation. It receives both verified V2 artifacts through `LocalRuntimeProvisioningPort`. Application/API/Frontend never run shell/download/install semantics directly.
+
+The Windows Installer source declares provisioning capability but does not embed Ollama executable or model weights. Product first-run invokes the Application operation after installation. `API_ONLY` has no provisioning side effect; `LOCAL_CAPABLE` requires both verified V2 artifacts.
+
+V1→V2 is a contract migration, not an in-place field extension. Final activation requires V2 parser/generator/caller closure and V1 production authority zero; old V1 artifacts may remain only as explicit migration/test evidence.
 
 ## Documentation authority boundary
 

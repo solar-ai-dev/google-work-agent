@@ -7,8 +7,8 @@
 | 항목 | 내용 |
 | --- | --- |
 | 문서명 | 03. Google Work Agent 시스템 아키텍처 설계서 |
-| 상태 | Draft v3.13 |
-| 기준일 | 2026-08-26 |
+| 상태 | Draft v3.14 |
+| 기준일 | 2026-09-03 |
 | 대상 릴리스 | P0 MVP |
 | 공식 환경 | Windows 11 x64 · 최신 Chrome·Microsoft Edge |
 | 제품 형태 | 단일 사용자용 로컬 Web UI + Python Agent 애플리케이션 |
@@ -166,8 +166,8 @@ FastAPI Route
 | ARC-006 | 외부 Connector 연동은 MCP `stdio` 공통 경계 | 제품 Core는 Connector ID·Resource Type·MCP Tool/Port 계약에만 의존하고 Provider API·SDK·Credential Adapter는 Connector MCP Server 내부에 격리한다. P0 Google Workspace는 이 일반 경계의 첫 구현이며 Local API는 Provider API의 대체 경로가 아니다. |
 | ARC-007 | Checkpoint와 Domain Store 분리 | Graph 재개 상태와 제품의 승인·실행 사실을 별도로 보존한다. |
 | ARC-008 | 모든 쓰기 후 Effect별 결정적 검증 | Tool 응답만 신뢰하지 않는다. CREATE·UPDATE는 GET 비교, DELETE는 대상 부재/삭제 상태, SEND는 Sent 결과 조회를 사용한다. |
-| ARC-009 | Local Runtime은 Ollama로 고정 | 제품 Local Runtime 지원 범위를 하나의 production boundary로 고정한다. |
-| ARC-010 | `API_ONLY`·`LOCAL_CAPABLE` 분리 | GPU가 없는 환경에 Ollama·모델 의존성을 강제하지 않는다. |
+| ARC-009 | Local Runtime은 Ollama로 고정 | `LOCAL_CAPABLE` provisioning이 release-approved Ollama를 준비하지만 Ollama는 별도 Loopback process로 유지한다. |
+| ARC-010 | `API_ONLY`·`LOCAL_CAPABLE` 분리 | `API_ONLY`에는 provisioning을 넣지 않고, `LOCAL_CAPABLE`만 signed Runtime/Model Profile을 자동 준비한다. |
 
 ### 4.1 Application-owned Run execution boundary
 
@@ -782,6 +782,23 @@ token_usage
 estimated_cost
 structured_output_attempts
 ```
+
+### 16.1-A Signed Local Model Profile과 inference tier
+
+Product LLM caller는 concrete model/provider를 선택하지 않고 `StructuredInferencePort`에 `inference_tier=WORKER|REASONING`을 전달한다. `StructuredInferenceRuntimeRouter`만 verified `LocalModelProductDecisionV2.active_profile`을 읽고 각 tier binding을 `ModelManifestV2` allowlist/digest와 대조한 뒤 exact Ollama model identity에 resolve한다. API branch는 Release Config가 허용하면 두 tier를 같은 API model에 매핑할 수 있지만 caller contract는 동일하다.
+
+초기 Local 후보 Profile:
+
+```text
+WORKER    → qwen3.5:4b    # bounded extraction/classification candidate
+REASONING → qwen3.5:9b    # ambiguity, tool route, retrieval plan, analysis, planning, review candidate
+```
+
+이 concrete mapping은 13 Evaluation을 통과해 signed Release artifact가 된 경우에만 활성화된다. Agent code, Prompt text, Browser 설정, model-name 문자열 parsing은 model authority가 아니다. 같은 tier의 concrete model 교체는 semantic owner·Graph topology·Port를 바꾸지 않는 Release configuration change다.
+
+### 16.1-B Provisioning boundary
+
+`LOCAL_CAPABLE` 최초 설정의 Runtime preparation은 `runtime_status.provision_local_runtime → LocalRuntimeProvisioningPort → OllamaLocalRuntimeProvisioningAdapter` 단일 경계가 소유한다. Adapter는 signed source/digest를 검증하고 기존 compatible Runtime을 보존한다. Ollama는 계속 별도 Loopback process이며 Product Core·Agent·Domain에 내장되지 않는다. API route와 UI는 status/command만 사용하고 shell/download/install semantics를 소유하지 않는다.
 
 ### 16.2 모드 규칙
 

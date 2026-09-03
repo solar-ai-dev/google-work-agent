@@ -4,8 +4,8 @@
 
 ## 0. 문서 정보
 
-- **상태:** Draft v2.13
-- **기준일:** 2026-08-26
+- **상태:** Draft v2.14
+- **기준일:** 2026-09-03
 - **대상:** P0 MVP
 - **배포:** Windows Installer 기반 로컬 애플리케이션
 
@@ -92,7 +92,7 @@ Launcher
 
 - 상태 변경 요청은 정확한 `Host`, `Origin`, Fetch Metadata, JSON Content-Type과 Local Session을 검증한다.
 - Domain Aggregate mutation Command는 `command_id + 대상 Aggregate ID + expected_version`을 요구한다. `expected_version`은 해당 Aggregate의 optimistic concurrency authority다.
-- Connection/Credential/Settings/Runtime Mode/Backup·Restore/Diagnostics/Shutdown/Attachment staging 같은 non-Domain operational Command는 `command_id + operation-specific Versioned Request Schema`를 사용하며, concern owner가 별도의 versioned target/revision을 정의한 경우에만 그 revision을 요구한다. Domain `expected_version`을 임의 생성하거나 다른 Aggregate version을 재사용하지 않는다.
+- Connection/Credential/Settings/Runtime Mode/Local Runtime Provisioning/Backup·Restore/Diagnostics/Shutdown/Attachment staging 같은 non-Domain operational Command는 `command_id + operation-specific Versioned Request Schema`를 사용하며, concern owner가 별도의 versioned target/revision을 정의한 경우에만 그 revision을 요구한다. Domain `expected_version`을 임의 생성하거나 다른 Aggregate version을 재사용하지 않는다.
 - `command_id`가 있는 모든 Local API Command는 Application이 Versioned Request Schema의 canonical hash를 계산해 같은 ID+같은 hash만 replay하고 같은 ID+다른 hash는 conflict로 차단한다. 04의 Domain `command_receipts`는 Domain Aggregate mutation에 적용하며, non-Domain side-effect replay/idempotency는 Application owner가 07 `OperationalCommandReplayPort`로 같은 command identity/hash/result를 adjudicate한 뒤 operation Port를 호출한다.
 - Resource Browse의 `selection_handle`은 Local Service가 현재 `service_instance_id + Local Session + account_id + connector/resource identity + expiry`에 bind해 authenticated opaque value로 발급한다. Browser는 내부 identity를 decode/수정하지 않으며 StartRun은 signature/session/account/expiry mismatch를 Provider probing 없이 fail closed한다. selection-handle signing secret은 Local Service process memory에만 두고 restart 시 폐기한다.
 - Browser는 사용자 의도와 기존 Aggregate를 가리키는 허용된 correlation/idempotency 입력만 전달한다. 새 Run 생성에서 `run_id`, `user_message_id`, `workflow_key`, `langgraph_thread_id`를 생성·제출하지 않으며, 공통적으로 `request_hash`, `approval_id`, Write `idempotency_key`, `source_snapshot`, actor identity, `approval_arguments_hash`, `execution_arguments_hash`, `claim_token`을 권위 값으로 생성하지 않는다. 새 Run/Message/Workflow identity는 검증된 StartRun 처리 이후 Server/Application/Domain이 생성한다.
@@ -154,6 +154,26 @@ React
 ### 5.4 Reauth Run binding
 
 OAuth callback success is connector credential state and is intentionally Run-neutral. It does not carry `run_id` and does not auto-resume suspended graphs. A specific `REAUTH_REQUIRED` Run is resumed only by its authenticated `/runs/{run_id}/resume(REAUTH_COMPLETED)` command; `ResumeAfterReauth(applied=true)` and durable handoff creation precede workflow execution. This avoids binding one OAuth callback to the wrong Run when multiple Runs/conversations require Reauth across time.
+
+### 5.5 Local Runtime provisioning trust boundary
+
+```text
+React command/status
+→ Application runtime_status.provision_local_runtime
+→ OperationalCommandReplayPort
+→ LocalRuntimeProvisioningPort
+→ concrete provisioning Adapter
+→ verified Release Manifest → ModelManifestV2 + LocalModelProductDecisionV2 binding
+→ signed Ollama installer + exact model digest
+```
+
+- provisioning은 LLM Tool이 아니며 Agent/Prompt/Connector Source가 URL·path·model tag·digest·shell argument를 만들 수 없다.
+- Ollama installer source ref/version/hash와 approved model identity/digest는 verified Release Manifest → `ModelManifestV2`에서만 오며, active tier binding과 hardware threshold는 그 exact manifest hash에 결합된 `LocalModelProductDecisionV2`에서만 온다.
+- HTTPS transport 성공만 신뢰하지 않는다. Windows installer signature/expected publisher와 SHA-256, model resolved digest를 모두 exact-match한다.
+- staging과 installer 실행은 current-user ACL 경계에서 수행하고 raw command line/download URL/local path를 Log·Trace·Diagnostic에 노출하지 않는다.
+- `PREEXISTING` Ollama는 호환성을 읽기 전용으로 검사하고 명시적 사용자 동의 없이 update/uninstall하지 않는다. `PRODUCT_PROVISIONED` origin도 제품 종료 시 강제 종료하지 않는다.
+- Uninstall 기본값은 Google Work Agent 전용 model cleanup을 보존/선택 가능하게 하고, shared/pre-existing Ollama를 제거하지 않는다.
+- Model artifact는 Secret은 아니지만 검증 전 비신뢰 공급망 입력이며 Prompt·Trace·Diagnostic에 raw binary/local path를 넣지 않는다.
 
 ## 6. LLM API Key와 외부 전송
 
@@ -304,7 +324,7 @@ OAuth callback success is connector credential state and is intentionally Run-ne
 
 ### LOCAL_CAPABLE
 
-- Ollama Adapter와 진단 UI를 포함한다.
+- Ollama Adapter, automatic provisioning capability, Signed Local Model Profile과 진단 UI를 포함한다.
 - 검증된 GPU에서만 Local 기능을 활성화한다.
 - GPU 기준 미달이면 API_LLM으로 고정한다.
 - 외부 전송 동의가 없으면 AUTO API Fallback을 수행하지 않는다.

@@ -5,8 +5,8 @@
 ## 0. 문서 정보
 
 - **문서명:** 14. Google Work Agent · 예외 처리 · 운영 · 트러블슈팅 가이드
-- **상태:** Draft v2.26
-- **기준일:** 2026-08-24
+- **상태:** Draft v2.27
+- **기준일:** 2026-09-03
 - **대상:** P0 MVP
 - **운영 형태:** Windows 11 x64 로컬 단일 사용자 애플리케이션
 - **공식 Browser:** 최신 Chrome·Microsoft Edge
@@ -286,7 +286,7 @@ OAuth 성공은 credential 연결만 완료하며 Run을 자동 resume하지 않
 
 ### 12.2 LOCAL_CAPABLE
 
-제품은 Ollama를 설치·시작·종료·업데이트하지 않는다.
+- Ollama는 Product Core에 내장되지 않지만 `LOCAL_CAPABLE` provisioning이 approved Runtime/model 준비를 조정한다. shared/pre-existing Runtime의 silent update·강제 종료·자동 제거는 금지한다.
 
 확인:
 
@@ -298,6 +298,32 @@ OAuth 성공은 credential 연결만 완료하며 Run을 자동 resume하지 않
 - OOM·Timeout
 
 AUTO는 기술적 Local 실패에서 API Fallback 최대 1회를 허용한다. 명시적 `LOCAL_GPU`는 사용자 동의 없이 API로 전환하지 않는다.
+
+## 12-A. Local Runtime provisioning Runbook
+
+### 정상 흐름
+
+```text
+Runtime Detail 확인
+→ `NOT_STARTED | REPAIR_REQUIRED`이면 `로컬 AI 준비`
+→ Ollama/WORKER/REASONING component progress 확인
+→ READY 뒤 tier Smoke Test 결과 확인
+→ LOCAL_GPU 활성화
+```
+
+### 장애별 조치
+
+- `INSUFFICIENT_DISK`: 사용자가 정리할 안전 용량을 표시하고 동일 operation을 retry한다. verified model store를 임의 삭제하지 않는다.
+- `DOWNLOAD_INTERRUPTED`: staging/partial range를 Adapter가 reconcile한다. Browser refresh나 새 command로 중복 full download를 만들지 않는다.
+- `RUNTIME_SIGNATURE_INVALID | RUNTIME_HASH_MISMATCH | MODEL_DIGEST_MISMATCH`: 즉시 Local 사용 차단, staging 격리·진단 표시, API 가능 여부 확인. 수동 파일 교체나 임의 mirror를 안내하지 않는다.
+- `PREEXISTING_RUNTIME_INCOMPATIBLE`: silent upgrade/uninstall하지 않고 signed repair 범위와 shared-runtime 영향을 표시한다.
+- `OLLAMA_NOT_READY`: installed state와 process/loopback readiness를 구분해 bounded restart/readiness probe를 수행한다. 다른 사용자가 소유한 process를 강제 종료하지 않는다.
+- `PROFILE_INCOMPLETE | TIER_UNRESOLVED`: Model Manifest/Release 설치 무결성을 확인하고 model-name 문자열로 fallback하지 않는다.
+- 반복 실패는 `진단 열기 | 다시 시도 | API로 계속`만 제공하며 사용자에게 `ollama pull`, 임의 installer, shell command를 안내하지 않는다.
+
+### Uninstall
+
+pre-existing/shared Ollama는 항상 보존한다. 제품이 다운로드한 모델도 기본 보존이며 사용자가 `로컬 AI 모델도 삭제`를 명시적으로 선택한 경우에만 registered product model refs를 제거한다.
 
 ## 13. LLM·Structured Output·Retrieval Runbook
 

@@ -33,7 +33,7 @@ Required enforcement families:
 - Prompt input-contract loader exact: `application/prompt_runtime/load_prompt_input_contract.py → load_prompt_input_contract()` is the only repository loader/validator for `PromptRuntimeInputContractV1`; alternate generic config loader authority zero
 - exact 35 Agent Runtime Node adapter/projection/router manifest coverage; supporting deterministic operations must not create extra runtime nodes
 - Agent semantic operation exact-set authority exists only in `16/01 Canonical Required-Operation Manifest`; parent 16 duplicate operation list zero; current exact set includes all 43 rows, including deterministic supporting operations
-- non-persistence outbound exact mapping exists only as the single 24-row Port↔Adapter table in `16/07`; parallel Port-only list zero and `OperationalCommandReplayPort` present exactly once
+- non-persistence outbound exact mapping exists only as the single 25-row Port↔Adapter table in `16/07`; parallel Port-only list zero and `OperationalCommandReplayPort` / `LocalRuntimeProvisioningPort` are each present exactly once
 - one production composition root: `api/composition.py → build_production_runtime()`; concrete binding outside it zero
 - handoff reconciliation owner exact: `application/use_cases/run/redrive_workflow_handoffs.py → RedriveWorkflowHandoffsHandler`; same handler owns startup + live semantics with precedence CONSUMED active-continuation/domain fence → BLOCKED_BINDING Recovery → PENDING/DISPATCHED dispatch head → generic SAFE. `adapters/system/workflow_handoff_reconciliation_loop.py → WorkflowHandoffReconciliationLoop` may only drive that handler; direct loop/startup WEP/LangGraph orchestration zero
 - WorkflowHandoff persisted projection exact: StageV1 vs persisted V1 separated; persisted row includes `run_sequence`, `version`, optional `WorkflowExecutionAdmissionV1`, submit-failure reason, applied checkpoint evidence, nullable no-control hash, `SUPERSEDED`; trigger lookup only through `get_by_trigger_command_id`. `GraphCheckpointEnvelopeV1` additionally carries `active_handoff_id/run_sequence` typed lineage until release boundary
@@ -49,6 +49,18 @@ Required enforcement families:
 - connector-neutral circuit keys: provider-specific Core circuit enum values zero; Connector circuit identity carries connector_id
 
 Architecture enforcement complements, but does not replace, behavioral tests. Enforcement allowlists may only encode exceptions already present in the Repository Architecture Exception Registry; an enforcement-only exception is itself a contract violation.
+
+## Local Runtime provisioning enforcement additions
+
+- `runtime_status.provision_local_runtime` exact Application owner/file/symbol/test; alternate install/service/manager authority zero.
+- `LocalRuntimeProvisioningPort` has exactly one production binding `OllamaLocalRuntimeProvisioningAdapter`; Application/API/Agent direct filesystem/download/subprocess/Ollama CLI access zero.
+- installer source exact `installer/windows/local_runtime_provisioning_definition.py → WindowsLocalRuntimeProvisioningDefinition`; generic installer manager/script root zero.
+- `ModelManifestV2` owns Ollama installer identity/hash and approved model digest set only; `LocalModelProductDecisionV2` alone owns the active WORKER/REASONING profile and hardware/platform thresholds. Cross-artifact hash/release/tier binding mismatch, mixed V1/V2 production set, and duplicate values in SignedBuildConfig, Prompt source, Settings, Agent code are structural failures.
+- `StructuredInferenceRequestV2.inference_tier` closed set exact `WORKER|REASONING`; unknown/free-string tier and model-name parsing authority zero.
+- Product LLM caller supplies PromptRef+tier; concrete model resolution occurs only in `StructuredInferenceRuntimeRouter` using verified `LocalModelProductDecisionV2.active_profile` and `ModelManifestV2` validation.
+- `API_ONLY` provisioning artifact/side effect zero; `LOCAL_CAPABLE` model weights and Ollama executable are not embedded in the Windows Installer.
+- Browser/LLM/Connector Source supplied URL/path/model tag/shell argument cannot reach provisioning Adapter.
+- pre-existing Ollama uninstall/update authority and product shutdown kill path zero by default.
 
 ## Structural closure enforcement gate
 

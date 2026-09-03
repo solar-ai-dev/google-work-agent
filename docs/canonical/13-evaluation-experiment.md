@@ -1,7 +1,7 @@
 # 13. 평가 · 실험 설계서
 
 > **Authority:** experiment design, Dataset/Gold/Grader, candidate comparison, scoring과 release-evaluation evidence. Product behavior는 `00 Project Source Guide`의 concern owners가 소유한다.  
-> **상태:** Draft v3.31 · **기준일:** 2026-08-25 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
+> **상태:** Draft v3.33 · **기준일:** 2026-09-03 · **선행 Gate:** Dataset·Grader Integrity + 12 Safety Regression 100%
 
 ## 1. 목적과 범위
 
@@ -110,7 +110,53 @@ FUSED_REFERENCE
 - Product LLM call count / token / p50·p95 latency
 - repair/revision localization: 한 atomic node 실패가 다른 responsibility 재호출로 번지는지 여부
 
-Release 판단은 Local `qwen2.5:7b`에서 ATOMIC_SLLM이 FUSED_REFERENCE보다 latency는 증가하더라도 Safety/BTS/first-pass 안정성을 유의하게 개선하는지로 한다. 강한 API Runtime의 fusion은 atomic parity를 통과한 경우에만 허용한다. Product LLM hard cap은 24다.
+Release 판단은 single-model baseline `qwen2.5:7b`, single-model candidate `qwen3.5:9b`, tiered candidate `WORKER=qwen3.5:4b + REASONING=qwen3.5:9b`를 동일 Prompt·Schema·Policy·Fixture에서 비교한다. ATOMIC_SLLM Safety/BTS/first-pass 안정성과 tier-routing 이득이 provisioning·VRAM·latency 비용을 정당화해야 한다. 강한 API Runtime의 fusion은 atomic parity를 통과한 경우에만 허용한다. Product LLM hard cap은 24다.
+
+### 1.3 Qwen3.5 dual-tier Local candidate decision
+
+Local Runtime 방향 후보는 다음 세 구성을 paired comparison한다.
+
+```text
+L0  qwen2.5:7b single-model current comparison baseline
+L1  qwen3.5:9b single-model candidate
+L2  qwen3_5_dual_tier_candidate_v1
+    WORKER    = qwen3.5:4b
+    REASONING = qwen3.5:9b
+```
+
+`L2`는 product direction candidate지만 Release-active configuration이 아니다. 동일 PromptRef/Schema/Gold/Graph/Policy/Tool Registry를 고정하고 tier mapping만 독립변수로 비교한다.
+
+최소 평가:
+
+- Node contract valid first pass, repair rate, schema failure isolation
+- semantic accuracy, selected-resource preservation, over-confirmation rate, repeated-question rate, forward-progress rate
+- 특히 현재 `qwen2.5:7b`에서 재현된 `RESOURCE_SELECTED → request.detect_ambiguity → Confirmation → same ambiguity` Case
+- Tool Route exact/allowed route, Retrieval query/sufficiency, Work Analysis, Action objective/arguments, Review false PASS/REVISE
+- Gmail actual READ reachability와 approval-gated WRITE/Verification E2E
+- model load/swap overhead, peak VRAM/RAM, token throughput, p50/p95 latency, total Run latency, fallback rate
+- provisioning download size/time, cold-start readiness, interrupted-download recovery
+
+Tier eligibility:
+
+- `WORKER`에는 slot-specific Contract/Gold Gate를 통과한 bounded extraction/classification만 둔다.
+- `request.detect_ambiguity`, Tool semantic selection, Retrieval plan/sufficiency, Analysis, Planning, Review는 기본 `REASONING` 후보다.
+- 4B가 한 slot에서 기준 미달이면 Agent code를 바꾸지 않고 Release Profile에서 해당 slot의 tier를 `REASONING`으로 재평가한다.
+- 9B도 Safety/Contract/BTS를 통과하지 못하면 dual profile은 탈락하며 더 큰/다른 approved candidate를 비교한다.
+
+Release Gate:
+
+```text
+12 Safety Regression = 100%
+AND required Node Contract Gate PASS
+AND over-confirmation / no-progress Gate PASS
+AND E2E BTS threshold PASS
+AND Gmail READ/WRITE safety path PASS
+AND target hardware resource/latency Gate PASS
+AND clean provisioning/upgrade/uninstall Gate PASS
+→ signed `ModelManifestV2` allowlist + `LocalModelProductDecisionV2.active_profile` eligibility
+```
+
+Parameter count나 model tag만으로 지원을 승인하지 않는다. exact resolved model digest와 candidate config hash가 Result에 결합되고, 승인 결과는 `LocalModelProductDecisionV2`가 exact `ModelManifestV2` hash와 tier profile을 고정해야 한다.
 
 ## 2. 핵심 원칙
 

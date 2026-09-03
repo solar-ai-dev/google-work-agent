@@ -1,7 +1,7 @@
 # 01-B. 정책 정의서
 
 > **Authority:** 안전·금지·승인 정책. 시스템·Domain·Interface 구현 세부는 `00 Project Source Guide`의 전문 owner를 따른다.  
-> **상태:** Draft v2.15 · **기준일:** 2026-08-26
+> **상태:** Draft v2.16 · **기준일:** 2026-09-03
 
 ## 0. 사람이 먼저 볼 핵심 정책
 
@@ -327,15 +327,26 @@ AUTO는 다음 기술 오류에서 API로 최대 1회 fallback할 수 있다.
 
 제품의 Local LLM Runtime은 Ollama로 고정한다. Release Config에 포함되지 않은 Runtime은 제품 Runtime/UI authority가 아니며 제품 UI에 노출하지 않는다.
 
-### POL-LLM-006 모델 선택
+### POL-LLM-006 모델 선택·Tier
 
-제품 기본 Model은 current Release Gate를 통과해 승인된 구성만 사용한다. 일반 사용자 UI에 임의 모델명 입력이나 평가용 후보 선택을 노출하지 않는다.
+제품 기본 Model은 current Release Gate를 통과한 Signed Local Model Profile만 사용한다. Product LLM caller·Agent·Prompt·사용자는 concrete model ID를 선택할 수 없고 `WORKER | REASONING` tier만 요청한다. `StructuredInferenceRuntimeRouter`가 verified profile에서 tier를 concrete model identity/digest로 resolve한다. 일반 사용자 UI에 임의 모델명 입력이나 평가용 후보 선택을 노출하지 않는다.
+
+초기 후보 Profile은 `WORKER=qwen3.5:4b`, `REASONING=qwen3.5:9b`다. 이는 방향이 승인된 Evaluation candidate이며, 13의 Safety·Contract·BTS·Hardware Gate와 Release 서명 전에는 product-active authority가 아니다.
 
 ### POL-LLM-007 배포 프로필
 
 - `API_ONLY`: Ollama·GPU·모델 파일 불필요. CPU-only와 GPU 없는 팀원의 기본 프로필.
-- `LOCAL_CAPABLE`: Ollama Adapter와 Local 설정을 포함. 검증된 GPU에서만 Local 기능 활성화.
+- `LOCAL_CAPABLE`: Ollama Adapter, automatic provisioning capability, Signed Local Model Profile과 Local 설정을 포함한다. 검증된 GPU에서만 Local 기능을 활성화한다.
 - 두 프로필은 동일한 LangGraph, Tool Schema, Policy, Test Suite를 사용한다.
+
+### POL-LLM-008 Local Runtime provisioning 안전
+
+- provisioning은 `SYSTEM` 위험 등급의 결정적 Application/System operation이며 LLM Tool이 아니다.
+- 다운로드 URL, installer identity, Ollama version, model tag/digest, tier binding은 verified Release Manifest와 Model Manifest에서만 온다.
+- Browser·Prompt·Connector Source가 임의 URL, shell argument, model tag 또는 digest를 주입할 수 없다.
+- Signature/hash/digest가 맞지 않으면 설치·실행·모델 사용을 fail-closed하고 API 사용 가능 여부와 복구 Action만 표시한다.
+- 기존 호환 Ollama는 `PREEXISTING`, 제품이 준비한 항목은 `PRODUCT_PROVISIONED`로 구분한다. Uninstall은 기존 Ollama를 제거하지 않으며 제품 모델 삭제도 사용자의 명시적 선택이 필요하다.
+- Runtime 중 silent update는 금지한다. Ollama/Model 변경은 signed product upgrade 또는 명시적 repair provisioning으로만 수행한다.
 
 ## 13. API LLM 개인정보 정책
 

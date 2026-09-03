@@ -5,8 +5,8 @@
 ## 0. 문서 정보
 
 - **문서명:** 10. Google Work Agent · 인프라 · 환경 설정 설계서
-- **상태:** Draft v2.20
-- **기준일:** 2026-08-26
+- **상태:** Draft v2.22
+- **기준일:** 2026-09-03
 - **대상:** P0 MVP
 - **공식 운영체제:** Windows 11 x64
 - **공식 브라우저:** 최신 Chrome·Microsoft Edge
@@ -29,7 +29,7 @@
 - MCP Child Process 무결성·환경 격리
 - 환경 설정 Schema와 우선순위
 - API_ONLY·LOCAL_CAPABLE Packaging
-- Ollama 연결·진단 경계
+- Ollama provisioning·연결·진단 경계
 - Installer·Code Signing·Release Manifest
 - Upgrade·Migration·Rollback
 - Backup·Restore·보존
@@ -61,7 +61,7 @@
 | `INF-007` | P0 Installer는 사용자별 설치이며 관리자 권한을 요구하지 않는다. | FIXED |
 | `INF-008` | P0 Update는 서명된 새 Installer를 통한 수동 In-place Upgrade다. | FIXED |
 | `INF-009` | Production Installer와 Executable은 Code Signing을 필수로 한다. | FIXED |
-| `INF-010` | Ollama는 제품이 설치·소유하지 않고 연결·Version·Model 상태만 진단한다. | FIXED |
+| `INF-010` | `LOCAL_CAPABLE`은 Release-approved Ollama와 Signed Local Model Profile을 자동 provision한다. Ollama는 Product Core에 내장되지 않은 별도 Loopback Runtime이며 기존 사용자 설치를 비파괴적으로 재사용한다. | FIXED |
 | `INF-011` | Backup은 최근 5개와 최대 30일 중 먼저 도달한 기준으로 정리한다. | FIXED |
 
 ## 3. 지원 환경과 시스템 요구사항
@@ -86,7 +86,7 @@
 
 - API_ONLY 기준 충족
 - 지원되는 Ollama Version
-- Release Config에 등록된 제품 Model 존재
+- verified `ModelManifestV2`와 `LocalModelProductDecisionV2` 존재
 - GPU·VRAM 기준은 `13. 평가·실험 설계서`의 Release Gate 결과로 확정
 - 기준 미달 환경은 API_LLM으로 고정
 
@@ -108,8 +108,9 @@
 
 제외:
 
-- Ollama 설치 파일
-- Local Model
+- Ollama runtime provisioning capability
+- Signed Local Model Profile·Model Manifest
+- Ollama executable과 Local Model weight의 Installer 내장
 - GPU 전용 Library
 - Experiment Runner
 - 후보 Model·Raw Result
@@ -119,12 +120,12 @@
 `API_ONLY` 구성에 다음을 추가한다.
 
 - Ollama Adapter
-- GPU·VRAM 진단
-- Local Model Manifest 검사
-- Local Runtime 설정 UI
+- GPU·VRAM·디스크·네트워크 진단
+- `LocalRuntimeProvisioningPort`와 provisioning UI
+- `ModelManifestV2`·`LocalModelProductDecisionV2` 검사
 - AUTO·LOCAL_GPU 실행 모드
 
-제품 Installer는 Ollama 본체와 Model을 포함하지 않는다. 사용자가 별도로 설치한 Ollama에만 연결한다.
+Windows Installer 본체에는 Ollama executable과 model weight를 내장하지 않는다. 대신 설치된 제품의 최초 설정이 Release-approved 공식 Ollama installer와 model artifact를 자동 다운로드·검증·준비한다. 사용자는 Ollama 또는 모델을 별도 설치하지 않는다.
 
 ## 5. Runtime Process Architecture
 
@@ -170,7 +171,7 @@ flowchart TD
     GMCP --> G["Google APIs"]
     LR -->|"LLM API Key · KEYRING mode"| KR
     LR --> EXT["API LLM Provider"]
-    LR --> O["사용자 설치 Ollama"]
+    LR --> O["외부 Ollama Runtime<br>PREEXISTING | PRODUCT_PROVISIONED"]
 ```
 
 원격 Backend, Nginx, Kubernetes, Redis, Queue와 Remote MCP는 두지 않는다.
@@ -232,7 +233,7 @@ Service composition은 이 manifest를 읽어 exact executable을 spawn하고 de
 | FastAPI Service | Launcher | Command 차단·Checkpoint·DB Close 후 종료 |
 | React UI | Browser | 탭 종료가 제품 Runtime 종료를 의미하지 않음 |
 | MCP Server | FastAPI Service | Write 전달 여부 확인 후 종료 |
-| Ollama | 사용자 또는 외부 설치 | 제품이 시작·종료·업데이트하지 않음 |
+| Ollama | 외부 Runtime; `PREEXISTING | PRODUCT_PROVISIONED` origin | provisioning은 설치·필요 readiness를 조정하되 제품 종료 시 shared process를 강제 종료하지 않고 silent update/uninstall하지 않음 |
 
 권장 Process Tree:
 
@@ -927,39 +928,118 @@ Python Runtime은 앱 전용으로 Bundle에 포함하며 System Python과 분�
 
 완전 삭제는 별도 선택과 경고 후 사용자 데이터·Backup·Settings·Log·Diagnostic까지 삭제한다.
 
-## 12. Ollama와 Local Model
+## 12. Ollama와 Local Model provisioning
 
-제품은 다음만 수행한다.
+### 12.1 Product boundary
 
-- Ollama Endpoint 연결 확인
-- Version 확인
-- 지원 Model 존재 확인
-- Structured Output Smoke Test
-- GPU·VRAM 진단
-- Local Mode 사용 가능 여부 표시
+`LOCAL_CAPABLE`은 사용자가 별도 설치 명령을 수행하지 않도록 Local Runtime preparation을 제품 온보딩 안에서 조정한다.
 
-제품이 수행하지 않는 작업:
+- Ollama는 Product Core에 link/embed하지 않고 별도 `127.0.0.1` Runtime process로 유지한다.
+- Windows Installer 본체에는 Ollama executable과 model weight를 포함하지 않는다.
+- first-run provisioning이 verified Release Manifest가 승인한 official Ollama installer와 model artifact를 다운로드한다.
+- 기존 compatible Ollama는 `PREEXISTING`, 제품 흐름으로 준비한 Runtime/Model은 `PRODUCT_PROVISIONED` origin으로 기록한다.
+- 제품 종료는 Ollama process를 강제 종료하지 않는다. Runtime/model update는 signed product upgrade 또는 explicit repair flow만 수행한다.
+- Browser·Application·Agent는 arbitrary URL/path/model tag/shell command를 만들지 않는다. concrete Adapter가 manifest binding만 소비한다.
 
-- Ollama 자동 설치
-- Ollama Process 시작·종료
-- Ollama 자동 Update
-- 임의 Model 검색·설치
-- Release Config에 포함되지 않은 candidate Model 노출
+### 12.2 Provisioning lifecycle
 
-지원 Local runtime/model allowlist의 단일 artifact authority는 `%INSTALL_ROOT%/manifests/model-manifest-v1.json`이다. 이 file은 별도 독립 signature authority를 만들지 않고 verified `release-manifest.json`의 `files[].file_path + sha256` entry로 인증된다. Packageable Canonical schema/parser authority는 `src/google_work_agent/ports/llm/approved_model_manifest.py`가 소유하고, `release/generate_model_manifest.py`와 Product runtime consumer가 이 동일 owner를 사용한다. 이전 `release/generate_model_manifest.py` 내부 schema owner는 installed Product가 top-level release package를 import하지 않으면서 generator/consumer parser를 하나로 만들기 위해 이 exact path로 이동했다. Field와 validation behavior는 변경하지 않는다.
-
-```python
-class ApprovedModelEntryV1:
-    model_id: str
-    model_hash: str
-
-class ModelManifestV1:
-    schema_version: Literal[1]
-    minimum_ollama_version: str
-    approved_models: list[ApprovedModelEntryV1]
+```text
+NOT_STARTED
+→ CHECKING_ENVIRONMENT
+→ CHECKING_EXISTING_RUNTIME
+→ DOWNLOADING_RUNTIME? → VERIFYING_RUNTIME → INSTALLING_RUNTIME?
+→ WAITING_RUNTIME_READY
+→ DOWNLOADING_WORKER_MODEL → VERIFYING_WORKER_MODEL
+→ DOWNLOADING_REASONING_MODEL → VERIFYING_REASONING_MODEL
+→ RUNNING_SMOKE_TESTS
+→ READY
 ```
 
-`release/generate_model_manifest.py → generate_model_manifest()`가 13의 Release-selected model allowlist를 `ModelManifestV1`로 materialize한다. `APPROVED_FOR_LOCAL_PROFILE`인 정확히 하나의 model 선택과 CPU/RAM/VRAM/OS/architecture release gate는 `%INSTALL_ROOT%/manifests/local-model-product-decision-v1.json`에 materialize하며, 그 `model_manifest_hash`는 canonical Model Manifest bytes와 일치해야 한다. 두 file 모두 동일 verified Release Manifest hash chain으로 인증한다. `LOCAL_CAPABLE` profile은 두 artifact를 필수 포함하고 `API_ONLY`는 둘 모두 금지한다. 실제 current Product Decision이 없으면 runtime selection은 `DEFERRED_UNTIL_PRODUCT_DECISION`으로 fail closed한다. `SignedBuildConfigV1`과 User Settings는 Ollama version/Model ID/Model Hash/threshold를 중복 소유하지 않는다.
+실패는 `REPAIR_REQUIRED | FAILED`로 정규화한다. 각 component는 bytes/progress/error code를 bounded status로 제공한다. Crash-safe reservation은 `OperationalCommandReplayPort`의 `operation_ref`를 사용하며 Adapter가 filesystem/installed-program/Ollama state를 reconcile한 뒤에만 resume/retry한다. 동일 command로 중복 installer 실행이나 model download를 만들지 않는다.
+
+Preflight:
+
+- deployment profile is `LOCAL_CAPABLE`
+- hardware/GPU eligibility
+- approved Windows/Ollama version
+- installer/model 예상 다운로드 크기 + 안전 여유 공간
+- TLS/network availability
+- Release Manifest·Model Manifest 서명/hash chain
+- 기존 Ollama origin/version/endpoint conflict
+
+### 12.3 Signed runtime/model authority and versioned cut-over
+
+Final `LOCAL_CAPABLE` provisioning uses two separately authenticated installed artifacts. They are both covered by the verified `release-manifest.json` file hash chain and have non-overlapping authority.
+
+```text
+%INSTALL_ROOT%/manifests/model-manifest-v2.json
+→ ModelManifestV2
+→ approved Ollama installer artifact + approved Local model allowlist
+
+%INSTALL_ROOT%/manifests/local-model-product-decision-v2.json
+→ LocalModelProductDecisionV2
+→ one active WORKER/REASONING profile + evaluated hardware/platform thresholds
+```
+
+```python
+class ApprovedModelEntryV2:
+    model_id: str
+    model_digest: str
+    parameter_class: str
+    download_size_bytes: int
+
+class ModelManifestV2:
+    schema_version: Literal[2]
+    approved_ollama_version: str
+    ollama_installer_artifact_ref: str
+    ollama_installer_sha256: str
+    approved_models: list[ApprovedModelEntryV2]
+
+class LocalModelTierBindingV1:
+    inference_tier: Literal["WORKER", "REASONING"]
+    model_id: str
+    model_digest: str
+
+class LocalModelProfileV1:
+    profile_id: str
+    runtime: Literal["OLLAMA"]
+    tier_bindings: list[LocalModelTierBindingV1]
+
+class LocalModelProductDecisionV2:
+    schema_version: Literal[2]
+    decision_status: Literal["APPROVED_FOR_LOCAL_PROFILE"]
+    release_version: str
+    deployment_profile: Literal["LOCAL_CAPABLE"]
+    active_profile: LocalModelProfileV1
+    model_manifest_hash: str
+    candidate_config_hash: str
+    minimum_cpu_logical_cores: int
+    minimum_ram_bytes: int
+    minimum_vram_bytes: int
+    supported_os: Literal["WINDOWS"]
+    supported_architecture: Literal["AMD64"]
+```
+
+`ModelManifestV2` is the allowlist and provisioning-artifact authority only. It does not select the active profile. `LocalModelProductDecisionV2.active_profile` is the sole release selection authority and every tier binding must exact-match one `ModelManifestV2.approved_models` row by `model_id + model_digest`. `model_manifest_hash` binds the decision to the exact canonical manifest bytes.
+
+The direction-approved candidate is:
+
+```text
+profile_id = qwen3_5_dual_tier_candidate_v1
+WORKER     = qwen3.5:4b
+REASONING  = qwen3.5:9b
+```
+
+It becomes active only when 13 Evaluation produces an approved `LocalModelProductDecisionV2` and Release signing includes both V2 artifacts. Existing `ModelManifestV1` and `LocalModelProductDecisionV1` remain the current implementation baseline until this cut-over is implemented; a release must never mix V1 and V2 artifacts. Final V2 activation requires V2 loaders/generators/router wiring, V1 production reader/caller zero, and V1 retention only as explicit migration/test evidence.
+
+### 12.4 Process and uninstall rules
+
+- compatible `PREEXISTING` Ollama는 설치를 건너뛰고 exact version/readiness만 검증한다.
+- incompatible pre-existing Runtime은 silent replacement하지 않고 signed repair Action과 영향 범위를 표시한다.
+- `PRODUCT_PROVISIONED` Runtime은 필요한 경우 official readiness/start mechanism을 요청할 수 있으나 Product shutdown에서 강제 종료하지 않는다.
+- default uninstall은 pre-existing/shared Ollama를 제거하지 않는다.
+- 제품이 provision한 model cleanup은 별도 명시적 checkbox/confirmation으로만 수행한다.
+- partial download/temp artifact는 bounded staging directory에서 정리하며 verified model store를 직접 삭제하지 않는다.
 
 ## 13. Upgrade·Migration·Rollback
 
@@ -1223,7 +1303,7 @@ RECOVERY_REQUIRED
 - 관리자 권한 없이 설치
 - Chrome·Edge UI 시작
 - API_ONLY가 Ollama 없이 실행
-- LOCAL_CAPABLE이 Ollama 미설치 상태를 정상 진단
+- LOCAL_CAPABLE clean VM에서 manual CLI 없이 Ollama·WORKER·REASONING model을 provision하고 재시작 후 READY 복원
 - Production Signature 검증
 - 사용자 DB·Settings 보존 Upgrade
 
@@ -1315,6 +1395,6 @@ DIAGNOSTIC_BUNDLE_DEFAULT_WINDOW_MS = 86400000
 - Migration 실패 시 Write가 차단된 Safe Mode로 진입한다.
 - Backup은 최근 5개·최대 30일 기준으로 관리된다.
 - Ollama가 없어도 API_ONLY가 정상 실행된다.
-- 제품이 Ollama 설치·Update·Process 소유권을 갖지 않는다.
+- 제품이 provisioning lifecycle과 signed Artifact 검증을 소유하되 Ollama를 Product Core에 내장하거나 shared process를 shutdown/update/uninstall authority로 흡수하지 않는다.
 - `UNKNOWN_RESULT` 해결 전 Write가 재실행되지 않는다.
 - `SEC-INF-001~020`이 09와 10의 공동 구현 기준으로 사용된다.

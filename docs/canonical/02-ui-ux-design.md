@@ -1,7 +1,7 @@
 # 02. UI · UX 설계서
 
 > **Authority:** 사용자 화면·상호작용과 UX 상태 표현. Domain/Workflow/API semantics는 해당 전문 owner를 따른다.  
-> **상태:** Draft v2.16 · **기준일:** 2026-08-26 · **대상:** P0 MVP
+> **상태:** Draft v2.17 · **기준일:** 2026-09-03 · **대상:** P0 MVP
 
 ## 1. 문서 목적
 
@@ -99,7 +99,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 7. Google Credential 존재 여부 확인
 8. Google Token 갱신과 Gmail·Tasks·Calendar 최소 조회 확인
 9. API LLM Key와 연결 확인
-10. Ollama와 Local 모델 확인
+10. Local Runtime provisioning·Ollama·Signed Model Profile 확인
 11. 중단된 Conversation·Run 확인
 12. SSE 연결과 메인 화면 상태 복원
 
@@ -139,7 +139,7 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 2. 개인정보·외부 LLM 전송 동의
 3. PC와 GPU 환경 자동 진단
 4. API LLM 연결
-5. Local 사용 가능 환경이면 Ollama·승인 Local Model 상태 확인 및 설치 안내
+5. Local 사용 가능 환경이면 `로컬 AI 준비`를 실행해 Ollama와 Signed Local Model Profile을 자동 설치·검증
 6. 기본 Calendar·Task List·Timezone 확인
 7. 메인 화면 진입
 
@@ -157,14 +157,18 @@ Context 검토, 계획, 승인, 실행, 검증, 복구는 별도 페이지가 �
 - 기본 저장 위치는 OS Keyring이며, `이번 실행에서만 사용`을 선택할 수 있다.
 - 연결 검사는 입력 후 자동 실행한다.
 
-### 6.5 Ollama·Local Model 확인과 설치 안내
+### 6.5 Local AI 자동 준비
 
 - GPU 기준을 충족한 `LOCAL_CAPABLE` 환경에서만 표시한다.
-- Ollama 존재 여부, Loopback 실행 상태, 지원 Version, 디스크 공간, 승인 Model 존재 여부를 자동 검사한다.
-- 앱은 Ollama·Model을 설치·시작·종료·업데이트하지 않는다.
-- 누락 시 `설치 안내 열기`, `승인 Model 정보 보기`, `다시 검사`를 제공한다.
-- 사용자가 외부 설치를 완료하기 전까지 `LOCAL_GPU`를 비활성화하며 API 사용 가능 여부를 함께 표시한다.
-- GPU가 없거나 기준 미달이면 Local 설정·진단 UI와 Local 옵션을 표시하지 않는다.
+- 기본 CTA는 `로컬 AI 준비`이며 사용자가 Ollama 설치 프로그램이나 터미널 명령을 직접 다루지 않는다.
+- 단계는 `환경 확인 → Ollama 준비 → 빠른 모델 준비 → 고성능 모델 준비 → 무결성 검증 → 테스트 추론` 순서로 표시한다.
+- 각 단계는 `대기 | 다운로드 중 | 설치 중 | 검증 중 | 완료 | 다시 시도 필요` 상태와 진행률·남은 용량을 제공한다.
+- 기본 사용자 문구는 `빠른 모델`, `고성능 모델`을 사용하고 model ID/digest는 진단 상세에서만 노출한다.
+- 네트워크 단절·앱 재시작 뒤에는 같은 operation을 reconcile하고 완료 Artifact를 다시 다운로드하지 않는다.
+- Signature/hash/digest 불일치, 디스크 부족, 기존 Ollama 비호환은 정확한 조치와 `다시 시도`를 표시하며 검증 전 `LOCAL_GPU`를 활성화하지 않는다.
+- 기존 호환 Ollama는 보존하고 사용한다. 제품 제거 화면은 기존 Ollama를 자동 삭제하지 않으며 제품이 받은 모델 삭제는 별도 선택으로 제공한다.
+- API 사용 가능 시 provisioning 중에도 API_LLM 경로를 함께 표시한다. GPU가 없거나 기준 미달이면 Local provisioning UI와 Local 옵션을 표시하지 않는다.
+
 
 ### 6.6 두 번째 이후 실행
 
@@ -716,11 +720,18 @@ Local Storage에는 Secret, Approval/Claim 실행 권위 값(`approval_id`, `cla
 ### LOCAL_CAPABLE
 
 - `AUTO`, `LOCAL_GPU`, `API_LLM` 제공
-- Ollama와 제품 모델 상태 표시
+- Local Runtime provisioning 진행·복구 상태와 `WORKER | REASONING` Signed Model Profile readiness 표시
 - 명시적 LOCAL_GPU 실패 시 자동 전환하지 않고 API 전환 Action 제공
 - AUTO fallback 발생 시 이유와 실제 Runtime 표시
 
 공통 UI, Agent 흐름, 승인 정책, Tool Schema는 두 프로필에서 동일하다.
+
+### 20.1 Provisioning 중단·복구 UX
+
+- 브라우저를 닫아도 Service가 안전하게 진행할 수 있는 단계는 계속되며, 다음 실행에서 persisted operational reservation과 실제 Artifact 상태를 reconcile한다.
+- 사용자가 취소하면 아직 시작하지 않은 다운로드만 중단하고 이미 설치된 shared Ollama를 임의 제거하지 않는다.
+- 동일 오류가 반복되면 수동 CLI를 안내하지 않고 `진단 열기`, `다시 시도`, `API로 계속` 중 현재 상태에서 허용되는 Action만 제공한다.
+- Model Profile이 Release Gate를 통과하지 않았거나 digest가 다르면 `지원되지 않는 로컬 모델`로 표시하고 실행 대상으로 선택하지 않는다.
 
 ## 21. P0 반응형 기준
 
