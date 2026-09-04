@@ -60,17 +60,22 @@ ANSWER_OUTLINE_OUTPUT_SCHEMA = OutputSchemaDefinition(
 
 def answer_outline_output_schema(
     allowed_evidence_refs: Sequence[str],
+    *,
+    confirmation_allowed: bool,
 ) -> OutputSchemaDefinition:
-    """Bind outline citations to evidence projected for the current Run."""
+    """Bind citations and confirmation eligibility to the current typed intent."""
 
-    json_schema = deepcopy(ANSWER_OUTLINE_OUTPUT_SCHEMA.json_schema)
-    answer_schema = cast(dict[str, object], cast(list[object], json_schema["oneOf"])[0])
+    json_schema = cast(dict[str, object], deepcopy(ANSWER_OUTLINE_OUTPUT_SCHEMA.json_schema))
+    branches = cast(list[object], json_schema["oneOf"])
+    answer_schema = cast(dict[str, object], branches[0])
     properties = cast(dict[str, object], answer_schema["properties"])
     properties["evidence_refs"] = {
         "type": "array",
         "uniqueItems": True,
         "items": {"type": "string", "enum": sorted(set(allowed_evidence_refs))},
     }
+    if not confirmation_allowed:
+        json_schema["oneOf"] = [answer_schema]
     return OutputSchemaDefinition(
         schema_version=ANSWER_OUTLINE_OUTPUT_SCHEMA.schema_version,
         json_schema=json_schema,
@@ -112,6 +117,9 @@ def outline_answer(
         return task_projection.outline
     candidate = invoke(PROMPT_ID, prompt_input)
     if candidate.get("disposition") == "NEEDS_CONFIRMATION":
+        ambiguity = request_intent.get("ambiguity")
+        if not isinstance(ambiguity, Mapping) or ambiguity.get("requires_confirmation") is not True:
+            raise ValueError("outline_answer confirmation is not permitted for actionable intent")
         question = candidate.get("question")
         options = candidate.get("options")
         reason_codes = candidate.get("reason_codes")

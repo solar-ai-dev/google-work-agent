@@ -11,7 +11,10 @@ from google_work_agent.application.agents.planning.outline_answer import (
 
 
 def test_answer_outline_schema__binds_citations__to_current_evidence() -> None:
-    schema = answer_outline_output_schema(["e2", "e1", "e1"])
+    schema = answer_outline_output_schema(
+        ["e2", "e1", "e1"],
+        confirmation_allowed=True,
+    )
     answer_schema = schema.json_schema["oneOf"][0]
 
     assert answer_schema["properties"]["evidence_refs"] == {
@@ -19,6 +22,32 @@ def test_answer_outline_schema__binds_citations__to_current_evidence() -> None:
         "uniqueItems": True,
         "items": {"type": "string", "enum": ["e1", "e2"]},
     }
+
+
+def test_answer_outline_schema__disallows_confirmation__for_actionable_intent() -> None:
+    schema = answer_outline_output_schema(["e1"], confirmation_allowed=False)
+
+    assert len(schema.json_schema["oneOf"]) == 1
+    assert schema.json_schema["oneOf"][0]["required"] == ["sections", "evidence_refs"]
+
+
+def test_outline_rejects__confirmation__for_actionable_intent() -> None:
+    with pytest.raises(ValueError, match="not permitted"):
+        outline_answer(
+            user_request="Summarize.",
+            request_intent={
+                "goal": "summary",
+                "ambiguity": {"requires_confirmation": False},
+            },
+            work_analysis=None,
+            evidence=[{"evidence_id": "e1", "excerpt": "fact"}],
+            invoke=lambda _prompt_id, _prompt_input: {
+                "disposition": "NEEDS_CONFIRMATION",
+                "question": "Search again?",
+                "options": ["yes", "no"],
+                "reason_codes": ["MORE_DATA"],
+            },
+        )
 
 
 def test_outline_uses__distinct_prompt__and_minimum_projection() -> None:

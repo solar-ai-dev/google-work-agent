@@ -708,6 +708,14 @@ class PlanningSubgraph:
                 evidence = prompt_input.get("evidence")
                 if not isinstance(evidence, list):
                     raise ValueError("outline_answer requires evidence")
+                request_intent = prompt_input.get("request_intent")
+                if not isinstance(request_intent, Mapping):
+                    raise ValueError("outline_answer requires request_intent")
+                ambiguity = request_intent.get("ambiguity")
+                confirmation_allowed = (
+                    isinstance(ambiguity, Mapping)
+                    and ambiguity.get("requires_confirmation") is True
+                )
                 projected_refs = [
                     ref
                     for item in evidence
@@ -717,7 +725,10 @@ class PlanningSubgraph:
                     )
                     if isinstance(ref, str) and ref
                 ]
-                output_schema = answer_outline_output_schema(projected_refs)
+                output_schema = answer_outline_output_schema(
+                    projected_refs,
+                    confirmation_allowed=confirmation_allowed,
+                )
             if prompt_id == "planning.compose_answer":
                 outline = prompt_input.get("answer_outline")
                 if not isinstance(outline, Mapping):
