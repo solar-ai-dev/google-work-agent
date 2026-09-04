@@ -523,6 +523,59 @@ def test_retrieval__compiled_normal_path__materializes_evidence() -> None:
     assert ("finalize", "finalize") in _edge_set(graph)
 
 
+def test_retrieval__main_back_edge__extends_checkpointed_prior_query() -> None:
+    state = _state(initial_target="context_retriever")
+    state["request_intent"] = cast(Any, _intent())
+    state["tool_route_plan"] = cast(Any, _answer_route_plan(with_input_route=True))
+    llm = _ComponentInferencePort()
+    connector = _ComponentConnectorReadPort()
+    cache = InMemoryRunRetrievalCache()
+    graph = RetrievalSubgraph(
+        llm_runtime=llm,
+        prompt_manifest_path=None,
+        prompt_execution_scope=DEVELOPMENT_SMOKE,
+        id_factory=_IdFactory(),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        transition_run=lambda _run_id, _transition: None,
+        merge_decision=cast(Any, _merge_decision),
+        evidence_store=RunScopedEvidenceStore(),
+        connector_reader=connector,
+        tool_catalog=load_development_tool_registry(),
+        read_result_cache=cache,
+        confirm_inline=cast(Any, _confirm_early),
+    ).build()
+
+    with provider_dispatch_execution_scope():
+        first = graph.invoke(state)
+        second = graph.invoke(
+            {
+                **first,
+                "workflow_signal": {
+                    "kind": "RETRIEVAL_REQUIRED",
+                    "reason_codes": ["EVIDENCE_GAP"],
+                    "needs": [
+                        {
+                            "required_information": "new status evidence",
+                            "reason_codes": ["EVIDENCE_GAP"],
+                        }
+                    ],
+                },
+            }
+        )
+
+    assert second["retrieval_result"]["meta"]["revision"] == 2
+    assert second["retrieval_result"]["retrieval_rounds"] == 2
+    assert connector.call_count == 2
+    assert llm.calls.count("retrieval.plan_query") == 2
+    assert cast(Any, second["__context_query_attempts__"])[0]["normalized_intent_constraints"][0][
+        "terms"
+    ] == ["status"]
+    assert cast(Any, second["__context_query_attempts__"])[1]["normalized_intent_constraints"][0][
+        "terms"
+    ] == ["status-1"]
+    assert len(second["__context_query_attempts__"]) == 2
+
+
 def test_retrieval__exhausted_local_followups__return_partial_instead_of_leaking() -> None:
     state = _state(initial_target="context_retriever")
     state["request_intent"] = cast(Any, _intent())

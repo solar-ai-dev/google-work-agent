@@ -139,8 +139,14 @@ def _respond(
     if prompt_id == "retrieval.plan_query":
         routes = cast(list[Mapping[str, object]], base["input_routes"])
         searchable_routes = [route for route in routes if _has_search_tool(route)]
-        route_queries = [_route_query(route) for route in searchable_routes]
-        route_ids = [str(route["route_id"]) for route in searchable_routes]
+        is_followup = "current_round_no" in base
+        planned_routes = (
+            [route for route in searchable_routes if _supports_keyword_expansion(route)]
+            if is_followup
+            else searchable_routes
+        )
+        route_queries = [_route_query(route, is_followup=is_followup) for route in planned_routes]
+        route_ids = [str(route["route_id"]) for route in planned_routes]
         return {
             "schema_version": 2,
             "route_queries": route_queries,
@@ -327,6 +333,8 @@ def _route_semantics(scenario: str) -> tuple[list[str], list[str], list[str]]:
         return ["CALENDAR"], [], []
     if scenario == "PARTIAL_APPROVAL":
         return ["TASK", "CALENDAR"], ["TASK", "CALENDAR"], ["CREATE", "CREATE"]
+    if scenario in {"EVIDENCE_BACK_EDGE", "CONTEXT_ADJUSTMENT"}:
+        return ["EMAIL"], ["TASK"], ["CREATE"]
     if scenario in {"CALENDAR_WRITE", "VERIFICATION_MISMATCH", "RECOVERY"}:
         return ["CALENDAR"], ["CALENDAR"], ["CREATE"]
     return ["TASK"], ["TASK"], ["CREATE"]
@@ -344,12 +352,12 @@ def _select_tool(resource_type: str, effect: str, candidates: list[str]) -> str:
     return candidates[0]
 
 
-def _route_query(route: Mapping[str, object]) -> dict[str, object]:
+def _route_query(route: Mapping[str, object], *, is_followup: bool = False) -> dict[str, object]:
     resource_type = str(route["resource_type"])
     if resource_type == "EMAIL":
         constraint: dict[str, object] = {
             "kind": "KEYWORD",
-            "terms": ["E2E"],
+            "terms": ["E2E follow-up" if is_followup else "E2E"],
             "match_mode": "ANY",
         }
     else:
@@ -361,7 +369,17 @@ def _route_query(route: Mapping[str, object]) -> dict[str, object]:
         "route_id": str(route["route_id"]),
         "operation": "SEARCH",
         "reason_codes": ["USER_REQUEST"],
-        "search_spec": {"mode": "INITIAL", "constraints": [constraint]},
+        "search_spec": (
+            {
+                "mode": "CHANGED",
+                "constraint_delta": {
+                    "upsert_constraints": [constraint],
+                    "remove_constraint_kinds": [],
+                },
+            }
+            if is_followup
+            else {"mode": "INITIAL", "constraints": [constraint]}
+        ),
         "detail_candidate_ref": None,
     }
 
@@ -369,6 +387,11 @@ def _route_query(route: Mapping[str, object]) -> dict[str, object]:
 def _has_search_tool(route: Mapping[str, object]) -> bool:
     tools = cast(list[str], route.get("allowed_read_tool_ids", []))
     return any("search" in tool or "list" in tool for tool in tools)
+
+
+def _supports_keyword_expansion(route: Mapping[str, object]) -> bool:
+    kinds = route.get("supported_constraint_kinds", [])
+    return isinstance(kinds, list) and "KEYWORD" in kinds
 
 
 def _evidence_refs(prompt_input: Mapping[str, object]) -> list[str]:

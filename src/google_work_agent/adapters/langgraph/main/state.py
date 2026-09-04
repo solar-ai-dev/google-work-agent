@@ -27,6 +27,8 @@ from google_work_agent.application.agents.request_understanding.contracts import
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import QueryAttemptV1
+from google_work_agent.application.agents.retrieval.contracts.query_plan import SourceFetchPlanV1
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
     EvidenceSelectionResultV2,
@@ -196,6 +198,11 @@ class GraphState(TypedDict, total=False):
     __workflow_control__: NotRequired[dict[str, object] | None]
     exclusion_obligation_segment_ids: NotRequired[list[str]]
     pending_user_retrieval_need: NotRequired[dict[str, object] | None]
+    __context_canonical_plans__: NotRequired[dict[str, SourceFetchPlanV1]]
+    __context_query_attempts__: NotRequired[list[QueryAttemptV1]]
+    __context_read_result_handles__: NotRequired[list[str]]
+    __context_read_bindings__: NotRequired[dict[str, dict[str, str]]]
+    __context_segment_handles__: NotRequired[list[str]]
     __modify_review_plan_id__: NotRequired[str | None]
     __modify_review_version__: NotRequired[int | None]
     __modify_review_risks__: NotRequired[dict[str, dict[str, object]] | None]
@@ -217,6 +224,7 @@ CONTEXT_CANONICAL_PLANS_KEY: Final = "__context_canonical_plans__"
 CONTEXT_FOLLOWUP_OPERATION_KEY: Final = "__context_followup_operation__"
 CONTEXT_NEXT_PAGE_HANDLES_KEY: Final = "__context_next_page_handles__"
 CONTEXT_DETAIL_CANDIDATES_KEY: Final = "__context_detail_candidates__"
+CONTEXT_ROUND_PREADVANCED_KEY: Final = "__context_round_preadvanced__"
 ANALYSIS_AGENT_LOCAL_KEY: Final = "__analysis_agent_local__"
 PLANNING_AGENT_LOCAL_KEY: Final = "__planning_agent_local__"
 PLANNING_MODE_KEY: Final = "__planning_mode__"

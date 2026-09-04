@@ -30,6 +30,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     CONTEXT_RAG_CANDIDATES_KEY,
     CONTEXT_READ_BINDINGS_KEY,
     CONTEXT_READ_RESULT_HANDLES_KEY,
+    CONTEXT_ROUND_PREADVANCED_KEY,
     CONTEXT_SEGMENT_HANDLES_KEY,
     CONTEXT_SELECTION_OUTPUT_KEY,
     CONTEXT_SUFFICIENCY_OUTPUT_KEY,
@@ -166,6 +167,9 @@ from .projections.execute_read_projection import (
     project_connector_call,
     sanitize_acquisition_result,
 )
+from .projections.retrieval_continuation_projection import (
+    restore_retrieval_continuation,
+)
 from .routing.route_after_assess_sufficiency import (
     route_after_assess_sufficiency,
 )
@@ -291,8 +295,7 @@ def _runtime_route_constraint_policies(
                 if coarse_resource_category(route["resource_type"]) == "EMAIL"
                 and "gmail_search_threads" in route["allowed_read_tool_ids"]
                 else frozenset({"CONTAINER_REF"})
-                if route["resource_type"]
-                in {"TASK", "CALENDAR_EVENT", "CALENDAR_FREEBUSY"}
+                if route["resource_type"] in {"TASK", "CALENDAR_EVENT", "CALENDAR_FREEBUSY"}
                 else frozenset()
             ),
         )
@@ -456,6 +459,10 @@ class RetrievalSubgraph:
             prior_result=state.get("retrieval_result"),
             tool_route_plan=tool_route_plan,
         )
+        continuation = restore_retrieval_continuation(
+            state,
+            has_prior_result=current_round_no > 0,
+        )
         local_state = build_agent_local_state(
             agent_role="context_retriever",
             invocation_id=invocation_id,
@@ -475,10 +482,10 @@ class RetrievalSubgraph:
             ),
             "input_routes": list(tool_route_plan["input_plan"]["input_routes"]),
             "query_plan": None,
-            "query_attempts": [],
+            "query_attempts": list(continuation["query_attempts"]),
             "source_statuses": [],
-            "read_result_handles": [],
-            "segment_handles": [],
+            "read_result_handles": list(continuation["read_result_handles"]),
+            "segment_handles": list(continuation["segment_handles"]),
             "availability_results": [],
             "rag_candidates": [],
             "evidence_selection": None,
@@ -486,10 +493,12 @@ class RetrievalSubgraph:
             "final_result": None,
             CONTEXT_AGENT_LOCAL_KEY: local_state,
             CONTEXT_CURRENT_ROUND_NO_KEY: current_round_no,
-            CONTEXT_READ_RESULT_HANDLES_KEY: [],
-            CONTEXT_READ_BINDINGS_KEY: {},
-            CONTEXT_SEGMENT_HANDLES_KEY: [],
-            CONTEXT_QUERY_ATTEMPTS_KEY: [],
+            CONTEXT_READ_RESULT_HANDLES_KEY: list(continuation["read_result_handles"]),
+            CONTEXT_READ_BINDINGS_KEY: dict(continuation["read_bindings"]),
+            CONTEXT_SEGMENT_HANDLES_KEY: list(continuation["segment_handles"]),
+            CONTEXT_QUERY_ATTEMPTS_KEY: list(continuation["query_attempts"]),
+            CONTEXT_CANONICAL_PLANS_KEY: dict(continuation["canonical_plans"]),
+            CONTEXT_ROUND_PREADVANCED_KEY: current_round_no > 0,
             "trace_context": merge_trace_context(
                 state,
                 graph_profile=self._graph_profile.value,
@@ -517,12 +526,13 @@ class RetrievalSubgraph:
                 if retrieval_required is not None
                 else [cast(RetrievalNeedV1, pending_need)]
             )
-            next_state[CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY] = followup_planner_projection(
-                current_round_no=current_round_no,
-                prior_query_attempts=[],
-                unresolved_sufficiency_issues=_needs_as_sufficiency_issues(needs),
-                read_result_summaries=self._bounded_read_result_summaries(next_state),
-            )
+            if continuation["canonical_plans"]:
+                next_state[CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY] = followup_planner_projection(
+                    current_round_no=current_round_no,
+                    prior_query_attempts=list(continuation["query_attempts"]),
+                    unresolved_sufficiency_issues=_needs_as_sufficiency_issues(needs),
+                    read_result_summaries=self._bounded_read_result_summaries(next_state),
+                )
         return next_state
 
     def _select_evidence_node(
@@ -761,9 +771,7 @@ class RetrievalSubgraph:
         sufficiency_result, llm_provider_result, retry_budget = self._run_sufficiency_attempt(
             state, confirmation_response=None
         )
-        tool_route_plan = _require_state_value(
-            state["tool_route_plan"], "tool_route_plan"
-        )
+        tool_route_plan = _require_state_value(state["tool_route_plan"], "tool_route_plan")
         sufficiency_result, retry_budget, should_plan_followup = authorize_retrieval_followup(
             sufficiency_result,
             request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -986,9 +994,13 @@ class RetrievalSubgraph:
         }
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
-        round_no = advance_current_round_no(
-            current_round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
-            is_followup=bool(state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)),
+        round_no = (
+            state[CONTEXT_CURRENT_ROUND_NO_KEY]
+            if state.get(CONTEXT_ROUND_PREADVANCED_KEY) is True
+            else advance_current_round_no(
+                current_round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
+                is_followup=bool(state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)),
+            )
         )
         plans = cast(
             list[SourceFetchPlanV1],
@@ -1125,6 +1137,7 @@ class RetrievalSubgraph:
                 CONTEXT_SEGMENT_HANDLES_KEY: list(acquisition["resource_handles"]),
                 CONTEXT_QUERY_ATTEMPTS_KEY: attempts,
                 CONTEXT_READ_BINDINGS_KEY: bindings,
+                CONTEXT_ROUND_PREADVANCED_KEY: False,
                 "read_result_handles": all_handles,
                 "segment_handles": list(acquisition["resource_handles"]),
                 "query_attempts": attempts,
@@ -1562,15 +1575,13 @@ class RetrievalSubgraph:
         merged.pop(CONTEXT_SELECTION_OUTPUT_KEY, None)
         merged.pop(CONTEXT_SUFFICIENCY_OUTPUT_KEY, None)
         merged.pop(CONTEXT_CURRENT_ROUND_NO_KEY, None)
-        merged.pop(CONTEXT_READ_RESULT_HANDLES_KEY, None)
-        merged.pop(CONTEXT_SEGMENT_HANDLES_KEY, None)
-        merged.pop(CONTEXT_QUERY_ATTEMPTS_KEY, None)
+        merged.pop(CONTEXT_ROUND_PREADVANCED_KEY, None)
+        # Keep bounded read identities until terminal cleanup so a Main
+        # Analysis/Review back-edge can extend the exact prior query.
         merged.pop(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY, None)
-        merged.pop(CONTEXT_CANONICAL_PLANS_KEY, None)
         merged.pop(CONTEXT_FOLLOWUP_OPERATION_KEY, None)
         merged.pop(CONTEXT_NEXT_PAGE_HANDLES_KEY, None)
         merged.pop(CONTEXT_DETAIL_CANDIDATES_KEY, None)
-        merged.pop(CONTEXT_READ_BINDINGS_KEY, None)
         merged.pop("query_plan", None)
         merged.pop("query_attempts", None)
         merged.pop("source_statuses", None)

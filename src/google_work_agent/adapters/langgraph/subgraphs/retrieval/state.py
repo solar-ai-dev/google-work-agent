@@ -53,6 +53,11 @@ class ContextRetrievalInputState(AgentSubgraphInputEnvelope, total=False):
     retrieval_result: RetrievalResultV1 | None
     exclusion_obligation_segment_ids: list[str]
     pending_user_retrieval_need: RetrievalNeedV1 | None
+    __context_canonical_plans__: dict[str, SourceFetchPlanV1]
+    __context_query_attempts__: list[QueryAttemptV1]
+    __context_read_result_handles__: list[str]
+    __context_read_bindings__: dict[str, dict[str, str]]
+    __context_segment_handles__: list[str]
 
 
 class ContextRetrievalLocalState(GraphState):
@@ -81,15 +86,11 @@ class ContextRetrievalLocalState(GraphState):
     __context_selection_output__: NotRequired[EvidenceSelectionResultV2]
     __context_sufficiency_output__: NotRequired[SufficiencyResultV2]
     __context_current_round_no__: NotRequired[int]
-    __context_read_result_handles__: NotRequired[list[str]]
-    __context_read_bindings__: NotRequired[dict[str, dict[str, str]]]
-    __context_segment_handles__: NotRequired[list[str]]
-    __context_query_attempts__: NotRequired[list[QueryAttemptV1]]
     __context_followup_planner_input__: NotRequired[dict[str, object]]
-    __context_canonical_plans__: NotRequired[dict[str, SourceFetchPlanV1]]
     __context_followup_operation__: NotRequired[str]
     __context_next_page_handles__: NotRequired[dict[str, str]]
     __context_detail_candidates__: NotRequired[dict[str, str]]
+    __context_round_preadvanced__: NotRequired[bool]
     __context_retrieval_retry_confirmation__: NotRequired[bool]
 
 
