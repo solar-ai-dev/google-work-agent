@@ -371,3 +371,108 @@ def test_select_evidence__preserves_one_candidate_per_explicit_work_lineage() ->
             for segment_id in result["selected_segment_ids"]
         }
     ) == 2
+
+
+def test_select_evidence__prefers_detail_content_over_same_thread_search_preview() -> None:
+    preview_selection = {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": "preview",
+                "role": "SUPPORTS",
+                "relevance_reason": "matching subject",
+            },
+            {
+                "segment_id": "second-preview",
+                "role": "SUPPORTS",
+                "relevance_reason": "matching subject",
+            },
+        ],
+        "selected_segment_ids": ["preview", "second-preview"],
+        "excluded_segment_ids": [],
+    }
+    runtime = FakeLLMRuntime(deque([_llm_result(preview_selection)]))
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    intent["constraints"] = [
+        {
+            "kind": "USER_REQUIREMENT",
+            "field": "original_search_request",
+            "value": ["KAN-93 관련 메일 중 최신 결정을 알려줘."],
+        },
+        {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": ["KAN-93"]},
+    ]
+    segments = [
+        SourceSegment(
+            "preview",
+            "gmail_thread:thread-1",
+            "GMAIL",
+            "gmail_thread",
+            "thread-1",
+            None,
+            None,
+            {},
+            "[Jira] (KAN-93) 0422 회의록 최수진 님이 1개 항목을 업데이트했습니다.",
+        ),
+        SourceSegment(
+            "detail",
+            "gmail_thread:thread-1",
+            "GMAIL",
+            "gmail_thread",
+            "thread-1",
+            None,
+            None,
+            {},
+            "From: 최수진 <jira@example.com>\nDate: 2026-04-22 15:49\n"
+            "상태: 해야 할 일 → 진행",
+        ),
+        SourceSegment(
+            "decision-without-lineage-in-chunk",
+            "gmail_thread:thread-2",
+            "GMAIL",
+            "gmail_thread",
+            "thread-2",
+            None,
+            None,
+            {},
+            "네비게이션바로 확정. 다음 할 일은 와이어프레임 수정이며 담당자는 박희정입니다.",
+        ),
+        SourceSegment(
+            "second-preview",
+            "gmail_thread:thread-2",
+            "GMAIL",
+            "gmail_thread",
+            "thread-2",
+            None,
+            None,
+            {},
+            "[Jira] (KAN-93) 0422 회의록",
+        ),
+    ]
+    candidates: list[RagCandidateV1] = [
+        {
+            "segment_id": segment.segment_id,
+            "resource_ref": segment.resource_handle,
+            "retrieval_score": 10.0 - index,
+            "reason_codes": ["KEYWORD_MATCH"] if "KAN-93" in segment.text else [],
+        }
+        for index, segment in enumerate(segments)
+    ]
+
+    result, _ = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=candidates,
+        segments=segments,
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["selected_segment_ids"][:2] == [
+        "detail",
+        "decision-without-lineage-in-chunk",
+    ]

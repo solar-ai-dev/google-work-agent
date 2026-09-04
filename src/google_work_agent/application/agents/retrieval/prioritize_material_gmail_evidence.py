@@ -35,6 +35,19 @@ _SYSTEM_NOTIFICATION_MARKERS = (
     "새로운 수신함",
     "new feature",
 )
+_MESSAGE_DETAIL_MARKERS = ("from:", "to:", "date:", "subject:")
+_DECISION_DETAIL_MARKERS = (
+    "결정",
+    "확정",
+    "담당자",
+    "기한:",
+    "다음 할 일",
+    "action item",
+    "decision",
+    "status:",
+    "상태:",
+    "상태 :",
+)
 _LINEAGE_PATTERN = re.compile(r"(?<![A-Z0-9])[A-Z][A-Z0-9]+-\d+(?![A-Z0-9])", re.IGNORECASE)
 
 
@@ -140,13 +153,20 @@ def _representative_segment_ids_by_resource(
 ) -> list[str]:
     """Keep one strong segment per matching thread so one long body cannot hide its peers."""
 
+    resource_lineage_keys: dict[str, set[str]] = {}
+    for _, _, candidate in ranked:
+        resource_lineage_keys.setdefault(candidate["resource_ref"], set()).update(
+            _lineage_keys(by_id[candidate["segment_id"]].text)
+        )
+
     result: list[str] = []
     seen_resources: set[str] = set()
     for score, _, candidate in ranked:
         if score <= 0 or candidate["resource_ref"] in seen_resources:
             continue
-        segment = by_id[candidate["segment_id"]]
-        if not required_lineage_keys.intersection(_lineage_keys(segment.text)):
+        if not required_lineage_keys.intersection(
+            resource_lineage_keys.get(candidate["resource_ref"], set())
+        ):
             continue
         seen_resources.add(candidate["resource_ref"])
         result.append(candidate["segment_id"])
@@ -170,11 +190,15 @@ def _materiality_score(text: str, *, requested_lineage_keys: Collection[str] = (
     normalized = text.casefold()
     score = 0
     if set(requested_lineage_keys).intersection(_lineage_keys(text)):
-        score += 10
+        score += 2
     if any(marker in normalized for marker in _CONTENT_RECORD_MARKERS):
         score += 5
     if any(marker in normalized for marker in _WORK_TRACKING_MARKERS):
         score += 2
+    if sum(marker in normalized for marker in _MESSAGE_DETAIL_MARKERS) >= 2:
+        score += 6
+    if any(marker in normalized for marker in _DECISION_DETAIL_MARKERS):
+        score += 10
     if any(marker in normalized for marker in _SYSTEM_NOTIFICATION_MARKERS):
         score -= 5
     return score
