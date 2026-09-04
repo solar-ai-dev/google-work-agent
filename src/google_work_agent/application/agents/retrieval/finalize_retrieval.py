@@ -202,6 +202,15 @@ def initialize_current_round_no(
     return completed_rounds
 
 
+def advance_current_round_no(*, current_round_no: int, is_followup: bool) -> int:
+    """Return the 0-based round that the next read attempt belongs to."""
+
+    next_round_no = current_round_no + int(is_followup)
+    if next_round_no < 0 or next_round_no >= MAX_RETRIEVAL_ROUNDS:
+        raise RetrievalRoundLimitExceeded("retrieval round limit is exhausted")
+    return next_round_no
+
+
 def retrieval_round_count(*, current_round_no: int) -> int:
     if current_round_no < 0 or current_round_no >= MAX_RETRIEVAL_ROUNDS:
         raise ValueError("current_round_no is outside the canonical retrieval round range")

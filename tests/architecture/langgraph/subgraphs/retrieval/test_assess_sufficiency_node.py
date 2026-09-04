@@ -46,3 +46,19 @@ def test_assess_sufficiency_router__preserves_frozen_route__and_three_round_boun
         )
         == "finalize"
     )
+
+
+def test_assess_sufficiency_router__does_not_count_duplicate_attempts_as_new_rounds() -> None:
+    state = {
+        "sufficiency": {"status": "NEEDS_MORE_DATA"},
+        "tool_route_plan": {"input_plan": {}},
+        "read_result_handles": ["read-1"],
+        "query_attempts": [
+            {"round_no": 0},
+            {"round_no": 0},
+            {"round_no": 1},
+            {"round_no": 2},
+        ],
+    }
+
+    assert route_after_assess_sufficiency.route_after_assess_sufficiency(state) == "finalize"

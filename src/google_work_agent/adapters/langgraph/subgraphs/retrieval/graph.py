@@ -104,6 +104,7 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 )
 from google_work_agent.application.agents.retrieval.execute_read import RetrievalReadBindingError
 from google_work_agent.application.agents.retrieval.finalize_retrieval import (
+    advance_current_round_no,
     initialize_current_round_no,
 )
 from google_work_agent.application.agents.retrieval.plan_query import (
@@ -961,6 +962,10 @@ class RetrievalSubgraph:
         }
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
+        round_no = advance_current_round_no(
+            current_round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
+            is_followup=bool(state.get(CONTEXT_FOLLOWUP_OPERATION_KEY)),
+        )
         plans = cast(
             list[SourceFetchPlanV1],
             list(state.get(CONTEXT_CANONICAL_PLANS_KEY, {}).values()),
@@ -1055,7 +1060,7 @@ class RetrievalSubgraph:
                     query_attempt_id=self._id_factory(),
                     run_id=state["run_id"],
                     plan=plan,
-                    round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
+                    round_no=round_no,
                     attempt_no=len(attempts),
                     tool_id=tool_id,
                     canonical_arguments=arguments,
@@ -1085,8 +1090,6 @@ class RetrievalSubgraph:
             list(zip(plan_by_binding, raw_results, strict=True)),
             remaining_budget=self._remaining_retrieval_budget(state, len(new_handles)),
         )
-        prior_round = state[CONTEXT_CURRENT_ROUND_NO_KEY]
-        round_no = prior_round + (1 if state.get(CONTEXT_FOLLOWUP_OPERATION_KEY) else 0)
         safe_acquisition = self._bounded_acquisition(acquisition)
         return cast(
             ContextRetrievalLocalState,

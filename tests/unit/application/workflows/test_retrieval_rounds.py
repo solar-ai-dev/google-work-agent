@@ -7,6 +7,7 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 )
 from google_work_agent.application.agents.retrieval.finalize_retrieval import (
     RetrievalRoundLimitExceeded,
+    advance_current_round_no,
     initialize_current_round_no,
     retrieval_round_count,
 )
@@ -18,6 +19,17 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 def test_initial_round_is__zero_and_projects__one_completed_round() -> None:
     assert initialize_current_round_no(prior_result=None, tool_route_plan=_route_plan(1)) == 0
     assert retrieval_round_count(current_round_no=0) == 1
+
+
+def test_followup_attempt__advances_before_recording_its_round() -> None:
+    assert advance_current_round_no(current_round_no=0, is_followup=False) == 0
+    assert advance_current_round_no(current_round_no=0, is_followup=True) == 1
+    assert advance_current_round_no(current_round_no=1, is_followup=True) == 2
+
+
+def test_fourth_attempt__is_blocked_before_another_connector_read() -> None:
+    with pytest.raises(RetrievalRoundLimitExceeded):
+        advance_current_round_no(current_round_no=2, is_followup=True)
 
 
 @pytest.mark.parametrize(
