@@ -637,6 +637,7 @@ def test_work_analysis__compiled_normal_path__produces_analysis() -> None:
 
     assert result["work_analysis_result"]["schema_version"] == 2
     assert result["__target__"] == "SOLUTION_PLANNING"
+    assert ("extract_work_facts", "resolve_temporal_dependencies") in _edge_set(graph)
     assert ("finalize", "assess_operational_risks") in _edge_set(graph)
 
 

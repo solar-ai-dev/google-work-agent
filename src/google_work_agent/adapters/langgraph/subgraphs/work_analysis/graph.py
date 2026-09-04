@@ -185,6 +185,7 @@ class WorkAnalysisSubgraph:
             route_after_extract_work_facts,
             {
                 "resolve_entity_relations": "resolve_entity_relations",
+                "resolve_temporal_dependencies": "resolve_temporal_dependencies",
                 "detect_duplicate_conflict_candidates": "detect_duplicate_conflict_candidates",
                 "validate_relations": "validate_relations",
             },
