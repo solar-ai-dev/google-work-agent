@@ -511,8 +511,13 @@ class StructuredInferenceRuntimeRouter:
         semantic_validate: Callable[[object], object] | None,
         external_transfer_scope: ExternalLlmTransferScopeV1 | None,
     ) -> tuple[object, int]:
-        candidate = _parse_payload(payload)
-        errors = _collect_validation_errors(candidate, output_schema, semantic_validate)
+        try:
+            candidate = _parse_payload(payload)
+        except ValueError:
+            candidate = payload
+            errors = ["$: provider output is not valid JSON"]
+        else:
+            errors = _collect_validation_errors(candidate, output_schema, semantic_validate)
         if not errors:
             return candidate, 1
         if self.schema_repairer is None or self.runtime_policy.structured_output_repair_budget < 1:

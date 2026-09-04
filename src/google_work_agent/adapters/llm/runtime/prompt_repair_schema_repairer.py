@@ -90,7 +90,15 @@ class PromptRepairSchemaRepairer:
             runtime_policy=runtime_policy,
             api_key=api_key,
         )
-        return json.loads(payload.content) if isinstance(payload.content, str) else payload.content
+        if not isinstance(payload.content, str):
+            return payload.content
+        try:
+            return json.loads(payload.content)
+        except json.JSONDecodeError as error:
+            raise LLMInvocationError(
+                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+                "schema repair returned invalid JSON",
+            ) from error
 
 
 def _build_repair_input(

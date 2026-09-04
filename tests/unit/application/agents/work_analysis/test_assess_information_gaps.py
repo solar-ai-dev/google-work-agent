@@ -47,7 +47,7 @@ def test_assess_information__gaps_rejects__unbounded_evidence() -> None:
             "evidence_refs": ["stale"],
         }
     )
-    with pytest.raises(ValueError, match="outside current RetrievalResultV1"):
+    with pytest.raises(ValueError, match="invalid information-gap schema"):
         assess_information_gaps(
             request_intent=intent(),
             work_facts=[fact("f1")],
@@ -59,3 +59,38 @@ def test_assess_information__gaps_rejects__unbounded_evidence() -> None:
             allowed_evidence_refs={"ev-1"},
             requested_mode="AUTO",
         )
+
+
+def test_assess_information__gaps_exposes_disposition_invariants__to_repair() -> None:
+    runtime = WorkAnalysisRuntimeFake(
+        {
+            "disposition": "COMPLETE",
+            "ambiguities": [],
+            "retrieval_needs": [],
+            "evidence_refs": ["ev-1"],
+        }
+    )
+
+    assess_information_gaps(
+        request_intent=intent(),
+        work_facts=[fact("f1")],
+        evidence=[],
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref("work_analysis.assess_information_gaps", "assess_information_gaps"),
+        allowed_evidence_refs={"ev-1"},
+        requested_mode="LOCAL_GPU",
+    )
+
+    output_schema = runtime.calls[0]["output_schema"]
+    schema = output_schema.json_schema
+    branches = {branch["properties"]["disposition"]["const"]: branch for branch in schema["oneOf"]}
+    assert branches["COMPLETE"]["properties"]["evidence_refs"]["items"]["enum"] == ["ev-1"]
+    assert set(branches["COMPLETE"]["required"]) == {
+        "disposition",
+        "ambiguities",
+        "retrieval_needs",
+        "evidence_refs",
+    }
+    assert branches["COMPLETE"]["properties"]["retrieval_needs"]["maxItems"] == 0
+    assert branches["NEEDS_MORE_DATA"]["properties"]["retrieval_needs"]["minItems"] == 1
+    assert "question" in branches["NEEDS_CONFIRMATION"]["required"]

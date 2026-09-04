@@ -1317,7 +1317,7 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
       expect.objectContaining({ method: "POST" }),
     ),
   );
-  await user.click(await screen.findByRole("button", { name: "취소" }));
+  await user.click(await screen.findByRole("button", { name: "중지" }));
   await user.click(screen.getByRole("button", { name: "다시 준비해 주세요" }));
 
   await waitFor(() =>
@@ -2675,7 +2675,7 @@ test("uses the Gmail subject instead of a generic resource fallback title", asyn
 
 test("TST-UI-206 keeps focus separate and sends opaque selection handles", async () => {
   const user = userEvent.setup();
-  const requests = installUiContractFetch({ twoItems: true });
+  const requests = installUiContractFetch({ twoItems: true, run: false });
   render(<App />);
 
   await screen.findByText("첫 번째 자료");
@@ -2699,7 +2699,7 @@ test("TST-UI-206 keeps focus separate and sends opaque selection handles", async
 
 test("TST-UI-207 uses AGENT_SEARCH without selection and quick action does not write directly", async () => {
   const user = userEvent.setup();
-  const requests = installUiContractFetch();
+  const requests = installUiContractFetch({ run: false });
   render(<App />);
 
   await screen.findByText("첫 번째 자료");
@@ -3067,7 +3067,7 @@ test("TST-UI-211 shows loading, empty, error, focus, and disabled pagination sta
 });
 
 test("composer exposes one prompt, has no clear button, and retains the send control", async () => {
-  installUiContractFetch();
+  installUiContractFetch({ run: false });
   render(<App />);
 
   const composer = await screen.findByRole("textbox", { name: "선택한 메일에 대해 질문하거나 업무를 요청하세요..." });
@@ -3113,7 +3113,7 @@ test("shows a partial-result notice after a run is cancelled", async () => {
 });
 
 test("loads the account after Google connection provisioning and retries one initial identity miss", async () => {
-  const requests = installUiContractFetch({ accountResponses: [null, currentAccount()] });
+  const requests = installUiContractFetch({ accountResponses: [null, currentAccount()], run: false });
   const user = userEvent.setup();
   render(<App />);
 

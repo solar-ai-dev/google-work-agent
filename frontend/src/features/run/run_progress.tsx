@@ -4,11 +4,10 @@ import type { RunSseEvent } from "./api/run_sse_event";
 
 type ActivityLine = { eventId: string; label: string };
 
-export function RunProgress({ snapshot, latestEvent = null, busy, onCancel, onResume }: {
+export function RunProgress({ snapshot, latestEvent = null, busy, onResume }: {
   snapshot: RunSnapshot;
   latestEvent?: RunSseEvent | null;
   busy: string | null;
-  onCancel: () => void;
   onResume: (resumeKind: "SAFE_CHECKPOINT_RESUME") => void;
 }): JSX.Element {
   const [activity, setActivity] = useState<{ runId: string; lines: ActivityLine[] }>({ runId: snapshot.run.run_id, lines: [] });
@@ -40,9 +39,6 @@ export function RunProgress({ snapshot, latestEvent = null, busy, onCancel, onRe
         {snapshot.terminal_result_kind === "PARTIAL" ? <p className="status-warn">일부 작업은 완료되었고 나머지는 취소되었습니다.</p> : null}
       </div>
       <div className="button-row">
-        {snapshot.run.next_allowed_commands.includes("REQUEST_CANCEL") ? (
-          <button className="button-danger" type="button" disabled={busy === "cancel-run"} onClick={onCancel}>취소</button>
-        ) : null}
         {resumeAction ? (
           <button className="button-secondary" type="button" disabled={busy === "resume-run"} onClick={() => onResume(resumeAction.resume_kind!)}>재개</button>
         ) : null}

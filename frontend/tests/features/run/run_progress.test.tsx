@@ -5,17 +5,17 @@ import type { RunSnapshot } from "../../../src/api/contract";
 import { RunProgress } from "../../../src/features/run/run_progress";
 import type { RunSseEvent } from "../../../src/features/run/api/run_sse_event";
 
-test("RunProgress exposes only server-projected cancel and resume actions", async () => {
+test("RunProgress exposes only the server-projected resume action", async () => {
   const snapshot = { run: { status: "BLOCKED", next_allowed_commands: ["REQUEST_CANCEL"] }, execution_status: { action_count: 1, terminal_action_count: 0 }, terminal_result_kind: "NONE", error: { actions: [{ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" }] } } as RunSnapshot;
   const onResume = vi.fn();
-  render(<RunProgress snapshot={snapshot} busy={null} onCancel={vi.fn()} onResume={onResume} />);
+  render(<RunProgress snapshot={snapshot} busy={null} onResume={onResume} />);
   await userEvent.setup().click(screen.getByRole("button", { name: "재개" }));
   expect(onResume).toHaveBeenCalledWith("SAFE_CHECKPOINT_RESUME");
 });
 
 test("RunProgress hides stale safe-resume actions while a run is active", () => {
   const snapshot = { run: { status: "ANALYZING", next_allowed_commands: ["REQUEST_CANCEL"] }, execution_status: { action_count: 0, terminal_action_count: 0 }, terminal_result_kind: "NONE", error: { actions: [{ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" }] } } as RunSnapshot;
-  render(<RunProgress snapshot={snapshot} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  render(<RunProgress snapshot={snapshot} busy={null} onResume={vi.fn()} />);
   expect(screen.queryByRole("button", { name: "재개" })).not.toBeInTheDocument();
 });
 
@@ -29,7 +29,7 @@ test.each([
     schema_version: 1, event_id: "event-1", run_id: "run-1", action_id: null,
     occurred_at_ms: 1, event_type: eventType, payload, projection_version: 1,
   } as RunSseEvent;
-  render(<RunProgress snapshot={snapshot} latestEvent={latestEvent} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  render(<RunProgress snapshot={snapshot} latestEvent={latestEvent} busy={null} onResume={vi.fn()} />);
   expect(screen.getByTestId("run-event-progress")).toHaveTextContent(label);
 });
 
@@ -37,8 +37,8 @@ test("RunProgress appends a gray line when the active agent stage changes", () =
   const snapshot = { run: { run_id: "run-1", version: 1, status: "ANALYZING", next_allowed_commands: [] }, execution_status: { action_count: 0, terminal_action_count: 0 }, terminal_result_kind: "NONE" } as RunSnapshot;
   const first = { schema_version: 1, event_id: "event-1", run_id: "run-1", action_id: null, occurred_at_ms: 1, event_type: "phase_changed", payload: { phase: "REQUEST_ANALYSIS" }, projection_version: 1 } as RunSseEvent;
   const second = { ...first, event_id: "event-2", event_type: "phase_changed", payload: { phase: "TOOL_ROUTING" }, projection_version: 2 } as RunSseEvent;
-  const rendered = render(<RunProgress snapshot={snapshot} latestEvent={first} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
-  rendered.rerender(<RunProgress snapshot={snapshot} latestEvent={second} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  const rendered = render(<RunProgress snapshot={snapshot} latestEvent={first} busy={null} onResume={vi.fn()} />);
+  rendered.rerender(<RunProgress snapshot={snapshot} latestEvent={second} busy={null} onResume={vi.fn()} />);
   expect(screen.getByText("요청 이해 에이전트 · 요청의 목적을 파악하고 있습니다.")).toBeInTheDocument();
   expect(screen.getByText("도구 경로 에이전트 · 사용할 도구를 정하고 있습니다.")).toBeInTheDocument();
 });

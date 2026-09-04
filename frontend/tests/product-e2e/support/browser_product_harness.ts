@@ -225,8 +225,7 @@ export class BrowserProductHarness {
   async actionCard(toolName: string): Promise<Locator> {
     const card = this.page
       .getByRole("region", { name: "Action Plan" })
-      .getByRole("article")
-      .filter({ hasText: toolName });
+      .locator(`[data-tool-name="${toolName}"]`);
     await expect(card).toBeVisible();
     return card;
   }

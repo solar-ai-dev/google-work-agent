@@ -40,8 +40,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
   const feasibility = feasibilityDecision(action.risk);
   const argumentSummary = approvalArgumentSummary(action);
   return (
-    <article className="approval-conversation" aria-label={`${actionLabel(action.tool_name)} 승인 요청`}>
-      <span className="sr-only">{action.tool_name}</span>
+    <article className="approval-conversation" aria-label={`${actionLabel(action.tool_name)} 승인 요청`} data-tool-name={action.tool_name}>
       <p className="approval-question">{actionLabel(action.tool_name)} 작업을 진행할까요?</p>
       {duplicate === "SIMILAR_CANDIDATE" ? <p className="status-warn">비슷한 기존 작업이 있습니다.</p> : null}
       {duplicate === "CLEAR_DUPLICATE" ? <p className="status-warn">동일한 작업이 이미 있습니다.</p> : null}
@@ -130,12 +129,17 @@ function approvalArgumentSummary(action: RunAction): Array<{ field: string; labe
 
 function argumentValue(action: RunAction, field: string): string {
   const payload = action.arguments.payload;
-  const nested = payload && typeof payload === "object" && !Array.isArray(payload)
-    ? (payload as Record<string, unknown>)[field]
-    : undefined;
+  const payloadFields = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {};
+  const nested = field === "due"
+    ? payloadFields.due ?? payloadFields.scheduled_date
+    : payloadFields[field];
   const value = nested ?? action.arguments[field];
   if (Array.isArray(value)) return value.map(String).join(", ");
   if (value === null || value === undefined) return "";
+  if (field === "task_list_id" && value === "@default") return "내 할 일 목록";
+  if (field === "calendar_id" && value === "primary") return "기본 캘린더";
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
 

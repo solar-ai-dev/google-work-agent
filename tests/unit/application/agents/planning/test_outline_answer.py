@@ -4,7 +4,21 @@ from collections.abc import Mapping
 
 import pytest
 
-from google_work_agent.application.agents.planning.outline_answer import outline_answer
+from google_work_agent.application.agents.planning.outline_answer import (
+    answer_outline_output_schema,
+    outline_answer,
+)
+
+
+def test_answer_outline_schema__binds_citations__to_current_evidence() -> None:
+    schema = answer_outline_output_schema(["e2", "e1", "e1"])
+    answer_schema = schema.json_schema["oneOf"][0]
+
+    assert answer_schema["properties"]["evidence_refs"] == {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": ["e1", "e2"]},
+    }
 
 
 def test_outline_uses__distinct_prompt__and_minimum_projection() -> None:
@@ -48,16 +62,15 @@ def test_outline_rejects__evidence_outside__current_projection() -> None:
         )
 
 
-def test_outline__materializes_only__available_evidence_identity() -> None:
-    result = outline_answer(
-        user_request="Summarize.",
-        request_intent={"goal": "summary"},
-        work_analysis=None,
-        evidence=[{"evidence_id": "evidence-only", "excerpt": "fact"}],
-        invoke=lambda _prompt_id, _prompt_input: {
-            "sections": ["Conclusion"],
-            "evidence_refs": ["invented-reference"],
-        },
-    )
-
-    assert result["evidence_refs"] == ["evidence-only"]
+def test_outline__does_not_replace__invalid_evidence_identity() -> None:
+    with pytest.raises(ValueError, match="outside"):
+        outline_answer(
+            user_request="Summarize.",
+            request_intent={"goal": "summary"},
+            work_analysis=None,
+            evidence=[{"evidence_id": "evidence-only", "excerpt": "fact"}],
+            invoke=lambda _prompt_id, _prompt_input: {
+                "sections": ["Conclusion"],
+                "evidence_refs": ["invented-reference"],
+            },
+        )

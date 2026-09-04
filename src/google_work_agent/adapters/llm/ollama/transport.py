@@ -25,6 +25,8 @@ from google_work_agent.ports.llm.structured_inference_contracts import (
     ToolDefinition,
 )
 
+OLLAMA_PRODUCT_CONTEXT_TOKENS = 16_384
+
 
 class OllamaTransport(Protocol):
     def probe(self, *, endpoint: str, model_id: str | None, timeout_seconds: int) -> ProbeResult:
@@ -252,18 +254,14 @@ class OllamaHTTPClient(OllamaTransport):
             "think": False,
             "format": dict(output_schema.json_schema),
         }
-        # docs/15 section 9.5 (Runtime Prompt Activation Gate): "options" is
-        # Ollama's documented /api/generate sampling-parameter object. Only
-        # sent when the caller (the Gate Runner) explicitly fixes sampling
-        # conditions -- omitted entirely otherwise, so production dispatch
-        # (which never sets these) produces the exact same payload as before.
-        options: dict[str, object] = {}
+        # The Run context budget is 16K. Keep Ollama's provider window aligned
+        # so a valid repair response is not truncated by its 4K default.
+        options: dict[str, object] = {"num_ctx": OLLAMA_PRODUCT_CONTEXT_TOKENS}
         if sampling_temperature is not None:
             options["temperature"] = sampling_temperature
         if sampling_seed is not None:
             options["seed"] = sampling_seed
-        if options:
-            payload["options"] = options
+        payload["options"] = options
         response = _post_json(
             endpoint=endpoint,
             path="/api/generate",
@@ -340,13 +338,12 @@ class OllamaHTTPClient(OllamaTransport):
             ],
             "stream": False,
         }
-        options: dict[str, object] = {}
+        options: dict[str, object] = {"num_ctx": OLLAMA_PRODUCT_CONTEXT_TOKENS}
         if sampling_temperature is not None:
             options["temperature"] = sampling_temperature
         if sampling_seed is not None:
             options["seed"] = sampling_seed
-        if options:
-            payload["options"] = options
+        payload["options"] = options
         response = _post_json(
             endpoint=endpoint,
             path="/api/chat",

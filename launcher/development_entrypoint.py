@@ -216,19 +216,19 @@ def _restrict_owner_only(path: Path) -> None:
         ["whoami", "/user", "/fo", "csv", "/nh"],
         check=True,
         capture_output=True,
-        text=True,
         timeout=5,
     ).stdout
-    match = re.search(r"S-1-[0-9-]+", identity)
+    match = re.search(rb"S-1-[0-9-]+", identity)
     if match is None:
         raise RuntimeError("DEVELOPMENT_DESCRIPTOR_PERMISSION_DENIED")
+    current_user_sid = match.group(0).decode("ascii")
     subprocess.run(
         [
             "icacls",
             str(path),
             "/inheritance:r",
             "/grant:r",
-            f"*{match.group(0)}:F",
+            f"*{current_user_sid}:F",
             "*S-1-5-18:F",
         ],
         check=True,

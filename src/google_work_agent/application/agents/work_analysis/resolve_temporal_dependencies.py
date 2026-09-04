@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import cast
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
@@ -74,9 +75,10 @@ def resolve_temporal_dependencies(
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
     fact_ids = {fact["fact_id"] for fact in work_facts}
+    output_schema = _bound_output_schema(fact_ids, allowed_evidence_refs)
 
     def validate(value: object) -> object:
-        errors = validate_output_schema(value, TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA.json_schema)
+        errors = validate_output_schema(value, output_schema.json_schema)
         if errors:
             raise ValueError(f"invalid temporal relation candidate schema: {'; '.join(errors)}")
         seen: set[str] = set()
@@ -102,13 +104,38 @@ def resolve_temporal_dependencies(
         requested_mode,
         prompt_ref,
         prompt_input,
-        TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA,
+        output_schema,
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [
         cast(WorkRelationV1, dict(item))
         for item in cast(list[dict[str, object]], root["relation_candidates"])
     ]
+
+
+def _bound_output_schema(
+    fact_ids: set[str], allowed_evidence_refs: set[str]
+) -> OutputSchemaDefinition:
+    """Bind generated relation operands and citations to current durable evidence."""
+
+    json_schema = deepcopy(TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA.json_schema)
+    properties = cast(dict[str, object], json_schema["properties"])
+    candidates = cast(dict[str, object], properties["relation_candidates"])
+    item = cast(dict[str, object], candidates["items"])
+    item_properties = cast(dict[str, object], item["properties"])
+    fact_id_schema = {"type": "string", "enum": sorted(fact_ids)}
+    item_properties["source_fact_id"] = fact_id_schema
+    item_properties["target_fact_id"] = dict(fact_id_schema)
+    item_properties["evidence_refs"] = {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": sorted(allowed_evidence_refs)},
+    }
+    return OutputSchemaDefinition(
+        schema_version=TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
 
 
 __all__ = ["TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA", "resolve_temporal_dependencies"]

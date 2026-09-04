@@ -73,7 +73,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
                 </Fragment>
               ))}
               {showTransientRequest ? <UserMessageBubble content={runContext!.request_text} /> : null}
-              {runSnapshot && !isTerminal ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
+              {runSnapshot && !isTerminal ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onResume={(kind) => void handleResumeRun(kind)} /> : null}
               {!isTerminal && runSnapshot?.pending_interrupt ? <ConfirmationCard interrupt={runSnapshot.pending_interrupt} text={confirmationText} busy={busyCommand === "confirm-run"} onTextChange={setConfirmationText} onSubmit={(option) => void handleConfirmation(option)} /> : null}
               {runSnapshot && !isTerminal ? <div className="action-execution-flow"><ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /><ExecutionStatusCard snapshot={runSnapshot} /></div> : null}
               {runSnapshot && !isTerminal ? <RecoveryCard snapshot={runSnapshot} busy={busyCommand} onResolve={(kind) => void handleResolveRecovery(kind)} onErrorAction={(kind) => kind === "OPEN_DIAGNOSTICS" ? onOpenDiagnostics() : onOpenSettings()} /> : null}
@@ -82,7 +82,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
         </div>
         {runSnapshot?.external_llm_transfer_scope ? <ExternalLlmDisclosureCard scope={runSnapshot.external_llm_transfer_scope} /> : null}
         {runSnapshot?.context_preview ? <ContextPreviewCard preview={runSnapshot.context_preview} busy={busyCommand?.startsWith("adjust-context:") ?? false} onAdjust={handleAdjustContext} /> : null}
-        <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} />
+        <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} activeRun={Boolean(runSnapshot && !isTerminal)} cancelAllowed={runSnapshot?.run.next_allowed_commands.includes("REQUEST_CANCEL") ?? false} cancelling={busyCommand === "cancel-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} onCancel={handleCancelRun} />
       </div>
     </>
   );

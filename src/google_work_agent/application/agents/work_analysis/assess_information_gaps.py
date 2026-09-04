@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import cast
 
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
@@ -111,9 +112,10 @@ def assess_information_gaps(
     }
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
+    output_schema = _bound_output_schema(allowed_evidence_refs)
 
     def validate(value: object) -> object:
-        errors = validate_output_schema(value, ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA.json_schema)
+        errors = validate_output_schema(value, output_schema.json_schema)
         if errors:
             raise ValueError(f"invalid information-gap schema: {'; '.join(errors)}")
         root = cast(Mapping[str, object], value)
@@ -143,10 +145,62 @@ def assess_information_gaps(
         requested_mode,
         prompt_ref,
         prompt_input,
-        ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA,
+        output_schema,
     )
     validated = cast(Mapping[str, object], validate(result.structured_output))
     return cast(InformationGapAssessmentV1, dict(validated))
+
+
+def _bound_output_schema(allowed_evidence_refs: set[str]) -> OutputSchemaDefinition:
+    """Express current evidence and disposition invariants at the repair boundary."""
+
+    json_schema = cast(
+        dict[str, object], deepcopy(ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA.json_schema)
+    )
+    properties = cast(dict[str, object], json_schema["properties"])
+    evidence_item = {"type": "string", "enum": sorted(allowed_evidence_refs)}
+    properties["evidence_refs"] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": evidence_item,
+    }
+    ambiguities = cast(dict[str, object], properties["ambiguities"])
+    ambiguity = cast(dict[str, object], ambiguities["items"])
+    ambiguity_properties = cast(dict[str, object], ambiguity["properties"])
+    ambiguity_properties["evidence_refs"] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": dict(evidence_item),
+    }
+    branches = [_disposition_schema(json_schema, disposition) for disposition in _DISPOSITIONS]
+    return OutputSchemaDefinition(
+        schema_version=ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA.schema_version,
+        json_schema={"oneOf": branches},
+    )
+
+
+def _disposition_schema(
+    base_schema: Mapping[str, object], disposition: str
+) -> dict[str, object]:
+    """Build one complete object branch for Ollama's structured-output grammar."""
+
+    branch = cast(dict[str, object], deepcopy(base_schema))
+    properties = cast(dict[str, object], branch["properties"])
+    properties["disposition"] = {"const": disposition}
+    retrieval_needs = cast(dict[str, object], properties["retrieval_needs"])
+    retrieval_needs[
+        "minItems" if disposition == "NEEDS_MORE_DATA" else "maxItems"
+    ] = 1 if disposition == "NEEDS_MORE_DATA" else 0
+    if disposition == "NEEDS_CONFIRMATION":
+        required = cast(list[str], branch["required"])
+        required.extend(["question", "reason_codes"])
+        properties["question"] = {"type": "string", "minLength": 1}
+        properties["reason_codes"] = {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string", "minLength": 1},
+        }
+    return branch
 
 
 __all__ = ["ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA", "assess_information_gaps"]

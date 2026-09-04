@@ -122,6 +122,46 @@ def test_repair_dispatches_the__same_base_prompt__with_full_input_shape(
     assert '"failure_reason_code":"OUTPUT_SCHEMA_INVALID"' in assembled
 
 
+def test_repair_rejects__malformed_json__as_typed_schema_failure(tmp_path: Path) -> None:
+    manifest_path = _active_manifest(tmp_path)
+    transport = FakeAPIProviderTransport()
+    transport.queued_payloads.append(
+        ProviderResponsePayload(
+            content='{"answer":"truncated',
+            model="m",
+            provider_request_id=None,
+            input_tokens=None,
+            output_tokens=None,
+            latency_ms=0,
+        )
+    )
+    repairer = PromptRepairSchemaRepairer(manifest_path=manifest_path)
+    active_prompt_ref = load_prompt_reference("planning.compose_answer", manifest_path)
+
+    with pytest.raises(LLMInvocationError) as excinfo:
+        repairer.repair(
+            provider=_provider(transport),
+            prompt_ref=active_prompt_ref,
+            prompt_input={
+                "user_request": "summarize",
+                "request_intent": {"goal": "summary"},
+                "answer_outline": {"sections": ["summary"]},
+                "evidence": [],
+            },
+            failed_output={"answer": 123},
+            output_schema=OUTPUT_SCHEMA,
+            runtime_policy=RuntimePolicy(),
+            api_key="key-1",
+            attempt_no=1,
+            max_attempts=1,
+            failure_reason_code=LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
+            validator_errors=("$.answer must be string",),
+        )
+
+    assert excinfo.value.code is LLMErrorCode.OUTPUT_SCHEMA_INVALID
+    assert str(excinfo.value) == "schema repair returned invalid JSON"
+
+
 def test_repair_resolves__the_exact__base_prompt_id(tmp_path: Path) -> None:
     manifest_path = _active_manifest(tmp_path)
     transport = FakeAPIProviderTransport()

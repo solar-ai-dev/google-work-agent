@@ -56,8 +56,8 @@ Invoke-RestMethod "$($launch.base_url)/health/ready"
 
 첫 UI 진입 후 설정에서 Gemini API Key를 연결하고 API LLM 사용 및 외부 전송 동의를 설정합니다. Development launcher의 LLM credential은 process memory에만 보관되며 종료 후 사라집니다. Local Model은 signed Model Manifest와 Product Decision을 갖춘 `LOCAL_CAPABLE` release에서만 활성화됩니다.
 
-- 현재 요청만으로 답할 수 있는 answer-only 흐름은 Google OAuth 없이 실행할 수 있습니다.
-- Gmail·Calendar·Tasks 조회 또는 변경은 UI에서 Google OAuth 연결이 필요합니다.
+- 첫 실행 완료와 모든 Agent Run에는 Google OAuth 연결 및 필수 Scope 동의가 필요합니다.
+- Gmail·Calendar·Tasks 조회 또는 변경은 연결된 Google 계정 권한을 사용합니다.
 - 모든 Write는 Canonical Approval 이후 Claim/Execution Attempt/Connector Write/Verification 순서를 거칩니다.
 
 ## 검증

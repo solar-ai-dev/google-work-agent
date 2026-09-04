@@ -9,10 +9,8 @@ from google_work_agent.adapters.langgraph.main.state import (
     WorkflowPhase,
     initial_graph_state,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import (
-    SupervisorTarget,
-    route_supervisor,
-)
+from google_work_agent.adapters.langgraph.main.supervisor import route_supervisor
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.retrieval.projections import (
     execute_read_projection,

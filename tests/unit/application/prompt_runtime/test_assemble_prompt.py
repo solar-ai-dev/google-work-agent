@@ -46,6 +46,10 @@ def test_assemble_prompt__uses_registered_source__and_allowlisted_projection(
     assembled = assemble_prompt(prompt_ref, _projection(), registry=registry)
 
     assert assembled.startswith("You are the Planning answer-composition node.")
+    assert "workplace productivity product, not a social companion" in assembled
+    assert "without simulating feelings" in assembled
+    assert "restrained professional voice" in assembled
+    assert "precise, calm language" in assembled
     assert '"user_request":"summarize"' in assembled
 
 
@@ -96,6 +100,8 @@ def test_assemble_prompt__adds_bounded__failure_instruction(tmp_path: Path) -> N
     )
 
     assert "Bounded failure instruction" in assembled
+    assert "preserve all unaffected fields" in assembled
+    assert "return the complete corrected object" in assembled
     assert "OUTPUT_SCHEMA_INVALID" in assembled
     assert "experiment_disposition" not in assembled
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import cast
@@ -23,7 +24,11 @@ ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
         "required": ["schema_version", "answer", "evidence_refs"],
         "properties": {
             "schema_version": {"const": 2},
-            "answer": {"type": "string", "minLength": 1},
+            "answer": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": r"^[^\s\[{]",
+            },
             "evidence_refs": {
                 "type": "array",
                 "items": {"type": "string", "minLength": 1},
@@ -79,6 +84,8 @@ def compose_answer(
         raise ValueError("compose_answer output requires schema_version 2")
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("compose_answer output requires answer")
+    if _is_serialized_container(answer):
+        raise ValueError("compose_answer answer must be user-visible prose")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
         raise ValueError("compose_answer output requires evidence_refs")
     allowed = set(answer_outline["evidence_refs"])
@@ -87,6 +94,17 @@ def compose_answer(
     if len(refs) != len(set(refs)):
         raise ValueError("compose_answer output contains duplicate evidence_refs")
     return {"schema_version": 2, "answer": answer, "evidence_refs": list(refs)}
+
+
+def _is_serialized_container(answer: str) -> bool:
+    stripped = answer.strip()
+    if not stripped.startswith(("{", "[")):
+        return False
+    try:
+        parsed = json.loads(stripped)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(parsed, (dict, list))
 
 
 __all__ = [

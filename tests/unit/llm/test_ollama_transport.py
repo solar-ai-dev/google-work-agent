@@ -207,12 +207,10 @@ def _prompt_ref_for_sampling_tests() -> PromptReference:
     )
 
 
-def test_invoke_structured__omits_options_when__sampling_is_unset(
+def test_invoke_structured__sets_product_context_when__sampling_is_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """docs/15 section 9.5: production dispatch (sampling_temperature/seed
-    both None) must produce the exact same payload as before this change --
-    no "options" key at all."""
+    """Production dispatch must not inherit Ollama's insufficient 4K default."""
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -233,7 +231,7 @@ def test_invoke_structured__omits_options_when__sampling_is_unset(
     )
 
     sent_body = _request_body(captured[0])
-    assert "options" not in sent_body
+    assert sent_body["options"] == {"num_ctx": 16_384}
 
 
 def test_invoke_structured__sends_fixed__temperature_when_set(
@@ -260,7 +258,7 @@ def test_invoke_structured__sends_fixed__temperature_when_set(
     )
 
     sent_body = _request_body(captured[0])
-    assert sent_body["options"] == {"temperature": 0.0}
+    assert sent_body["options"] == {"num_ctx": 16_384, "temperature": 0.0}
 
 
 def test_invoke_structured__sends_fixed__seed_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -286,7 +284,7 @@ def test_invoke_structured__sends_fixed__seed_when_set(monkeypatch: pytest.Monke
     )
 
     sent_body = _request_body(captured[0])
-    assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
+    assert sent_body["options"] == {"num_ctx": 16_384, "temperature": 0.0, "seed": 7}
 
 
 def test_provider_forwards__runtime_policy_sampling__fields_to_transport(
@@ -317,14 +315,13 @@ def test_provider_forwards__runtime_policy_sampling__fields_to_transport(
     )
 
     sent_body = _request_body(captured[0])
-    assert sent_body["options"] == {"temperature": 0.0, "seed": 7}
+    assert sent_body["options"] == {"num_ctx": 16_384, "temperature": 0.0, "seed": 7}
 
 
-def test_provider_omits_options__when_runtime_policy__leaves_sampling_unset(
+def test_provider_sets_context__when_runtime_policy__leaves_sampling_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Pins the production path: a bare ``RuntimePolicy()`` (what
-    api/composition.py always constructs) must never add an "options" key."""
+    """A bare production RuntimePolicy still receives the product context window."""
     captured: list[Request] = []
 
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
@@ -350,7 +347,7 @@ def test_provider_omits_options__when_runtime_policy__leaves_sampling_unset(
     )
 
     sent_body = _request_body(captured[0])
-    assert "options" not in sent_body
+    assert sent_body["options"] == {"num_ctx": 16_384}
 
 
 def test_provider_assembles_instruction__text_only_as__a_local_call_boundary(

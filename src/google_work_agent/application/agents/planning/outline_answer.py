@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from typing import cast
 
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     AnswerOutlineV1,
@@ -51,6 +53,25 @@ ANSWER_OUTLINE_OUTPUT_SCHEMA = OutputSchemaDefinition(
         ]
     },
 )
+
+
+def answer_outline_output_schema(
+    allowed_evidence_refs: Sequence[str],
+) -> OutputSchemaDefinition:
+    """Bind outline citations to evidence projected for the current Run."""
+
+    json_schema = deepcopy(ANSWER_OUTLINE_OUTPUT_SCHEMA.json_schema)
+    answer_schema = cast(dict[str, object], cast(list[object], json_schema["oneOf"])[0])
+    properties = cast(dict[str, object], answer_schema["properties"])
+    properties["evidence_refs"] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": sorted(set(allowed_evidence_refs))},
+    }
+    return OutputSchemaDefinition(
+        schema_version=ANSWER_OUTLINE_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
 
 
 def outline_answer(
@@ -110,11 +131,13 @@ def outline_answer(
         raise ValueError("outline_answer output requires non-empty sections")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
         raise ValueError("outline_answer output requires evidence_refs")
-    if len(allowed_refs) == 1:
-        refs = [next(iter(allowed_refs))]
     if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_refs):
         raise ValueError("outline_answer referenced evidence outside its projection")
     return {"sections": list(sections), "evidence_refs": list(refs)}
 
 
-__all__ = ["ANSWER_OUTLINE_OUTPUT_SCHEMA", "outline_answer"]
+__all__ = [
+    "ANSWER_OUTLINE_OUTPUT_SCHEMA",
+    "answer_outline_output_schema",
+    "outline_answer",
+]

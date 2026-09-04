@@ -102,6 +102,7 @@ from google_work_agent.application.agents.planning.draft_action_objective_per_ou
 )
 from google_work_agent.application.agents.planning.outline_answer import (
     ANSWER_OUTLINE_OUTPUT_SCHEMA,
+    answer_outline_output_schema,
 )
 from google_work_agent.application.agents.planning.resolve_default_container import (
     RequiredContainerUnresolvedError,
@@ -706,14 +707,30 @@ class PlanningSubgraph:
                 )
                 self._prompt_refs[prompt_id] = prompt_ref
             output_schema = schemas.get(prompt_id)
+            if prompt_id == "planning.outline_answer":
+                evidence = prompt_input.get("evidence")
+                if not isinstance(evidence, list):
+                    raise ValueError("outline_answer requires evidence")
+                projected_refs = [
+                    ref
+                    for item in evidence
+                    if isinstance(item, Mapping)
+                    for ref in (
+                        item.get("evidence_ref") or item.get("evidence_id") or item.get("id"),
+                    )
+                    if isinstance(ref, str) and ref
+                ]
+                output_schema = answer_outline_output_schema(projected_refs)
             if prompt_id == "planning.compose_answer":
                 outline = prompt_input.get("answer_outline")
                 if not isinstance(outline, Mapping):
                     raise ValueError("compose_answer requires answer_outline")
-                refs = outline.get("evidence_refs")
-                if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+                outline_refs = outline.get("evidence_refs")
+                if not isinstance(outline_refs, list) or not all(
+                    isinstance(ref, str) for ref in outline_refs
+                ):
                     raise ValueError("compose_answer requires outline evidence_refs")
-                output_schema = answer_draft_output_schema(cast(list[str], refs))
+                output_schema = answer_draft_output_schema(cast(list[str], outline_refs))
             if prompt_ref is None or output_schema is None:
                 raise ValueError(f"unsupported Planning Prompt slot: {prompt_id}")
             result = llm_runtime.infer(

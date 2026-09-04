@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import pytest
 from tests.support.external_llm_scope import ExternalScopeCheckpoint
@@ -46,6 +46,7 @@ class _Provider:
     calls: int = 0
     checkpoint_to_stale: ExternalScopeCheckpoint | None = None
     failure: LLMInvocationError | None = None
+    content: object = field(default_factory=lambda: {"answer": "ok"})
 
     @property
     def provider_name(self) -> str:
@@ -59,7 +60,7 @@ class _Provider:
         if self.checkpoint_to_stale is not None:
             self.checkpoint_to_stale.scope = _scope(scope_hash="stale-after-first-call")
             return ProviderResponsePayload({}, "model", None, 1, 1, 1)
-        return ProviderResponsePayload({"answer": "ok"}, "model", None, 1, 1, 1)
+        return ProviderResponsePayload(self.content, "model", None, 1, 1, 1)
 
 
 class _Status:
@@ -111,10 +112,11 @@ class _Hardware:
 @dataclass
 class _Repairer:
     calls: int = 0
+    failed_outputs: list[object] = field(default_factory=list)
 
     def repair(self, **kwargs: object) -> object:
-        del kwargs
         self.calls += 1
+        self.failed_outputs.append(kwargs["failed_output"])
         return {"answer": "repaired"}
 
 
@@ -236,6 +238,25 @@ def test_runtime_circuit_callbacks__guard_and_record__the_selected_leaf() -> Non
         ("guard", ActualRuntime.API_LLM, None),
         ("result", ActualRuntime.API_LLM, None),
     ]
+
+
+def test_malformed_json__uses_the_bounded_schema_repair_path() -> None:
+    checkpoint = ExternalScopeCheckpoint(scope=_scope())
+    malformed = '{"answer":"unterminated'
+    provider = _Provider(runtime=ActualRuntime.LOCAL_GPU, content=malformed)
+    repairer = _Repairer()
+
+    result = _router(
+        checkpoint=checkpoint,
+        api=_Provider(),
+        local=provider,
+        repairer=repairer,
+    ).infer("LOCAL_GPU", PROMPT, {"user_request": "hello"}, SCHEMA)
+
+    assert result.structured_output == {"answer": "repaired"}
+    assert provider.calls == 1
+    assert repairer.calls == 1
+    assert repairer.failed_outputs == [malformed]
 
 
 def test_runtime_circuit__guard_blocks__before_provider_dispatch() -> None:

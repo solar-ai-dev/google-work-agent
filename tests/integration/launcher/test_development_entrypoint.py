@@ -211,9 +211,8 @@ def _assert_owner_only(path: Path) -> None:
         ["whoami"],
         check=True,
         capture_output=True,
-        text=True,
         timeout=5,
-    ).stdout.strip().lower()
+    ).stdout.decode("utf-8").strip().lower()
     result = subprocess.run(
         ["icacls", str(path)],
         check=True,
