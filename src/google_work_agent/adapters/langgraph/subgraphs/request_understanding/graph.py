@@ -26,9 +26,6 @@ from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state 
     RequestUnderstandingParentOutputState,
     RequestUnderstandingStateV2,
 )
-from google_work_agent.application.agents.request_understanding.contracts import (
-    request_understanding_output,
-)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PRODUCT_RELEASE,
     PromptExecutionScope,
@@ -49,6 +46,9 @@ from .nodes.finalize_intent_node import (
 )
 from .nodes.identify_goal_node import (
     identify_goal_node,
+)
+from .projections.request_confirmation_projection import (
+    build_request_clarification_question,
 )
 from .routing.route_after_detect_ambiguity import (
     route_after_detect_ambiguity,
@@ -200,24 +200,12 @@ class RequestUnderstandingSubgraph:
         candidate = state.get("goal_candidate")
         if ambiguity is None or candidate is None:
             raise ValueError("request-understanding ambiguity is required")
-        missing = ", ".join(ambiguity["missing_fields"])
-        question: request_understanding_output.ClarificationQuestionV1 = {
-            "schema_version": 1,
-            "origin_target": "request.detect_ambiguity",
-            "question": (
-                f"Please clarify the following request fields: {missing}"
-                if missing
-                else "Please clarify the request."
-            ),
-            "affected_field_paths": list(ambiguity["missing_fields"]),
-            "reason_code": (
-                ambiguity["reason_codes"][0]
-                if ambiguity["reason_codes"]
-                else "REQUEST_UNDERSTANDING_NEEDS_CONFIRMATION"
-            ),
-            "known_context_summary": candidate["goal"],
-            "options": [],
-        }
+        request = request_from_run_input_state(cast(Any, state))
+        question = build_request_clarification_question(
+            request_text=request.request_text,
+            ambiguity=ambiguity,
+            goal_candidate=candidate,
+        )
         interrupt_id = self._id_factory()
         prompt_context = dict(cast(dict[str, object], state.get("prompt_context", {})))
         prompt_context.pop("confirmation_response", None)
