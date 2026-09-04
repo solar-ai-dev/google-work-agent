@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from typing import cast
 
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     AnswerDraftCandidateV2,
@@ -29,6 +31,22 @@ ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
         },
     },
 )
+
+
+def answer_draft_output_schema(allowed_evidence_refs: Sequence[str]) -> OutputSchemaDefinition:
+    """Bind answer citations to the evidence approved by the current outline."""
+
+    json_schema = deepcopy(ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA.json_schema)
+    properties = cast(dict[str, object], json_schema["properties"])
+    properties["evidence_refs"] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": sorted(set(allowed_evidence_refs))},
+    }
+    return OutputSchemaDefinition(
+        schema_version=ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
 
 
 def compose_answer(
@@ -71,4 +89,8 @@ def compose_answer(
     return {"schema_version": 2, "answer": answer, "evidence_refs": list(refs)}
 
 
-__all__ = ["ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA", "compose_answer"]
+__all__ = [
+    "ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA",
+    "answer_draft_output_schema",
+    "compose_answer",
+]

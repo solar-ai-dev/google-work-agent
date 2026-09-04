@@ -5,8 +5,6 @@ import * as api from "../../src/api";
 import * as runtimeApi from "../../src/features/diagnostics/api/get_runtime";
 import * as settingsApi from "../../src/features/settings/api/get_settings";
 import * as googleApi from "../../src/features/settings/api/google_connection_operations";
-import * as backupApi from "../../src/features/settings/api/backup_operations";
-import userEvent from "@testing-library/user-event";
 
 vi.mock("../../src/api", () => ({
   getLive: vi.fn(),
@@ -16,7 +14,6 @@ vi.mock("../../src/api", () => ({
 vi.mock("../../src/features/diagnostics/api/get_runtime", () => ({ getRuntime: vi.fn() }));
 vi.mock("../../src/features/settings/api/get_settings", () => ({ getSettings: vi.fn() }));
 vi.mock("../../src/features/settings/api/google_connection_operations", () => ({ getGoogleConnection: vi.fn(), getCurrentGoogleAccount: vi.fn() }));
-vi.mock("../../src/features/settings/api/backup_operations", () => ({ listBackups: vi.fn(), restoreBackup: vi.fn(), requestShutdown: vi.fn() }));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -38,9 +35,9 @@ test("loads protected state only after readiness and compatible bootstrap", asyn
   vi.mocked(api.getLive).mockResolvedValue({ api_contract_version: "1" } as never);
   vi.mocked(api.getReady).mockResolvedValue({ status: "READY", api_contract_version: "1", checks: [] } as never);
   vi.mocked(api.bootstrapSession).mockResolvedValue({ schema_version: 1, session_established: true, service_instance_id: "service-1", api_contract_version: "1", compatibility: "COMPATIBLE" });
-  vi.mocked(runtimeApi.getRuntime).mockResolvedValue({} as never);
+  vi.mocked(runtimeApi.getRuntime).mockResolvedValue({ llm_providers: [{ provider: "API_LLM", configured: true }], local_models: [] } as never);
   vi.mocked(googleApi.getGoogleConnection).mockResolvedValue({ connection_status: "DISCONNECTED" } as never);
-  vi.mocked(settingsApi.getSettings).mockResolvedValue({ timezone: "Asia/Seoul", default_calendar_id: "primary", default_tasklist_id: "@default" } as never);
+  vi.mocked(settingsApi.getSettings).mockResolvedValue({ timezone: "Asia/Seoul", preferred_llm_mode: "API_LLM", preferred_local_model_id: null, external_llm_consent: true } as never);
   vi.mocked(googleApi.getCurrentGoogleAccount).mockResolvedValue({ account: null } as never);
 
   render(<StartupFlow>{() => <p>workspace</p>}</StartupFlow>);
@@ -51,28 +48,17 @@ test("loads protected state only after readiness and compatible bootstrap", asyn
   await waitFor(() => expect(runtimeApi.getRuntime).toHaveBeenCalledOnce());
 });
 
-test("exposes restore and graceful shutdown while readiness is in Safe Mode", async () => {
+test("keeps failed automatic recovery passive without user recovery controls", async () => {
   vi.mocked(api.getLive).mockResolvedValue({ api_contract_version: "1" } as never);
-  vi.mocked(api.getReady)
-    .mockResolvedValueOnce({ status: "SAFE_MODE", api_contract_version: "1", checks: [{ name: "migration", state: "SAFE_MODE", detail: "MIGRATION_FAILED" }] } as never)
-    .mockResolvedValueOnce({ status: "READY", api_contract_version: "1", checks: [] } as never);
-  vi.mocked(runtimeApi.getRuntime).mockResolvedValue({} as never);
+  vi.mocked(api.getReady).mockResolvedValue({ status: "SAFE_MODE", api_contract_version: "1", checks: [{ name: "migration", state: "SAFE_MODE", detail: "MIGRATION_FAILED" }] } as never);
+  vi.mocked(runtimeApi.getRuntime).mockResolvedValue({ llm_providers: [{ provider: "API_LLM", configured: true }], local_models: [] } as never);
   vi.mocked(googleApi.getGoogleConnection).mockResolvedValue({ connection_status: "DISCONNECTED" } as never);
-  vi.mocked(settingsApi.getSettings).mockResolvedValue({ timezone: "Asia/Seoul", default_calendar_id: "primary", default_tasklist_id: "@default" } as never);
+  vi.mocked(settingsApi.getSettings).mockResolvedValue({ timezone: "Asia/Seoul", preferred_llm_mode: "API_LLM", preferred_local_model_id: null, external_llm_consent: true } as never);
   vi.mocked(googleApi.getCurrentGoogleAccount).mockResolvedValue({ account: null } as never);
-  vi.mocked(backupApi.listBackups).mockResolvedValue({ schema_version: 1, items: [{ schema_version: 1, backup_ref: "backup-opaque", created_at_ms: 1, size_bytes: 100, manifest_hash: "a".repeat(64) }] });
-  vi.mocked(backupApi.restoreBackup).mockResolvedValue({ schema_version: 1, backup_ref: "backup-opaque", status: "RESTORED", detail_code: null });
-  vi.mocked(backupApi.requestShutdown).mockResolvedValue({ schema_version: 1, accepted: true });
 
   render(<StartupFlow>{() => <p>workspace</p>}</StartupFlow>);
-  expect(await screen.findByRole("heading", { name: "Google Work Agent Safe Mode" })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "안전하게 종료" }));
-  await waitFor(() => expect(backupApi.requestShutdown).toHaveBeenCalledOnce());
-  expect(await screen.findByRole("option", { name: /100 bytes/ })).toBeInTheDocument();
-  await userEvent.selectOptions(screen.getByRole("combobox", { name: "복원할 백업" }), "backup-opaque");
-  await userEvent.click(screen.getByRole("checkbox"));
-  await userEvent.click(screen.getByRole("button", { name: "복원 처리" }));
-  await waitFor(() => expect(backupApi.restoreBackup).toHaveBeenCalledWith(expect.any(String), "backup-opaque"));
-  expect(await screen.findByText("workspace")).toBeInTheDocument();
-  expect(api.getReady).toHaveBeenCalledTimes(2);
+  expect(await screen.findByRole("heading", { name: "앱을 시작할 수 없습니다" })).toBeInTheDocument();
+  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.queryByText("workspace")).not.toBeInTheDocument();
+  expect(api.getReady).toHaveBeenCalledOnce();
 });

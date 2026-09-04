@@ -254,10 +254,11 @@ function AuthenticatedWorkspace({ initial }: { initial: StartupFlowContext }): J
       <FirstRunOnboardingScreen
         runtime={runtime}
         google={google}
+        statusLine={statusLine}
         onConnectGoogle={() => void handleGoogleConnect()}
         onRefreshConnections={refreshRuntimeSummary}
-        onComplete={(timezone) => {
-          setCalendarTimezone(timezone);
+        onComplete={() => {
+          setCalendarTimezone(settings.timezone);
           setSetupCompleted(true);
         }}
       />

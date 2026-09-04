@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 from dataclasses import asdict, replace
 from pathlib import Path
 from threading import RLock
@@ -23,7 +24,26 @@ from google_work_agent.ports.system.settings_port import (
 
 _MAX_SETTINGS_BYTES = 32 * 1024
 _SETTINGS_FIELDS = frozenset(SettingsViewV1.__dataclass_fields__)
+_SETTINGS_FIELDS_WITHOUT_LOCAL_MODEL = _SETTINGS_FIELDS - {"preferred_local_model_id"}
 _PATCH_FIELDS = frozenset(SettingsPatchV1.__dataclass_fields__) - {"schema_version"}
+_LEGACY_FLAT_SETTINGS_FIELDS = frozenset(
+    {
+        "approval_ttl_minutes",
+        "approved_model_id",
+        "config_schema_version",
+        "default_calendar_id",
+        "default_tasklist_id",
+        "deployment_profile",
+        "external_llm_consent",
+        "log_level",
+        "ollama_endpoint",
+        "requested_runtime_mode",
+        "run_retention_days",
+        "timezone",
+        "work_hours",
+    }
+)
+_LEGACY_WORK_HOURS_FIELDS = frozenset({"days", "end", "start"})
 
 
 def _default_settings() -> SettingsViewV1:
@@ -67,6 +87,10 @@ class FileSettingsStore:
         if len(raw) > _MAX_SETTINGS_BYTES:
             raise ValueError("settings file exceeds size limit")
         payload = json.loads(raw.decode("utf-8"))
+        if isinstance(payload, dict) and set(payload) == _LEGACY_FLAT_SETTINGS_FIELDS:
+            settings = _migrate_legacy_flat_settings(cast(dict[str, object], payload))
+            self.save(settings, marker=None)
+            return settings, None
         if not isinstance(payload, dict) or set(payload) - {
             "schema_version",
             "settings",
@@ -76,18 +100,18 @@ class FileSettingsStore:
         if payload.get("schema_version") != 1:
             raise ValueError("unsupported settings schema_version")
         settings_payload = payload.get("settings")
-        if not isinstance(settings_payload, dict) or set(settings_payload) != _SETTINGS_FIELDS:
+        if not isinstance(settings_payload, dict):
+            raise ValueError("settings field set mismatch")
+        if set(settings_payload) == _SETTINGS_FIELDS_WITHOUT_LOCAL_MODEL:
+            settings_payload = {**settings_payload, "preferred_local_model_id": None}
+            settings = _view_from_payload(cast(dict[str, object], settings_payload))
+            marker = _operation_marker(payload.get("last_operation"))
+            self.save(settings, marker=marker)
+            return settings, marker
+        if set(settings_payload) != _SETTINGS_FIELDS:
             raise ValueError("settings field set mismatch")
         settings = _view_from_payload(cast(dict[str, object], settings_payload))
-        marker_payload = payload.get("last_operation")
-        marker = None
-        if marker_payload is not None:
-            if not isinstance(marker_payload, dict) or set(marker_payload) != {
-                "operation_ref",
-                "patch_hash",
-            }:
-                raise ValueError("settings operation marker is invalid")
-            marker = {key: str(value) for key, value in marker_payload.items()}
+        marker = _operation_marker(payload.get("last_operation"))
         return settings, marker
 
     def save(self, settings: SettingsViewV1, marker: dict[str, str] | None) -> None:
@@ -212,7 +236,51 @@ def _view_from_payload(payload: dict[str, object]) -> SettingsViewV1:
         max_retry_attempts_per_run=_required_int(payload, "max_retry_attempts_per_run"),
         circuit_failure_threshold=_required_int(payload, "circuit_failure_threshold"),
         circuit_open_duration_ms=_required_int(payload, "circuit_open_duration_ms"),
+        preferred_local_model_id=_optional_string(payload["preferred_local_model_id"]),
     )
+
+
+def _migrate_legacy_flat_settings(payload: dict[str, object]) -> SettingsViewV1:
+    """Atomically cut over the exact retired flat settings envelope."""
+
+    if _required_int(payload, "config_schema_version") != 1:
+        raise ValueError("unsupported legacy settings schema_version")
+    work_hours_value = payload["work_hours"]
+    if not isinstance(work_hours_value, dict) or set(work_hours_value) != _LEGACY_WORK_HOURS_FIELDS:
+        raise ValueError("legacy work_hours field set mismatch")
+    work_hours = cast(dict[str, object], work_hours_value)
+    days = work_hours["days"]
+    if not isinstance(days, list) or any(
+        not isinstance(day, int) or isinstance(day, bool) for day in days
+    ):
+        raise ValueError("legacy work_hours days are invalid")
+    ordered_days = tuple(cast(list[int], days))
+    if ordered_days == (0, 1, 2, 3, 4):
+        include_weekends = False
+    elif ordered_days == (0, 1, 2, 3, 4, 5, 6):
+        include_weekends = True
+    else:
+        raise ValueError("legacy work_hours days cannot be represented")
+
+    preferred_llm_mode = _required_string(payload, "requested_runtime_mode")
+    if preferred_llm_mode not in {"AUTO", "LOCAL_GPU", "API_LLM"}:
+        raise ValueError("legacy requested_runtime_mode is invalid")
+    settings = replace(
+        _default_settings(),
+        timezone=_required_string(payload, "timezone"),
+        default_tasklist_id=_optional_string(payload["default_tasklist_id"]),
+        default_calendar_id=_optional_string(payload["default_calendar_id"]),
+        preferred_llm_mode=cast(
+            Literal["AUTO", "LOCAL_GPU", "API_LLM"], preferred_llm_mode
+        ),
+        external_llm_consent=_required_bool(payload, "external_llm_consent"),
+        retention_days=_required_int(payload, "run_retention_days"),
+        working_day_start_local=_required_string(work_hours, "start"),
+        working_day_end_local=_required_string(work_hours, "end"),
+        include_weekends=include_weekends,
+    )
+    _validate_settings(settings)
+    return settings
 
 
 def _required_string(payload: dict[str, object], key: str) -> str:
@@ -251,6 +319,12 @@ def _validate_settings(settings: SettingsViewV1) -> None:
         raise ValueError("retention_days must be in 1..30")
     if settings.calendar_buffer_minutes < 0:
         raise ValueError("calendar_buffer_minutes must be non-negative")
+    if settings.preferred_local_model_id is not None and (
+        not settings.preferred_local_model_id.strip()
+        or len(settings.preferred_local_model_id) > 200
+        or re.search(r"[\x00-\x1f\x7f]", settings.preferred_local_model_id)
+    ):
+        raise ValueError("preferred_local_model_id is invalid")
     positive = (
         settings.max_run_execution_ms,
         settings.max_connector_calls_per_run,
@@ -285,6 +359,14 @@ def _settings_hash(settings: SettingsViewV1) -> str:
 
 def _optional_string(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+def _operation_marker(value: object) -> dict[str, str] | None:
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"operation_ref", "patch_hash"}:
+        raise ValueError("settings operation marker is invalid")
+    return {key: str(item) for key, item in value.items()}
 
 
 __all__ = ["FileSettingsStore", "JsonSettingsAdapter"]

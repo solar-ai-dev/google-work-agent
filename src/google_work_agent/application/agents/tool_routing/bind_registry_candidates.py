@@ -85,7 +85,15 @@ def bind_registry_candidates(
         reason_codes_by_resource=dict(candidate.input_reason_codes),
     )
     existing = {route["resource_type"] for route in input_routes}
-    for resource_type, reason_code in _read_dependencies(candidate.input_resource_types):
+    selected_resource_types = {
+        resource_type
+        for resource_type, reason_code in candidate.input_reason_codes
+        if reason_code == "RESOURCE_SELECTED"
+    }
+    for resource_type, reason_code in _read_dependencies(
+        candidate.input_resource_types,
+        direct_resource_types=selected_resource_types,
+    ):
         if resource_type in existing:
             continue
         input_routes.extend(
@@ -150,9 +158,13 @@ def _eligible_bindings(
     return matches[0]
 
 
-def _read_dependencies(resource_types: Iterable[str]) -> tuple[tuple[str, str], ...]:
+def _read_dependencies(
+    resource_types: Iterable[str],
+    *,
+    direct_resource_types: Iterable[str] = (),
+) -> tuple[tuple[str, str], ...]:
+    direct_resources = set(direct_resource_types)
     dependencies = {
-        "GMAIL_THREAD": (("GMAIL_MESSAGE", "RETRIEVAL_THREAD_MESSAGE_DETAIL"),),
         "GMAIL_MESSAGE": (("GMAIL_THREAD", "RETRIEVAL_GMAIL_DISCOVERY"),),
         "TASK": (("TASK_LIST", "RETRIEVAL_TASK_LIST_DISCOVERY"),),
         "TASK_LIST": (("TASK", "RETRIEVAL_TASK_DETAIL"),),
@@ -169,6 +181,6 @@ def _read_dependencies(resource_types: Iterable[str]) -> tuple[tuple[str, str], 
     return tuple(
         dependency
         for resource_type in sorted(set(resource_types))
-        if resource_type in dependencies
+        if resource_type in dependencies and resource_type not in direct_resources
         for dependency in dependencies[resource_type]
     )

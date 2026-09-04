@@ -43,6 +43,7 @@ type SnapshotShape = {
   actions: Array<{
     action_id: string;
     tool_name: string;
+    arguments?: Record<string, unknown>;
     status: string;
     version: number;
     effect_type: string;
@@ -1031,9 +1032,7 @@ test("starts Google OAuth from the disconnected status action", async () => {
   const user = userEvent.setup();
   render(<App />);
 
-  await waitFor(() => expect(document.querySelector(".topbar-actions")).not.toBeNull());
-  await user.click(screen.getByRole("button", { name: "설정" }));
-  await user.click(screen.getByRole("button", { name: "Google 연결" }));
+  await user.click(await screen.findByRole("button", { name: "Google로 로그인" }));
 
   expect(window.open).toHaveBeenCalledOnce();
   const [openedUrl, target, features] = vi.mocked(window.open).mock.calls[0];
@@ -1059,6 +1058,9 @@ test("does not open an unexpected authorization URL returned by the API", async 
     }
     if (path === "/api/v1/google/connection") {
       return jsonResponse({ ...googleConnection(), connected: false, credential_state: "DISCONNECTED", account_email: null });
+    }
+    if (path === "/api/v1/llm/connection") {
+      return jsonResponse({ llm: llmConnectionPayload(), api_contract_version: "1" });
     }
     if (path === "/api/v1/identity/google-account") {
       return jsonResponse({ account: currentAccount(), api_contract_version: "1" });
@@ -1086,10 +1088,7 @@ test("does not open an unexpected authorization URL returned by the API", async 
   const user = userEvent.setup();
   render(<App />);
 
-  await waitFor(() => expect(document.querySelector(".topbar-connection .connection-disconnected")).not.toBeNull());
-  expect(screen.getByRole("button", { name: "Google 연결" })).toBeInTheDocument();
-
-  await user.click(await screen.findByRole("button", { name: "Google 연결" }));
+  await user.click(await screen.findByRole("button", { name: "Google로 로그인" }));
   await waitFor(() =>
     expect(globalThis.fetch).toHaveBeenCalledWith(
       "/api/v1/connections/google/start",
@@ -1206,7 +1205,7 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
     if (path === "/api/v1/runs/run-1") {
       return jsonResponse(
         snapshotPayload({
-          status: resumed ? "EXECUTING" : cancelled ? "CANCEL_REQUESTED" : "RECOVERY_REQUIRED",
+          status: cancelled ? "CANCEL_REQUESTED" : resumed ? "EXECUTING" : "RECOVERY_REQUIRED",
           actions: [
             {
               action_id: "action-failed",
@@ -1241,7 +1240,7 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
           workflow_key: "workflow-run-1",
           entry_mode: "AGENT_SEARCH",
           requested_mode: "AUTO",
-          status: resumed ? "EXECUTING" : cancelled ? "CANCEL_REQUESTED" : "RECOVERY_REQUIRED",
+          status: cancelled ? "CANCEL_REQUESTED" : resumed ? "EXECUTING" : "RECOVERY_REQUIRED",
           version: 1,
           request_text: "Recover the failed write",
           selected_resource_ids: [],
@@ -1287,8 +1286,14 @@ test("submits cancel, resume, and retry actions while showing unknown-result rec
   render(<App />);
 
   await screen.findByText("결과 불명 작업 1건을 확인하고 있습니다.");
-  await user.click(screen.getByRole("button", { name: "취소" }));
   await user.click(screen.getByRole("button", { name: "재개" }));
+  await waitFor(() =>
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/runs/run-1/resume",
+      expect.objectContaining({ method: "POST" }),
+    ),
+  );
+  await user.click(await screen.findByRole("button", { name: "취소" }));
   await user.click(screen.getByRole("button", { name: "다시 준비해 주세요" }));
 
   await waitFor(() =>
@@ -1343,7 +1348,7 @@ test("opens only safe Google links from resource items", async () => {
 
 test("saves llm settings and stores, tests, then deletes the api key", async () => {
   let requestedRuntimeMode = "API_LLM";
-  let externalLLMConsent = false;
+  let externalLLMConsent = true;
   let credentialState = "MISSING";
   installFetch((path, init) => {
     if (path === "/health/live") {
@@ -2956,7 +2961,11 @@ test("routes an incomplete first-run configuration to the onboarding checklist",
   render(<App />);
 
   expect(await screen.findByRole("heading", { name: "Google Work Agent 시작하기" })).toBeInTheDocument();
+  expect(screen.getByText("필요 · LLM 자동 연결")).toBeInTheDocument();
+  expect(screen.queryByRole("radio", { name: "API LLM" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("radio", { name: "Local LLM (Ollama)" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "설정 완료하고 시작" })).toBeInTheDocument();
+  expect(screen.queryByText("기본 리소스와 시간대")).not.toBeInTheDocument();
   expect(document.querySelector("textarea.composer")).not.toBeInTheDocument();
 });
 
@@ -3263,7 +3272,27 @@ function installUiContractFetch(options: {
     requests.push({ path, init });
     if (path === "/health/live") return jsonFetchResponse(liveResponse());
     if (path === "/health/ready") return jsonFetchResponse(readyResponse());
-    if (path === "/api/v1/runtime") return jsonFetchResponse({ summary: runtimeSummary(options.run === false ? [] : ["run-1"], { llm: {} }), api_contract_version: "1" });
+    if (path === "/api/v1/runtime") return jsonFetchResponse({
+      summary: runtimeSummary(options.run === false ? [] : ["run-1"], {
+        deployment_profile: "LOCAL_CAPABLE",
+        local_models: [{
+          schema_version: 1,
+          model_id: "qwen2.5:7b",
+          installed: true,
+          approved: true,
+          selected: false,
+        }],
+        llm_providers: [{
+          schema_version: 1,
+          provider: "API_LLM",
+          configured: options.setupCompleted !== false,
+          availability: options.setupCompleted === false ? "DISABLED" : "READY",
+          model_id: "gemini-flash-latest",
+          error_code: null,
+        }],
+      }),
+      api_contract_version: "1",
+    });
     if (path === "/api/v1/connections/google/status") {
       const states = options.googleConnectionStates;
       const state = states?.[
@@ -3282,14 +3311,14 @@ function installUiContractFetch(options: {
       return jsonFetchResponse({ account, api_contract_version: "1" });
     }
     if (path === "/api/v1/settings") return jsonFetchResponse({
-      settings: settingsPayload(options.setupCompleted === false ? { default_calendar_id: null } : {}),
+      settings: settingsPayload(options.setupCompleted === false ? { external_llm_consent: false } : {}),
       api_contract_version: "1",
     });
     if (path === "/api/v1/credentials/llm/gemini") return jsonFetchResponse({
       llm: llmConnectionPayload({
         api_provider: {
-          credential_state: "CONFIGURED",
-          availability: "AVAILABLE",
+          credential_state: options.setupCompleted === false ? "MISSING" : "CONFIGURED",
+          availability: options.setupCompleted === false ? "NOT_CONFIGURED" : "AVAILABLE",
           last_probe: 1,
           safe_error_code: null,
         },
@@ -3770,7 +3799,15 @@ function runtimeSummary(openRunIds: string[], overrides: Record<string, unknown>
       scope_status: "READY",
       retry_at_ms: null,
     }],
-    llm_providers: [],
+    llm_providers: [{
+      schema_version: 1,
+      provider: "API_LLM",
+      configured: true,
+      availability: "READY",
+      model_id: "gemini-flash-latest",
+      error_code: null,
+    }],
+    local_models: [],
     component_circuits: [],
     active_run_budget: null,
     recovery_required: openRunIds.length > 0,
@@ -3800,6 +3837,7 @@ function settingsPayload(overrides: Record<string, unknown> = {}) {
     default_calendar_id: "primary",
     default_tasklist_id: "default",
     preferred_llm_mode: "API_LLM",
+    preferred_local_model_id: null,
     external_llm_consent: true,
     retention_days: 30,
     theme: "LIGHT",
@@ -3943,6 +3981,7 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
       const defaultFields = action.tool_name.startsWith("gmail_") ? ["subject", "body", "attachments"] : action.tool_name.startsWith("tasks_") ? ["title", "notes", "due"] : action.tool_name.startsWith("calendar_") ? ["title", "start", "end", "description"] : [];
       return {
         ...action,
+        arguments: action.arguments ?? {},
         risk,
         next_allowed_commands: action.next_allowed_commands.map((command) => ({ APPROVE: "APPROVE_ACTION", MODIFY: "MODIFY_ACTION", REJECT: "REJECT_ACTION", PREPARE_RETRY: "PREPARE_WRITE_RETRY" }[command] ?? command)).filter((command) => !(command === "APPROVE_ACTION" && (risk.feasibility as { decision?: string } | undefined)?.decision === "INFEASIBLE")),
         required_acknowledgements: action.required_acknowledgements ?? required,

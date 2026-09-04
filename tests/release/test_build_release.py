@@ -23,7 +23,9 @@ from google_work_agent.ports.llm.local_model_product_decision import (
 from release.profiles import DeploymentProfile
 from tests.support.bundle_fixture import create_bundle_inputs
 
-MODEL_ID = "qwen2.5:7b-instruct-q4_K_M"
+WORKER_MODEL_ID = "qwen3.5:4b"
+REASONING_MODEL_ID = "qwen3.5:9b"
+LOCAL_MODEL_PROFILE = Path(__file__).resolve().parents[2] / "config/local-model-profile-v1.json"
 
 
 @dataclass
@@ -65,14 +67,18 @@ def _local_artifacts(
     root: Path,
     *,
     decision_manifest_hash: str | None = None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     manifest_path = root / "model-manifest-v1.json"
     manifest = generate_model_manifest(
         minimum_ollama_version="0.6.0",
         approved_models=(
             ApprovedModelEntryV1(
-                MODEL_ID,
-                hashlib.sha256(b"approved-model").hexdigest(),
+                WORKER_MODEL_ID,
+                hashlib.sha256(b"worker-model").hexdigest(),
+            ),
+            ApprovedModelEntryV1(
+                REASONING_MODEL_ID,
+                hashlib.sha256(b"reasoning-model").hexdigest(),
             ),
         ),
         output_path=manifest_path,
@@ -84,7 +90,7 @@ def _local_artifacts(
             decision_status="APPROVED_FOR_LOCAL_PROFILE",
             release_version="test-release",
             deployment_profile="LOCAL_CAPABLE",
-            selected_model_id=MODEL_ID,
+            selected_model_id=REASONING_MODEL_ID,
             model_manifest_hash=(
                 decision_manifest_hash
                 if decision_manifest_hash is not None
@@ -99,7 +105,7 @@ def _local_artifacts(
         ),
         output_path=decision_path,
     )
-    return manifest_path, decision_path
+    return manifest_path, decision_path, LOCAL_MODEL_PROFILE
 
 
 def _arguments(
@@ -108,6 +114,7 @@ def _arguments(
     profile: DeploymentProfile,
     model_manifest: Path | None = None,
     product_decision: Path | None = None,
+    local_model_profile: Path | None = None,
 ) -> list[str]:
     inputs = create_bundle_inputs(root / "inputs")
     private_key = root / "manifest-private-key.pem"
@@ -164,6 +171,8 @@ def _arguments(
         arguments.extend(("--model-manifest", str(model_manifest)))
     if product_decision is not None:
         arguments.extend(("--local-model-product-decision", str(product_decision)))
+    if local_model_profile is not None:
+        arguments.extend(("--local-model-profile", str(local_model_profile)))
     return arguments
 
 
@@ -171,7 +180,7 @@ def test_local_capable_cli__forwards_exact_local_paths__into_canonical_assembler
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    model_manifest, product_decision = _local_artifacts(tmp_path)
+    model_manifest, product_decision, local_model_profile = _local_artifacts(tmp_path)
     _install_external_leaf_fakes(monkeypatch)
     canonical_assembler = build_release.assemble_application_bundle
     observed: list[ApplicationBundleInputs] = []
@@ -191,6 +200,7 @@ def test_local_capable_cli__forwards_exact_local_paths__into_canonical_assembler
                 profile=DeploymentProfile.LOCAL_CAPABLE,
                 model_manifest=model_manifest,
                 product_decision=product_decision,
+                local_model_profile=local_model_profile,
             )
         )
         == 0
@@ -198,13 +208,14 @@ def test_local_capable_cli__forwards_exact_local_paths__into_canonical_assembler
     assert len(observed) == 1
     assert observed[0].model_manifest == model_manifest.resolve()
     assert observed[0].local_model_product_decision == product_decision.resolve()
+    assert observed[0].local_model_profile == local_model_profile.resolve()
 
 
 def test_local_capable_cli__valid_artifacts__complete_release_pipeline(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    model_manifest, product_decision = _local_artifacts(tmp_path)
+    model_manifest, product_decision, local_model_profile = _local_artifacts(tmp_path)
     calls = _install_external_leaf_fakes(monkeypatch)
 
     assert (
@@ -214,12 +225,14 @@ def test_local_capable_cli__valid_artifacts__complete_release_pipeline(
                 profile=DeploymentProfile.LOCAL_CAPABLE,
                 model_manifest=model_manifest,
                 product_decision=product_decision,
+                local_model_profile=local_model_profile,
             )
         )
         == 0
     )
     assert (tmp_path / "bundle/manifests/model-manifest-v1.json").is_file()
     assert (tmp_path / "bundle/manifests/local-model-product-decision-v1.json").is_file()
+    assert (tmp_path / "bundle/manifests/local-model-profile-v1.json").is_file()
     assert calls.signing == 2
     assert calls.installer == 1
 
@@ -255,13 +268,13 @@ def test_prompt_cli__with_different_service_default__packages_selected_bundle(
     assert calls.installer == 1
 
 
-@pytest.mark.parametrize("missing", ["model_manifest", "product_decision"])
+@pytest.mark.parametrize("missing", ["model_manifest", "product_decision", "local_profile"])
 def test_local_capable_cli__missing_local_artifact__fails_before_external_leaves(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     missing: str,
 ) -> None:
-    model_manifest, product_decision = _local_artifacts(tmp_path)
+    model_manifest, product_decision, local_model_profile = _local_artifacts(tmp_path)
     calls = _install_external_leaf_fakes(monkeypatch)
 
     with pytest.raises(ValueError, match="LOCAL_CAPABLE requires"):
@@ -271,19 +284,22 @@ def test_local_capable_cli__missing_local_artifact__fails_before_external_leaves
                 profile=DeploymentProfile.LOCAL_CAPABLE,
                 model_manifest=None if missing == "model_manifest" else model_manifest,
                 product_decision=None if missing == "product_decision" else product_decision,
+                local_model_profile=(
+                    None if missing == "local_profile" else local_model_profile
+                ),
             )
         )
     assert calls.signing == 0
     assert calls.installer == 0
 
 
-@pytest.mark.parametrize("artifact", ["model_manifest", "product_decision"])
+@pytest.mark.parametrize("artifact", ["model_manifest", "product_decision", "local_profile"])
 def test_api_only_cli__with_local_artifact__fails_before_external_leaves(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     artifact: str,
 ) -> None:
-    model_manifest, product_decision = _local_artifacts(tmp_path)
+    model_manifest, product_decision, local_model_profile = _local_artifacts(tmp_path)
     calls = _install_external_leaf_fakes(monkeypatch)
 
     with pytest.raises(ValueError, match="API_ONLY must not receive local model"):
@@ -293,6 +309,9 @@ def test_api_only_cli__with_local_artifact__fails_before_external_leaves(
                 profile=DeploymentProfile.API_ONLY,
                 model_manifest=model_manifest if artifact == "model_manifest" else None,
                 product_decision=(product_decision if artifact == "product_decision" else None),
+                local_model_profile=(
+                    local_model_profile if artifact == "local_profile" else None
+                ),
             )
         )
     assert calls.signing == 0
@@ -303,7 +322,7 @@ def test_local_capable_cli__mismatched_artifacts__surfaces_assembler_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    model_manifest, product_decision = _local_artifacts(
+    model_manifest, product_decision, local_model_profile = _local_artifacts(
         tmp_path,
         decision_manifest_hash=hashlib.sha256(b"different-manifest").hexdigest(),
     )
@@ -316,6 +335,7 @@ def test_local_capable_cli__mismatched_artifacts__surfaces_assembler_error(
                 profile=DeploymentProfile.LOCAL_CAPABLE,
                 model_manifest=model_manifest,
                 product_decision=product_decision,
+                local_model_profile=local_model_profile,
             )
         )
     assert calls.signing == 0

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import cast
+from typing import Literal, cast
 
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRoutePlanV2,
@@ -9,9 +9,29 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.domain.action.model import EffectType
 
+ToolRouteFailureReasonCodeV1 = Literal[
+    "TOOL_ROUTE_CONTRACT_INVALID",
+    "TOOL_ROUTE_OVERCONFIRMATION",
+    "TOOL_ROUTE_FORBIDDEN_INPUT_INCLUDED",
+    "TOOL_ROUTE_EFFECT_MISMATCH",
+    "TOOL_ROUTE_OUTPUT_MODE_WRONG",
+    "TOOL_ROUTE_REQUIRED_OUTPUT_MISSING",
+]
+
 
 class ToolRouteValidationError(ValueError):
     """Raised when Tool Routing violates the frozen Registry-bound contract."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: ToolRouteFailureReasonCodeV1 = "TOOL_ROUTE_CONTRACT_INVALID",
+        affected_field_paths: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.affected_field_paths = affected_field_paths
 
 
 def validate_route(value: object, *, tool_catalog: SignedToolRegistry) -> ToolRoutePlanV2:

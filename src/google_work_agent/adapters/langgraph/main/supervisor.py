@@ -46,7 +46,11 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ToolRouteDisposition,
+    ToolRoutePlanV2,
     ToolRouteResultV1,
+)
+from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
+    effective_analysis_required,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
@@ -302,16 +306,10 @@ def _route_tool_routing(
                 state_update=_base_state_update(WorkflowPhase.RECOVERY),
                 reason_code="TOOL_ROUTE_PLAN_MISSING",
             )
-        return _decision(
-            target=SupervisorTarget.CONTEXT_RETRIEVAL,
-            next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-            state_update=_base_state_update(
-                WorkflowPhase.CONTEXT_RETRIEVAL,
-                tool_route_plan=plan,
-                workflow_signal=None,
-                retry_budget=_retrieval_route_budget(state),
-            ),
-            reason_code=disposition.value,
+        return _route_frozen_tool_plan(
+            state=state,
+            plan=plan,
+            disposition=disposition,
         )
     if disposition is ToolRouteDisposition.NEEDS_CONFIRMATION:
         question: request_understanding_output.ClarificationQuestionV1 = {
@@ -351,6 +349,54 @@ def _retrieval_route_budget(state: GraphState) -> RunBudgetV2:
     return promote_run_budget_profile(state["retry_budget"], BudgetProfile.RETRIEVAL_HEAVY)
 
 
+def _route_frozen_tool_plan(
+    *,
+    state: GraphState,
+    plan: ToolRoutePlanV2,
+    disposition: ToolRouteDisposition,
+) -> SupervisorDecisionV1:
+    if plan["input_plan"]["input_routes"]:
+        return _decision(
+            target=SupervisorTarget.CONTEXT_RETRIEVAL,
+            next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
+            state_update=_base_state_update(
+                WorkflowPhase.CONTEXT_RETRIEVAL,
+                tool_route_plan=plan,
+                workflow_signal=None,
+                retry_budget=_retrieval_route_budget(state),
+            ),
+            reason_code=disposition.value,
+        )
+    if _work_analysis_is_required(state=state, plan=plan):
+        return _decision(
+            target=SupervisorTarget.WORK_ANALYSIS,
+            next_phase=WorkflowPhase.WORK_ANALYSIS,
+            state_update=_base_state_update(
+                WorkflowPhase.WORK_ANALYSIS,
+                tool_route_plan=plan,
+                workflow_signal=None,
+            ),
+            reason_code="RETRIEVAL_NOT_REQUIRED",
+        )
+    return _decision(
+        target=SupervisorTarget.SOLUTION_PLANNING,
+        next_phase=WorkflowPhase.SOLUTION_PLANNING,
+        state_update=_base_state_update(
+            WorkflowPhase.SOLUTION_PLANNING,
+            tool_route_plan=plan,
+            workflow_signal=None,
+        ),
+        reason_code="RETRIEVAL_AND_WORK_ANALYSIS_NOT_REQUIRED",
+    )
+
+
+def _work_analysis_is_required(*, state: GraphState, plan: ToolRoutePlanV2) -> bool:
+    return effective_analysis_required(
+        request_intent=_request_intent_from_state(state),
+        tool_route_plan=plan,
+    )
+
+
 def _route_retrieval(
     *,
     state: GraphState,
@@ -362,13 +408,26 @@ def _route_retrieval(
     if disposition in {"SUFFICIENT", "PARTIAL"}:
         if retrieval_result is None:
             raise ValueError("successful Retrieval return requires its typed result")
-        work_analysis_update: GraphStateUpdateV1 = {"retrieval_result": retrieval_result}
+        retrieval_update: GraphStateUpdateV1 = {"retrieval_result": retrieval_result}
+        plan = state.get("tool_route_plan")
+        if plan is None:
+            raise ValueError("successful Retrieval return requires its frozen tool route plan")
+        if not _work_analysis_is_required(state=state, plan=plan):
+            return _decision(
+                target=SupervisorTarget.SOLUTION_PLANNING,
+                next_phase=WorkflowPhase.SOLUTION_PLANNING,
+                state_update=_base_state_update(
+                    WorkflowPhase.SOLUTION_PLANNING,
+                    current_update=retrieval_update,
+                ),
+                reason_code="WORK_ANALYSIS_NOT_REQUIRED",
+            )
         return _decision(
             target=SupervisorTarget.WORK_ANALYSIS,
             next_phase=WorkflowPhase.WORK_ANALYSIS,
             state_update=_base_state_update(
                 WorkflowPhase.WORK_ANALYSIS,
-                current_update=work_analysis_update,
+                current_update=retrieval_update,
             ),
             reason_code=disposition,
         )

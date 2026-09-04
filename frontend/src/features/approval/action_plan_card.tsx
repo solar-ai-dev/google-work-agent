@@ -38,6 +38,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
   const duplicate = taskDuplicateDecision(action.risk);
   const conflict = calendarConflictDecision(action.risk);
   const feasibility = feasibilityDecision(action.risk);
+  const argumentSummary = approvalArgumentSummary(action);
   return (
     <article className="approval-conversation" aria-label={`${actionLabel(action.tool_name)} 승인 요청`}>
       <span className="sr-only">{action.tool_name}</span>
@@ -49,13 +50,13 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
       {feasibility === "RISK" ? <p className="status-warn">현재 일정 기준으로 가능한 시간이 제한적입니다.</p> : null}
       {feasibility === "INFEASIBLE" ? <p className="status-warn">현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수 없습니다.</p> : null}
       {hasOtherRisk(action.risk) ? <p className="status-warn">서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.</p> : null}
-      <details><summary>무엇을 실행하나요?</summary><dl className="metadata-list"><div><dt>작업</dt><dd>{actionLabel(action.tool_name)}</dd></div><div><dt>실행 방식</dt><dd>{effectLabel(action.effect_type)}</dd></div><div><dt>결과 확인</dt><dd>{verificationLabel(action.verification_policy)}</dd></div></dl></details>
+      <details><summary>무엇을 실행하나요?</summary><dl className="metadata-list"><div><dt>작업</dt><dd>{actionLabel(action.tool_name)}</dd></div><div><dt>실행 방식</dt><dd>{effectLabel(action.effect_type)}</dd></div>{argumentSummary.map((item) => <div key={item.field}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}<div><dt>결과 확인</dt><dd>{verificationLabel(action.verification_policy)}</dd></div></dl></details>
       {approval ? <div className="muted">{approvalStatusLabel(approval.status)} · {formatTime(approval.expires_at_ms)}까지 유효합니다.</div> : null}
       {requiredAcknowledgements.map((item) => (
         <label key={item}><input type="checkbox" checked={acknowledgements.has(item)} onChange={(event) => setAcknowledgements((current) => { const next = new Set(current); if (event.target.checked) next.add(item); else next.delete(item); return next; })} /> {item === "TASK_DUPLICATE" ? "중복 가능성을 확인했습니다." : "일정 충돌 가능성을 확인했습니다."}</label>
       ))}
       {action.next_allowed_commands.includes("MODIFY_ACTION") && editableFields.some((field) => field !== "attachments") ? (
-        <fieldset><legend>바꾸고 싶은 내용</legend>{editableFields.filter((field) => field !== "attachments").map((field) => <label key={field}>{field}<input value={editValues[field] ?? ""} onChange={(event) => setEditValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<button className="button-secondary" type="button" disabled={busy !== null || Object.keys(patch).length === 0} onClick={() => onModify(action, patch)}>이 내용으로 바꿀게요</button></fieldset>
+        <fieldset><legend>바꾸고 싶은 내용</legend>{editableFields.filter((field) => field !== "attachments").map((field) => <label key={field}>{argumentLabel(field)}<input value={editValues[field] ?? ""} placeholder={argumentValue(action, field)} onChange={(event) => setEditValues((current) => ({ ...current, [field]: event.target.value }))} /></label>)}<button className="button-secondary" type="button" disabled={busy !== null || Object.keys(patch).length === 0} onClick={() => onModify(action, patch)}>이 내용으로 바꿀게요</button></fieldset>
       ) : null}
       {action.attachment_allowed && action.next_allowed_commands.includes("MODIFY_ACTION") ? <AttachmentPicker disabled={busy !== null} onStaged={(descriptors) => onAttachDescriptors(action, descriptors)} /> : null}
       <div className="button-row">
@@ -92,4 +93,52 @@ function verificationLabel(policy: string): string {
 
 function approvalStatusLabel(status: string): string {
   return ({ ACTIVE: "승인을 기다리고 있습니다.", APPROVED: "승인이 완료됐습니다.", REJECTED: "실행하지 않기로 했습니다.", EXPIRED: "승인 시간이 지났습니다." } as Record<string, string>)[status] ?? "승인 상태를 확인하고 있습니다.";
+}
+
+const ARGUMENT_LABELS: Record<string, string> = {
+  to: "받는 사람",
+  cc: "참조",
+  bcc: "숨은 참조",
+  subject: "제목",
+  body: "본문",
+  calendar_id: "캘린더",
+  task_list_id: "태스크 목록",
+  tasklist_id: "태스크 목록",
+  title: "제목",
+  start: "시작",
+  end: "종료",
+  timezone: "시간대",
+  due: "마감",
+  notes: "메모",
+  description: "설명",
+  attendees: "참석자",
+};
+
+function approvalArgumentSummary(action: RunAction): Array<{ field: string; label: string; value: string }> {
+  const preferredFields = action.tool_name.startsWith("gmail_")
+    ? ["to", "cc", "bcc", "subject", "body"]
+    : action.tool_name.startsWith("tasks_")
+      ? ["task_list_id", "title", "due", "notes"]
+      : action.tool_name.startsWith("calendar_")
+        ? ["calendar_id", "title", "start", "end", "timezone", "description", "attendees"]
+        : action.editable_fields;
+  return preferredFields.flatMap((field) => {
+    const value = argumentValue(action, field);
+    return value ? [{ field, label: argumentLabel(field), value }] : [];
+  });
+}
+
+function argumentValue(action: RunAction, field: string): string {
+  const payload = action.arguments.payload;
+  const nested = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>)[field]
+    : undefined;
+  const value = nested ?? action.arguments[field];
+  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (value === null || value === undefined) return "";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function argumentLabel(field: string): string {
+  return ARGUMENT_LABELS[field] ?? field;
 }

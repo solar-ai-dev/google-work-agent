@@ -13,6 +13,9 @@ from typing import Any
 
 type JsonValue = Any
 
+DEFAULT_CALENDAR_ID = "primary"
+DEFAULT_TASK_LIST_ID = "@default"
+
 
 class ResourceType(StrEnum):
     GMAIL_THREAD = "gmail_thread"

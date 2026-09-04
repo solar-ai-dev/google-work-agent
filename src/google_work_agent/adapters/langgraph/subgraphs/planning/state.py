@@ -27,7 +27,6 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2,
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    EvidenceDraftV1,
     RetrievalResultV1,
 )
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
@@ -60,7 +59,7 @@ class PlanningLocalState(GraphState):
     user_request: NotRequired[str]
     output_plan: NotRequired[dict[str, object]]
     work_analysis: NotRequired[dict[str, object]]
-    evidence: NotRequired[list[EvidenceDraftV1]]
+    evidence: NotRequired[list[dict[str, object]]]
     evidence_refs: NotRequired[list[str]]
     confirmation_response: NotRequired[dict[str, object]]
     answer_outline: NotRequired[AnswerOutlineV1]

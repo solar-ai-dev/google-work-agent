@@ -10,6 +10,7 @@ def test_api_only_has__no_local_runtime__or_model_dependency() -> None:
     assert profile.deployment_profile is DeploymentProfile.API_ONLY
     assert profile.runtime_modes == ("API_LLM",)
     assert profile.requires_model_manifest is False
+    assert profile.requires_local_model_profile is False
     assert "manifests/model-manifest-v1.json" not in profile.required_files
 
 

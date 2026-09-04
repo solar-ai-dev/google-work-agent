@@ -27,7 +27,10 @@ from google_work_agent.api.schemas.runs.start_run import StartRunRequest
 from google_work_agent.api.schemas.runtime_summaries.get_runtime_summary import (
     RuntimeDetailResponseV1,
 )
-from google_work_agent.api.schemas.settings.update_settings import PatchSettingsRequest
+from google_work_agent.api.schemas.settings.update_settings import (
+    PatchSettingsRequest,
+    SettingsPatchPayloadV1,
+)
 
 
 def test_action_transport__contracts_live__in_operation_modules() -> None:
@@ -58,6 +61,11 @@ def test_other_plural__resource_contracts_live__in_operation_modules() -> None:
     assert ReadyResponse.__module__.endswith(".health_checks.get_readiness")
 
 
+def test_settings_patch__omits_concrete__local_model_selection() -> None:
+    assert "preferred_llm_mode" in SettingsPatchPayloadV1.model_fields
+    assert "preferred_local_model_id" not in SettingsPatchPayloadV1.model_fields
+
+
 def test_runtime_detail__uses_exact__canonical_wire_vocabulary() -> None:
     runtime_schema = import_module(
         "google_work_agent.api.schemas.runtime_summaries.get_runtime_summary"
@@ -68,6 +76,7 @@ def test_runtime_detail__uses_exact__canonical_wire_vocabulary() -> None:
         "service_instance_id",
         "connectors",
         "llm_providers",
+        "local_models",
         "component_circuits",
         "active_run_budget",
         "recovery_required",

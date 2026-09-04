@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ApiClientError } from "../../api/client";
 import { DiagnosticsPanel, type RuntimeSummary } from "../diagnostics";
-import { createBackup, listBackups, requestShutdown, type BackupMetadata } from "./api/backup_operations";
 import { listCalendars, listTaskLists } from "../resource_browser/api/list_resources";
 import type { CalendarContainer, TaskListContainer } from "../../api/contract";
 import { disconnectGoogle, getGoogleConnection, startGoogleConnection, type GoogleConnection } from "./api/google_connection_operations";
@@ -9,6 +8,8 @@ import { getSettings, type SettingsView } from "./api/get_settings";
 import { deleteLlmCredential, getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";
 import { updateRuntimeMode, type RuntimeMode } from "./api/update_runtime_mode";
 import { updateSettings } from "./api/update_settings";
+
+const OLLAMA_WINDOWS_INSTALL_GUIDE_URL = "https://ollama.com/download/windows";
 
 type Props = {
   runtime: RuntimeSummary | null;
@@ -22,7 +23,6 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
   const [settings, setSettings] = useState<SettingsView | null>(null);
   const [google, setGoogle] = useState<GoogleConnection | null>(null);
   const [credential, setCredential] = useState<LlmCredentialStatus | null>(null);
-  const [backups, setBackups] = useState<BackupMetadata[]>([]);
   const [taskLists, setTaskLists] = useState<TaskListContainer[]>([]);
   const [calendars, setCalendars] = useState<CalendarContainer[]>([]);
   const [apiKey, setApiKey] = useState("");
@@ -32,16 +32,15 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
   const commandIds = useRef(new Map<string, string>());
 
   const load = useCallback(async (): Promise<void> => {
-    const [nextSettings, nextGoogle, nextCredential, nextBackups, nextTaskLists, nextCalendars] = await Promise.allSettled([
-      getSettings(), getGoogleConnection(), getLlmCredentialStatus(), listBackups(), listTaskLists(), listCalendars(),
+    const [nextSettings, nextGoogle, nextCredential, nextTaskLists, nextCalendars] = await Promise.allSettled([
+      getSettings(), getGoogleConnection(), getLlmCredentialStatus(), listTaskLists(), listCalendars(),
     ]);
     if (nextSettings.status === "fulfilled") setSettings(nextSettings.value);
     if (nextGoogle.status === "fulfilled") setGoogle(nextGoogle.value);
     if (nextCredential.status === "fulfilled") setCredential(nextCredential.value);
-    if (nextBackups.status === "fulfilled") setBackups(nextBackups.value.items);
     if (nextTaskLists.status === "fulfilled") setTaskLists(nextTaskLists.value.items);
     if (nextCalendars.status === "fulfilled") setCalendars(nextCalendars.value.items);
-    if ([nextSettings, nextGoogle, nextCredential, nextBackups, nextTaskLists, nextCalendars].every((result) => result.status === "rejected")) {
+    if ([nextSettings, nextGoogle, nextCredential, nextTaskLists, nextCalendars].every((result) => result.status === "rejected")) {
       throw nextSettings.status === "rejected" ? nextSettings.reason : new Error("Settings unavailable");
     }
   }, []);
@@ -104,22 +103,10 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
     onClose();
   }
 
-  async function shutdownService(): Promise<void> {
-    setBusy(true);
-    setMessage(null);
-    try {
-      const result = await requestShutdown(commandIdFor("control:shutdown"));
-      if (!result.accepted) throw new Error("Shutdown rejected");
-      commandIds.current.delete("control:shutdown");
-      setMessage("안전한 종료를 요청했습니다.");
-    } catch (error) {
-      setMessage(errorMessage(error, "종료를 요청하지 못했습니다."));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   const runtimeModes = availableRuntimeModes(runtime?.deployment_profile);
+  const productLocalModels = runtime?.local_models?.filter((model) => model.selected) ?? [];
+  const isLocalReady = productLocalModels.length > 0
+    && productLocalModels.every((model) => model.installed && model.approved);
 
   return (
     <aside className="drawer" aria-label="설정 및 진단">
@@ -153,16 +140,21 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
           <strong>런타임 모드</strong><p>요청 {runtime?.runtime_mode.requested_mode ?? "-"} · 실제 {runtime?.runtime_mode.actual_runtime ?? "-"}</p>{runtime?.runtime_mode.fallback_reason ? <p className="status-warn">Fallback: {runtime.runtime_mode.fallback_reason}</p> : null}
           <div className="button-row">{runtimeModes.map((mode) => <button key={mode} type="button" className="button-secondary" disabled={busy} onClick={() => void run(`runtime:${mode}`, async (id) => { await updateRuntimeMode(id, mode); }, `${mode} 모드를 요청했습니다.`)}>{mode}</button>)}</div>
         </section>
+        {runtime?.deployment_profile === "LOCAL_CAPABLE" ? <section className="info-card" aria-label="Local AI 준비">
+          <strong>Local AI</strong>
+          <p>{isLocalReady ? "제품 Local AI가 준비되었습니다." : "Ollama와 제품 Local AI 모델 준비가 필요합니다."}</p>
+          {productLocalModels.length ? <ul>{productLocalModels.map((model) => <li key={model.model_id}>{model.model_id} · {model.installed && model.approved ? "준비됨" : "준비 필요"}</li>)}</ul> : <p className="muted">제품 모델 상태를 확인하고 있습니다.</p>}
+          <div className="button-row">
+            <a className="button-secondary" href={OLLAMA_WINDOWS_INSTALL_GUIDE_URL} target="_blank" rel="noreferrer">Ollama 설치 안내 열기</a>
+            <button type="button" className="button-secondary" disabled={busy} onClick={() => void onOperationalStateChanged()}>다시 검사</button>
+          </div>
+        </section> : null}
         <section className="info-card" aria-label="LLM 자격증명">
           <strong>LLM 자격증명</strong><p>{credential?.configured ? `${credential.storage_mode} / ${credential.validation_status}` : "설정되지 않음"}</p>
           <label>저장 방식<select value={storageMode} onChange={(e) => setStorageMode(e.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}><option>KEYRING</option><option>SESSION_ONLY</option></select></label>
           <label>API key<input type="password" autoComplete="off" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
           <div className="button-row"><button type="button" className="button-primary" disabled={busy || !apiKey.trim()} onClick={() => void run("credential:store", async (id) => { await storeLlmCredential(id, apiKey, storageMode); }, "자격증명을 저장했습니다.", true)}>API 키 저장</button><button type="button" className="button-danger" disabled={busy} onClick={() => void run("credential:delete", async (id) => { await deleteLlmCredential(id); }, "자격증명을 삭제했습니다.", true)}>API 키 삭제</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void load()}>연결 테스트</button></div>
         </section>
-        <section className="info-card" aria-label="백업">
-          <strong>백업</strong><p>보관된 백업 {backups.length}개 · 복원은 Safe Mode에서만 수행합니다.</p><button type="button" className="button-secondary" disabled={busy} onClick={() => void run("backup:create", async (id) => { await createBackup(id); }, "백업을 만들었습니다.")}>백업 만들기</button>
-        </section>
-        <section className="info-card" aria-label="서비스 제어"><strong>서비스 제어</strong><button type="button" className="button-danger" disabled={busy} onClick={() => void shutdownService()}>안전하게 종료</button></section>
         <DiagnosticsPanel runtime={runtime} onRefresh={onOperationalStateChanged} />
       </div>
     </aside>

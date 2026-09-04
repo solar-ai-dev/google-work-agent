@@ -12,9 +12,12 @@ export function RunProgress({ snapshot, latestEvent = null, busy, onCancel, onRe
   onResume: (resumeKind: "SAFE_CHECKPOINT_RESUME") => void;
 }): JSX.Element {
   const [activity, setActivity] = useState<{ runId: string; lines: ActivityLine[] }>({ runId: snapshot.run.run_id, lines: [] });
-  const resumeAction = snapshot.error?.actions.find(
-    (action) => action.kind === "RESUME_SAFE_CHECKPOINT" && action.resume_kind === "SAFE_CHECKPOINT_RESUME",
-  );
+  const manuallyResumable = ["RECOVERY_REQUIRED", "FAILED", "BLOCKED"].includes(snapshot.run.status);
+  const resumeAction = manuallyResumable
+    ? snapshot.error?.actions.find(
+        (action) => action.kind === "RESUME_SAFE_CHECKPOINT" && action.resume_kind === "SAFE_CHECKPOINT_RESUME",
+      )
+    : undefined;
   useEffect(() => {
     if (!latestEvent) return;
     const label = eventProgressLabel(latestEvent);

@@ -8,6 +8,7 @@ from google_work_agent.ports.connector.oauth_credential_port import OAuthCredent
 from google_work_agent.ports.llm.llm_runtime_status_port import (
     LlmProviderRuntimeStatus,
     LlmRuntimeStatusPort,
+    LocalModelRuntimeOptionV1,
 )
 from google_work_agent.ports.system.component_circuit_state_port import (
     ComponentCircuitKey,
@@ -80,6 +81,7 @@ class GetRuntimeStatusResult:
     service_instance_id: str
     connectors: tuple[_ConnectorRuntimeStatus, ...]
     llm_providers: tuple[LlmProviderRuntimeStatus, ...]
+    local_models: tuple[LocalModelRuntimeOptionV1, ...]
     component_circuits: tuple[_ComponentCircuitStatus, ...]
     active_run_budget: _RunBudgetSummary | None
     recovery_required: bool
@@ -199,6 +201,7 @@ class GetRuntimeStatusHandler:
             service_instance_id=self._service_instance_id,
             connectors=tuple(connectors),
             llm_providers=tuple(self._llm_status.get_status(item) for item in query.llm_providers),
+            local_models=self._llm_status.list_local_models(),
             component_circuits=tuple(
                 _ComponentCircuitStatus(1, state.key, state.state, state.retry_at_ms)
                 for state in circuit_states

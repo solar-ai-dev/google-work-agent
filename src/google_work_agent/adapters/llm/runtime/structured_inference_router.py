@@ -123,7 +123,7 @@ class StructuredInferenceRuntimeRouter:
         settings = self.settings_service()
         requested = RequestedRuntimeMode(requested_mode)
         api_status = self.status_service.get_status(self.api_provider_name)
-        approved_model = self.runtime_selection.selected_model
+        approved_model = self.status_service.get_model_for_prompt(prompt_ref.prompt_id)
         hardware = self.hardware_probe.probe()
         hardware_capability = HardwareCapability(
             cpu_arch=hardware.architecture,
@@ -535,9 +535,12 @@ class StructuredInferenceRuntimeRouter:
             failure_reason_code=LLMErrorCode.OUTPUT_SCHEMA_INVALID.value,
             validator_errors=tuple(errors),
         )
-        if _collect_validation_errors(repaired, output_schema, semantic_validate):
+        repair_errors = _collect_validation_errors(repaired, output_schema, semantic_validate)
+        if repair_errors:
             raise LLMInvocationError(
-                LLMErrorCode.OUTPUT_SCHEMA_INVALID, "schema repair did not produce a valid payload"
+                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+                "schema repair did not produce a valid payload: "
+                + "; ".join(repair_errors[:3]),
             )
         return repaired, 2
 

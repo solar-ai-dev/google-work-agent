@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from json import dumps, loads
 from typing import Literal, cast
 
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+)
+from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
 from google_work_agent.application.use_cases.plan.persistence_projection import current_plan_tuple
+from google_work_agent.application.use_cases.resource_ref.persist_resource_ref import (
+    persist_registered_resource_ref,
+)
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
@@ -16,7 +23,10 @@ from google_work_agent.domain.command_receipt.model import (
     CommandReceiptStatus,
     DuplicateCommandError,
 )
+from google_work_agent.domain.evidence.model import Evidence as EvidenceRecord
+from google_work_agent.domain.evidence.model import EvidenceOriginType
 from google_work_agent.domain.message.model import Message as MessageRecord
+from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunCommand, RunStatusV1, next_allowed_run_commands
 from google_work_agent.domain.run.transitions.complete_answer_only_run import (
@@ -37,6 +47,9 @@ class CompleteAnswerOnlyRunCommand:
     expected_version: int
     request_hash: str
     result_kind: Literal["SUCCESS", "PARTIAL"] = "SUCCESS"
+    retrieval_artifact_id: str | None = None
+    evidence_drafts: tuple[EvidenceDraftV1, ...] = ()
+    resource_ref_drafts: tuple[ResourceRefRecord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,11 +73,15 @@ class CompleteAnswerOnlyRunHandler:
         unit_of_work_factory: Callable[[], UnitOfWork],
         now_ms: Callable[[], int],
         message_id_factory: Callable[[], str],
+        evidence_id_factory: Callable[[], str] | None = None,
+        tool_registry: SignedToolRegistry | None = None,
         build_terminal_message: BuildTerminalMessageHandler | None = None,
     ) -> None:
         self._unit_of_work_factory = unit_of_work_factory
         self._now_ms = now_ms
         self._message_id_factory = message_id_factory
+        self._evidence_id_factory = evidence_id_factory or message_id_factory
+        self._tool_registry = tool_registry
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: CompleteAnswerOnlyRunCommand) -> CompleteAnswerOnlyRunResult:
@@ -152,6 +169,7 @@ class CompleteAnswerOnlyRunHandler:
                 )
 
             if response.applied:
+                self._persist_answer_context(unit_of_work, command, now_ms=now_ms)
                 assistant_message_id = self._message_id_factory()
                 unit_of_work.messages.append_terminal_assistant_message(
                     MessageRecord(
@@ -226,6 +244,63 @@ class CompleteAnswerOnlyRunHandler:
             )
             unit_of_work.commit()
             return response
+
+    def _persist_answer_context(
+        self,
+        unit_of_work: UnitOfWork,
+        command: CompleteAnswerOnlyRunCommand,
+        *,
+        now_ms: int,
+    ) -> None:
+        if not command.evidence_drafts:
+            return
+        if command.retrieval_artifact_id is None:
+            raise ValueError("answer context requires retrieval_artifact_id")
+        if command.resource_ref_drafts and self._tool_registry is None:
+            raise RuntimeError("answer context resource persistence requires the tool registry")
+        for resource_ref in command.resource_ref_drafts:
+            if resource_ref.run_id != command.run_id:
+                raise ValueError("answer context resource belongs to a different run")
+            persist_registered_resource_ref(
+                unit_of_work,
+                resource_ref,
+                catalog=cast(SignedToolRegistry, self._tool_registry),
+            )
+        refs_by_handle = {
+            f"{record.resource_type}:{record.resource_id}": record
+            for record in unit_of_work.resource_refs.list_for_run_bounded(
+                command.run_id, limit=1000
+            )
+        }
+        for draft in command.evidence_drafts:
+            resource = refs_by_handle.get(draft["resource_handle"])
+            if resource is None:
+                raise LookupError(
+                    f"answer evidence resource is unavailable: {draft['resource_handle']}"
+                )
+            role = draft["reason_codes"][0] if draft["reason_codes"] else ""
+            if role not in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}:
+                raise ValueError("answer evidence role is invalid")
+            unit_of_work.evidence.insert_bounded(
+                EvidenceRecord(
+                    id=self._evidence_id_factory(),
+                    run_id=command.run_id,
+                    origin_type=EvidenceOriginType.GOOGLE_RESOURCE,
+                    resource_ref_id=resource.id,
+                    message_id=None,
+                    kind=draft["kind"],
+                    excerpt=draft["excerpt"],
+                    locator_json=dumps(
+                        {
+                            "retrieval_artifact_id": command.retrieval_artifact_id,
+                            "segment_id": draft["segment_id"],
+                            "role": role,
+                        },
+                        sort_keys=True,
+                    ),
+                    created_at_ms=now_ms,
+                )
+            )
 
     def _handle_existing_receipt(
         self,

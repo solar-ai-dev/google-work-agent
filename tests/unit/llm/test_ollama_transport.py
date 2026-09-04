@@ -98,6 +98,29 @@ def test_probe_reports__model_not__found_when_absent(monkeypatch: pytest.MonkeyP
     assert result.safe_error_code == "MODEL_NOT_FOUND"
 
 
+def test_installed_model_catalog__returns_sorted__bounded_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = json.dumps(
+        {
+            "models": [
+                {"name": "qwen2.5:7b", "digest": "sha256:" + "b" * 64},
+                {"name": "qwen2.5:3b", "digest": "sha256:" + "a" * 64},
+                {"name": ""},
+            ]
+        }
+    ).encode("utf-8")
+    monkeypatch.setattr(
+        "google_work_agent.adapters.llm.ollama.transport.urlopen",
+        lambda request, *, timeout: _HTTPResponse(payload),
+    )
+
+    result = OllamaHTTPClient().list_installed_models()
+
+    assert [item.model_id for item in result] == ["qwen2.5:3b", "qwen2.5:7b"]
+    assert result[0].digest == "sha256:" + "a" * 64
+
+
 def test_probe_reports__unavailable_on__real_http_error(monkeypatch: pytest.MonkeyPatch) -> None:
     def raise_405(request: Request, *, timeout: int) -> _HTTPResponse:
         del request, timeout
@@ -125,11 +148,19 @@ def test_invoke_structured__still_posts__to_generate(monkeypatch: pytest.MonkeyP
     def fake_urlopen(request: Request, *, timeout: int) -> _HTTPResponse:
         del timeout
         captured.append(request)
-        return _HTTPResponse(json.dumps({"response": "{}", "model": "qwen2.5:3b"}).encode("utf-8"))
+        return _HTTPResponse(
+            json.dumps(
+                {
+                    "response": "{}",
+                    "model": "qwen2.5:3b",
+                    "total_duration": 3_565_355_900,
+                }
+            ).encode("utf-8")
+        )
 
     monkeypatch.setattr("google_work_agent.adapters.llm.ollama.transport.urlopen", fake_urlopen)
 
-    OllamaHTTPClient().invoke_structured(
+    result = OllamaHTTPClient().invoke_structured(
         endpoint="http://127.0.0.1:11434",
         model_id="qwen2.5:3b",
         prompt_ref=PromptReference(
@@ -156,6 +187,8 @@ def test_invoke_structured__still_posts__to_generate(monkeypatch: pytest.MonkeyP
     assert captured[0].full_url == "http://127.0.0.1:11434/api/generate"
     sent_body = _request_body(captured[0])
     assert sent_body["system"] == "You are a test assistant."
+    assert sent_body["think"] is False
+    assert result.latency_ms == 3_565
 
 
 def _prompt_ref_for_sampling_tests() -> PromptReference:

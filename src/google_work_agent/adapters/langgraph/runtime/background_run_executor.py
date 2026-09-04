@@ -182,6 +182,11 @@ class BackgroundRunExecutorAdapter:
             binding.run_id, binding.langgraph_thread_id
         )
         if latest is not None and latest.execution_admission_id == admission.admission_id:
+            if (
+                admission.submission_kind == "NORMAL_HANDOFF"
+                and latest.applied_handoff_id != handoff.handoff_id
+            ):
+                latest = self._materialize_normal_handoff(admission, handoff)
             self._prove_control_materialized(latest, admission, handoff)
             return latest
         if binding.execution_kind == "START":
@@ -215,12 +220,19 @@ class BackgroundRunExecutorAdapter:
         self._checkpoint_port.store_same_run_checkpoint(checkpoint)
         self._checkpoint_port.flush()
         if admission.submission_kind == "NORMAL_HANDOFF":
-            checkpoint = self._materialize_admission_checkpoint(admission, handoff)
-        if admission.submission_kind == "NORMAL_HANDOFF":
-            checkpoint = replace(checkpoint, applied_handoff_id=handoff.handoff_id)
-            self._checkpoint_port.store_same_run_checkpoint(checkpoint)
-            self._checkpoint_port.flush()
+            checkpoint = self._materialize_normal_handoff(admission, handoff)
         self._prove_control_materialized(checkpoint, admission, handoff)
+        return checkpoint
+
+    def _materialize_normal_handoff(
+        self,
+        admission: WorkflowExecutionAdmissionV1,
+        handoff: WorkflowHandoffV1,
+    ) -> GraphCheckpointEnvelopeV1:
+        checkpoint = self._materialize_admission_checkpoint(admission, handoff)
+        checkpoint = replace(checkpoint, applied_handoff_id=handoff.handoff_id)
+        self._checkpoint_port.store_same_run_checkpoint(checkpoint)
+        self._checkpoint_port.flush()
         return checkpoint
 
     def _prove_control_materialized(

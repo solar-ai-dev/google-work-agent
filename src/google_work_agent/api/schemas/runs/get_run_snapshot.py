@@ -32,6 +32,7 @@ class RunSnapshotMessageResponseV1(ApiModel):
 class RunSnapshotActionResponseV1(ApiModel):
     action_id: str
     tool_name: str
+    arguments: dict[str, object]
     status: str
     version: int
     effect_type: str

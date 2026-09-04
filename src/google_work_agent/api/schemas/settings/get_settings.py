@@ -17,6 +17,7 @@ class SettingsResponse(ApiModel):
     default_tasklist_id: str | None
     default_calendar_id: str | None
     preferred_llm_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
+    preferred_local_model_id: str | None
     external_llm_consent: bool
     retention_days: int
     theme: Literal["LIGHT", "DARK"]

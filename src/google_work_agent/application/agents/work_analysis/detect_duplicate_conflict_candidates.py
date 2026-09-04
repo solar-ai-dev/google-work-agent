@@ -67,6 +67,8 @@ def detect_duplicate_conflict_candidates(
     confirmation_response: dict[str, object] | None = None,
 ) -> list[WorkRelationV1]:
     """Produce guarded candidates only; deterministic validation owns promotion."""
+    if not duplicate_conflict_candidate_llm_required(work_facts):
+        return []
     prompt_input: dict[str, object] = {
         "work_facts": [dict(fact) for fact in work_facts],
         "entity_relations": [dict(item) for item in entity_relations],
@@ -115,4 +117,13 @@ def detect_duplicate_conflict_candidates(
     ]
 
 
-__all__ = ["DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA", "detect_duplicate_conflict_candidates"]
+def duplicate_conflict_candidate_llm_required(work_facts: Sequence[WorkFactV1]) -> bool:
+    """A guarded relation cannot exist without two distinct fact operands."""
+    return len({fact["fact_id"] for fact in work_facts}) >= 2
+
+
+__all__ = [
+    "DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA",
+    "detect_duplicate_conflict_candidates",
+    "duplicate_conflict_candidate_llm_required",
+]

@@ -4,7 +4,21 @@ from collections.abc import Mapping
 
 import pytest
 
-from google_work_agent.application.agents.planning.compose_answer import compose_answer
+from google_work_agent.application.agents.planning.compose_answer import (
+    answer_draft_output_schema,
+    compose_answer,
+)
+
+
+def test_answer_draft_schema__binds_citations__to_approved_outline() -> None:
+    schema = answer_draft_output_schema(["e2", "e1", "e1"])
+    properties = schema.json_schema["properties"]
+
+    assert properties["evidence_refs"] == {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": ["e1", "e2"]},
+    }
 
 
 def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:

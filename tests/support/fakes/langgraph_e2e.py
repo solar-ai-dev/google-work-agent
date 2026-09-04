@@ -93,22 +93,24 @@ def _respond(
     scenario: str,
     call_no: int,
 ) -> dict[str, object]:
+    base = _base_projection(prompt_input)
     if prompt_id == "request_understanding.identify_goal":
-        request_text = str(prompt_input["user_request"])
+        request_text = str(base["user_request"])
         return {
             "goal": request_text,
             "completion_conditions": ["E2E terminal outcome"],
             "constraints": [],
-            "requested_effect_hints": [_effect_for(scenario)],
+            "requested_effect_hints": [] if scenario == "ANSWER_ONLY" else [_effect_for(scenario)],
             "requested_resource_hints": _resource_hints(scenario),
             "analysis_requirement": "NONE",
         }
     if prompt_id == "request_understanding.detect_ambiguity":
         needs_confirmation = scenario == "RESTART_RESUME" and not isinstance(
-            prompt_input.get("confirmation_response"), Mapping
+            base.get("confirmation_response"), Mapping
         )
         return {
             "requires_confirmation": needs_confirmation,
+            "missing_information_owner": "USER" if needs_confirmation else "NONE",
             "reason_codes": ["MISSING_USER_CHOICE"] if needs_confirmation else [],
             "missing_fields": ["target"] if needs_confirmation else [],
         }
@@ -122,7 +124,6 @@ def _respond(
             "disposition": "NO_TOOL_NEEDED" if not inputs and not outputs else "ROUTE_READY",
         }
     if prompt_id == "tool_routing.select_tool_if_needed":
-        base = _base_projection(prompt_input)
         route = cast(Mapping[str, object], base["route_candidate"])
         candidates = cast(list[Mapping[str, str]], base["registered_candidates"])
         selected = _select_tool(
@@ -136,7 +137,6 @@ def _respond(
             "selected_tool_id": selected,
         }
     if prompt_id == "retrieval.plan_query":
-        base = _base_projection(prompt_input)
         routes = cast(list[Mapping[str, object]], base["input_routes"])
         searchable_routes = [route for route in routes if _has_search_tool(route)]
         route_queries = [_route_query(route) for route in searchable_routes]
@@ -148,7 +148,6 @@ def _respond(
             "retrieval_order": route_ids,
         }
     if prompt_id == "retrieval.select_evidence":
-        base = _base_projection(prompt_input)
         ranked = cast(list[Mapping[str, object]], base.get("ranked_segments", []))
         selected_segment_ids = [str(item["segment_id"]) for item in ranked]
         return {
@@ -189,32 +188,32 @@ def _respond(
             "evidence_refs": [],
         }
     if prompt_id == "planning.outline_answer":
-        refs = _evidence_refs(prompt_input)
+        refs = _evidence_refs(base)
         return {"sections": ["E2E result"], "evidence_refs": refs}
     if prompt_id == "planning.compose_answer":
-        outline = cast(Mapping[str, object], prompt_input["answer_outline"])
+        outline = cast(Mapping[str, object], base["answer_outline"])
         return {
             "schema_version": 2,
             "answer": f"E2E completed: {scenario}",
             "evidence_refs": list(cast(list[str], outline["evidence_refs"])),
         }
     if prompt_id == "planning.draft_action_objective_per_output_route":
-        route = cast(Mapping[str, object], prompt_input["output_route"])
+        route = cast(Mapping[str, object], base["output_route"])
         return {
             "schema_version": 1,
             "route_id": str(route["route_id"]),
             "objective": f"E2E {scenario}",
             "target_semantics": str(route["resource_type"]),
             "scope_constraints": ["Use only the frozen output route"],
-            "evidence_refs": _evidence_refs(prompt_input),
+            "evidence_refs": _evidence_refs(base),
         }
     if prompt_id == "planning.compose_arguments_per_output_route":
-        route = cast(Mapping[str, object], prompt_input["output_route"])
+        route = cast(Mapping[str, object], base["output_route"])
         return {
             "schema_version": 1,
             "route_id": str(route["route_id"]),
             "arguments": _arguments(str(route["resource_type"]), scenario),
-            "evidence_refs": _evidence_refs(prompt_input),
+            "evidence_refs": _evidence_refs(base),
         }
     if prompt_id.startswith("review.inspect_"):
         findings: list[dict[str, object]] = []
@@ -223,7 +222,7 @@ def _respond(
             and prompt_id == "review.inspect_action_scope_and_route"
             and call_no == 1
         ):
-            action_ids, route_ids = _action_and_route_ids(prompt_input)
+            action_ids, route_ids = _action_and_route_ids(base)
             findings.append(
                 {
                     "dimension": prompt_id,
@@ -238,7 +237,7 @@ def _respond(
             )
         return {"schema_version": 1, "dimension": prompt_id, "findings": findings}
     if prompt_id == "review.recheck_affected_dimensions":
-        dimensions = cast(list[str], prompt_input["affected_dimensions"])
+        dimensions = cast(list[str], base["affected_dimensions"])
         return {
             "schema_version": 1,
             "affected_dimensions": dimensions,
@@ -293,7 +292,12 @@ def _effect_for(scenario: str) -> str:
 
 def _resource_hints(scenario: str) -> list[str]:
     inputs, outputs, _ = _route_semantics(scenario)
-    return list(dict.fromkeys([*inputs, *outputs]))
+    aliases = {
+        "EMAIL": "GMAIL_THREAD",
+        "TASK": "TASK",
+        "CALENDAR": "CALENDAR_EVENT",
+    }
+    return list(dict.fromkeys(aliases[item] for item in [*inputs, *outputs]))
 
 
 def _route_semantics(scenario: str) -> tuple[list[str], list[str], list[str]]:

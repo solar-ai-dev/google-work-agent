@@ -12,3 +12,21 @@ test("RecoveryCard renders only projected resolution kinds", async () => {
   expect(onResolve).toHaveBeenCalledWith("RECHECK");
   expect(screen.queryByRole("button", { name: "현재 결과 수용" })).not.toBeInTheDocument();
 });
+
+test("RecoveryCard hides a stale resume-only error while a run is active", () => {
+  const snapshot = {
+    run: { status: "ANALYZING" },
+    recovery: null,
+    error: {
+      message: "This run can continue from its validated safe checkpoint.",
+      actions: [
+        { kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" },
+        { kind: "OPEN_DIAGNOSTICS" },
+      ],
+    },
+  } as RunSnapshot;
+  const { container } = render(
+    <RecoveryCard snapshot={snapshot} busy={null} onResolve={vi.fn()} />,
+  );
+  expect(container).toBeEmptyDOMElement();
+});

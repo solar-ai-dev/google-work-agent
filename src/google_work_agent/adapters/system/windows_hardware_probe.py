@@ -15,7 +15,10 @@ from google_work_agent.adapters.llm.runtime.evaluate_local_runtime_eligibility i
     evaluate_local_runtime_eligibility,
 )
 from google_work_agent.ports.llm.runtime_selection import LlmRuntimeSelectionV1
-from google_work_agent.ports.llm.structured_inference_contracts import OllamaRuntimeProbe
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    ApprovedModelInfo,
+    OllamaRuntimeProbe,
+)
 from google_work_agent.ports.system.hardware_probe_port import HardwareProfileV1
 
 
@@ -30,6 +33,7 @@ class WindowsHardwareProbeAdapter:
     runtime_selection: LlmRuntimeSelectionV1
     ollama_probe: OllamaRuntimeProbe
     probe_timeout_seconds: float = 1.0
+    selected_model_provider: Callable[[], ApprovedModelInfo | None] | None = None
 
     def probe(self) -> HardwareProfileV1:
         cpu_logical_cores = os.cpu_count()
@@ -42,7 +46,11 @@ class WindowsHardwareProbeAdapter:
         architecture = platform.machine().upper()
         probe = self.ollama_probe.probe(
             endpoint=self.runtime_selection.ollama_endpoint,
-            approved_model=self.runtime_selection.selected_model,
+            approved_model=(
+                self.runtime_selection.selected_model
+                if self.selected_model_provider is None
+                else self.selected_model_provider()
+            ),
         )
         decision = evaluate_local_runtime_eligibility(
             runtime_selection=self.runtime_selection,
@@ -110,6 +118,42 @@ def _physical_memory_bytes() -> int:
 def _probe_gpu(timeout_seconds: float) -> tuple[str | None, int | None]:
     if os.name != "nt":
         return None, None
+    nvidia = _probe_nvidia_gpu(timeout_seconds)
+    if nvidia != (None, None):
+        return nvidia
+    return _probe_wmi_gpu(timeout_seconds)
+
+
+def _probe_nvidia_gpu(timeout_seconds: float) -> tuple[str | None, int | None]:
+    creation_flags = cast(int, getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        completed = subprocess.run(
+            [
+                "nvidia-smi",
+                "--query-gpu=name,memory.total",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            check=True,
+            text=True,
+            timeout=max(0.1, timeout_seconds),
+            creationflags=creation_flags,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None, None
+    candidates: list[tuple[str, int]] = []
+    for line in completed.stdout.splitlines():
+        name, separator, raw_memory = line.rpartition(",")
+        try:
+            memory_mib = int(raw_memory.strip())
+        except ValueError:
+            continue
+        if separator and name.strip() and memory_mib > 0:
+            candidates.append((name.strip(), memory_mib * 1024**2))
+    return max(candidates, key=lambda item: item[1], default=(None, None))
+
+
+def _probe_wmi_gpu(timeout_seconds: float) -> tuple[str | None, int | None]:
     command = (
         "Get-CimInstance Win32_VideoController | "
         "Select-Object Name,AdapterRAM | ConvertTo-Json -Compress"

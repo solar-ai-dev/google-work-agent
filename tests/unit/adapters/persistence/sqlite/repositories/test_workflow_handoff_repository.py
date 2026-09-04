@@ -170,6 +170,98 @@ def test_redrive_prefers__pending_dispatch_head__over_consumed_continuation(
     assert [item.handoff_id for item in candidates] == ["h-2"]
 
 
+def test_redrive_keeps__pending_user_handoff_while_run__awaits_user_decision(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'r-1';")
+        connection.commit()
+
+    with factory() as unit_of_work:
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(1)
+
+    assert [item.handoff_id for item in candidates] == ["h-1"]
+
+
+def test_redrive_excludes__consumed_checkpoint_while_run__awaits_user_decision(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        admission = _admission(handoff.version, handoff.run_sequence)
+        claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id, handoff.version, admission
+        )
+        unit_of_work.workflow_handoffs.mark_consumed_and_clear_payload(
+            claimed.handoff_id, claimed.version, admission.admission_id, "cp-1", 1
+        )
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status = 'WAITING_APPROVAL' WHERE id = 'r-1';")
+        connection.commit()
+
+    with factory() as unit_of_work:
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(1)
+
+    assert candidates == []
+
+
+def test_redrive__excludes_consumed_handoff__for_terminal_run(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        admission = _admission(handoff.version, handoff.run_sequence)
+        claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id, handoff.version, admission
+        )
+        unit_of_work.workflow_handoffs.mark_consumed_and_clear_payload(
+            claimed.handoff_id, claimed.version, admission.admission_id, "cp-1", 1
+        )
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'r-1';")
+        connection.commit()
+
+    with factory() as unit_of_work:
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(1)
+
+    assert candidates == []
+
+
+def test_redrive__keeps_blocked_binding__for_terminal_cleanup(tmp_path: Path) -> None:
+    database_path = _database(tmp_path)
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        handoff = unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        admission = _admission(handoff.version, handoff.run_sequence)
+        claimed = unit_of_work.workflow_handoffs.claim_execution_admission(
+            handoff.handoff_id, handoff.version, admission
+        )
+        unit_of_work.workflow_handoffs.release_execution_admission(
+            claimed.handoff_id,
+            claimed.version,
+            admission.admission_id,
+            "BINDING_MISMATCH",
+        )
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute("UPDATE runs SET status = 'COMPLETED' WHERE id = 'r-1';")
+        connection.commit()
+
+    with factory() as unit_of_work:
+        candidates = unit_of_work.workflow_handoffs.list_redriveable(1)
+
+    assert [item.handoff_id for item in candidates] == ["h-1"]
+
+
 def _database(tmp_path: Path) -> Path:
     path = tmp_path / "handoff.db"
     with connect_sqlite(path) as connection:

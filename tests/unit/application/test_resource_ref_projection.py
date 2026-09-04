@@ -1,6 +1,9 @@
 from json import loads
 
+import pytest
+
 from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    is_durable_resource_type,
     resource_ref_from_snapshot,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
@@ -82,3 +85,20 @@ def test_message_metadata_is__bounded_to_existing__read_projection_fields() -> N
     assert resource_ref.title == "Status"
     assert "body" not in resource_ref.metadata_json
     assert "raw" not in resource_ref.metadata_json
+
+
+def test_freebusy_evidence_is__not_durable__resource_ref_material() -> None:
+    snapshot = _snapshot(
+        ResourceType.CALENDAR_FREEBUSY,
+        {"title": "primary availability", "intervals": []},
+    )
+
+    assert is_durable_resource_type(ResourceType.CALENDAR_EVENT)
+    assert not is_durable_resource_type(ResourceType.CALENDAR_FREEBUSY)
+    with pytest.raises(ValueError, match="not durable ResourceRef material"):
+        resource_ref_from_snapshot(
+            run_id="run-1",
+            connector_id="google_workspace",
+            snapshot=snapshot,
+            captured_at_ms=10,
+        )

@@ -18,6 +18,7 @@ class ReleaseArtifactProfile:
     runtime_modes: tuple[str, ...]
     requires_model_manifest: bool
     requires_local_model_product_decision: bool
+    requires_local_model_profile: bool
     required_files: tuple[str, ...]
     required_nonempty_directories: tuple[str, ...]
 
@@ -39,6 +40,7 @@ class ReleaseArtifactProfile:
                 raise ValueError(f"required release directory is empty: {directory}")
         model_manifest = "manifests/model-manifest-v1.json"
         product_decision = "manifests/local-model-product-decision-v1.json"
+        local_model_profile = "manifests/local-model-profile-v1.json"
         if self.requires_model_manifest and model_manifest not in paths:
             raise ValueError("LOCAL_CAPABLE requires model-manifest-v1.json")
         if not self.requires_model_manifest and model_manifest in paths:
@@ -47,6 +49,10 @@ class ReleaseArtifactProfile:
             raise ValueError("LOCAL_CAPABLE requires local-model-product-decision-v1.json")
         if not self.requires_local_model_product_decision and product_decision in paths:
             raise ValueError("API_ONLY must omit local-model-product-decision-v1.json")
+        if self.requires_local_model_profile and local_model_profile not in paths:
+            raise ValueError("LOCAL_CAPABLE requires local-model-profile-v1.json")
+        if not self.requires_local_model_profile and local_model_profile in paths:
+            raise ValueError("API_ONLY must omit local-model-profile-v1.json")
 
 
 def _reject_forbidden_path(path: PurePosixPath) -> None:

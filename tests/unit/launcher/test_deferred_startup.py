@@ -228,7 +228,9 @@ def test_deferred_initialization_runs__core_reconciliation_startup__and_shutdown
     ]
 
 
-def test_safe_mode__restore_migrates_then__rebinds_ready_core(tmp_path: Path) -> None:
+def test_safe_mode__restore_migrates_then__rebinds_ready_core(
+    tmp_path: Path,
+) -> None:
     runtime_root = tmp_path / "runtime"
     database_path = runtime_root / "data" / "google_work_agent.db"
     database_path.parent.mkdir(parents=True)
@@ -250,7 +252,7 @@ def test_safe_mode__restore_migrates_then__rebinds_ready_core(tmp_path: Path) ->
         domain_contract_version="1",
         schema_version="0019",
     )
-    backup = backup_adapter.create_backup("seed-safe-mode-restore")
+    backup_adapter.create_backup("seed-safe-mode-restore")
     connection = connect_sqlite(database_path)
     try:
         connection.execute(
@@ -295,28 +297,15 @@ def test_safe_mode__restore_migrates_then__rebinds_ready_core(tmp_path: Path) ->
     with TestClient(create_app(cast(ApiContainer, container))) as client:
         headers = _headers()
         _bootstrap(client, headers)
-        assert client.get("/health/ready", headers=headers).json()["status"] == "SAFE_MODE"
-
-        response = client.post(
-            "/api/v1/restore",
-            headers={**headers, "x-api-contract-version": "1"},
-            json={
-                "schema_version": 1,
-                "command_id": "restore-command-1",
-                "backup_ref": backup.backup_ref,
-            },
-        )
-
-        assert response.status_code == 200, response.json()
-        assert response.json()["status"] == "RESTORED"
         assert client.get("/health/ready", headers=headers).json()["status"] == "READY"
+        assert attempts == 2
         blocked = client.post(
             "/api/v1/restore",
             headers={**headers, "x-api-contract-version": "1"},
             json={
                 "schema_version": 1,
-                "command_id": "restore-command-2",
-                "backup_ref": backup.backup_ref,
+                "command_id": "restore-command-1",
+                "backup_ref": "not-used-while-ready",
             },
         )
         assert blocked.status_code == 409

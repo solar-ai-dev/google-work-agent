@@ -53,6 +53,22 @@ def test_sufficiency_contract__matches_the__live_typed_projection() -> None:
     )
 
 
+def test_compose_arguments_contract__accepts_current__request_intent_projection() -> None:
+    contract = load_prompt_input_contract()
+
+    contract.validate_projection(
+        "planning.compose_arguments_per_output_route",
+        {
+            "output_route": {},
+            "action_objective": {},
+            "tool_schema": {},
+            "request_intent": {},
+            "work_analysis": {},
+            "evidence": [],
+        },
+    )
+
+
 def test_load_prompt__input_contract__rejects_schema_version(tmp_path: Path) -> None:
     payload = _payload()
     payload["schema_version"] = 2

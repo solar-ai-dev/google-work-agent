@@ -33,6 +33,12 @@ def test_extract_work_facts__uses_exact_contract__and_bounded_evidence() -> None
         cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id
         == "work_analysis.extract_work_facts"
     )
+    schema = runtime.calls[0]["output_schema"]
+    refs_schema = schema.json_schema["properties"]["fact_candidates"]["items"]["properties"][
+        "evidence_refs"
+    ]
+    assert refs_schema["uniqueItems"] is True
+    assert refs_schema["items"] == {"type": "string", "enum": ["ev-1"]}
 
 
 def test_extract_work__facts_rejects_old__or_stale_schema() -> None:

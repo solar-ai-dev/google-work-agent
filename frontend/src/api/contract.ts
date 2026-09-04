@@ -82,6 +82,7 @@ export type ConversationHistoryResponse = {
 export type RunAction = {
   action_id: string;
   tool_name: string;
+  arguments: Record<string, unknown>;
   status: string;
   version: number;
   effect_type: string;

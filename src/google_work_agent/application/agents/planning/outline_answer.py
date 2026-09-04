@@ -110,6 +110,8 @@ def outline_answer(
         raise ValueError("outline_answer output requires non-empty sections")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
         raise ValueError("outline_answer output requires evidence_refs")
+    if len(allowed_refs) == 1:
+        refs = [next(iter(allowed_refs))]
     if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_refs):
         raise ValueError("outline_answer referenced evidence outside its projection")
     return {"sections": list(sections), "evidence_refs": list(refs)}

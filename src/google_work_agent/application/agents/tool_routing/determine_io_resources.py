@@ -93,6 +93,11 @@ def determine_io_resources(
     manifest_path: Path | None = None,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> tuple[SemanticRouteCandidate, RunBudgetV2]:
+    deterministic_candidate = _deterministic_candidate(
+        request_intent=request_intent, request=request
+    )
+    if deterministic_candidate is not None:
+        return deterministic_candidate, retry_budget
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
         "tool_routing.determine_io_resources",
         manifest_path or default_prompt_manifest_path(),
@@ -111,9 +116,13 @@ def determine_io_resources(
             ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
         )
         try:
-            raw = _validate_candidate(result.structured_output)
+            candidate = _validated_semantic_candidate(
+                result.structured_output,
+                request_intent=request_intent,
+                request=request,
+            )
         except ToolRouteValidationError as error:
-            failure_code = "SEMANTIC_CANDIDATE_INVALID"
+            failure_code = error.reason_code
             signature = build_semantic_failure_signature_v1(
                 node_id="route.determine_resources", failure_reason_codes=[failure_code]
             )
@@ -135,7 +144,8 @@ def determine_io_resources(
                         detected_by="RUNTIME_DOMAIN_VALIDATOR",
                         runtime_disposition="RETRYABLE",
                         experiment_disposition="RUN_REVISION",
-                        affected_field_paths=[
+                        affected_field_paths=list(error.affected_field_paths)
+                        or [
                             "$.input_resource_types",
                             "$.output_resource_types",
                             "$.output_effects",
@@ -146,17 +156,108 @@ def determine_io_resources(
                 },
                 ROUTE_RESOURCE_CANDIDATE_OUTPUT_SCHEMA,
             )
-            raw = _validate_candidate(revised.structured_output)
-            retry_budget = decision["run_budget"]
-        if raw["disposition"] in {"NEEDS_CONFIRMATION", "BLOCKED"}:
-            raise ToolRouteValidationError(
-                f"tool route semantic candidate is not ready: {raw['disposition']}"
+            candidate = _validated_semantic_candidate(
+                revised.structured_output,
+                request_intent=request_intent,
+                request=request,
             )
-        return _semantic_candidate(
-            raw,
-            request_intent=request_intent,
-            request=request,
-        ), merge_provider_dispatch_usage(retry_budget)
+            retry_budget = decision["run_budget"]
+        return candidate, merge_provider_dispatch_usage(retry_budget)
+
+
+def requires_io_resource_inference(
+    *, request_intent: RequestIntentV2, request: WorkflowStartRequest
+) -> bool:
+    """Return whether Tool Routing still has a semantic choice for the LLM."""
+    return _deterministic_candidate(request_intent=request_intent, request=request) is None
+
+
+def _deterministic_candidate(
+    *, request_intent: RequestIntentV2, request: WorkflowStartRequest
+) -> SemanticRouteCandidate | None:
+    return (
+        _selected_read_candidate(request_intent=request_intent, request=request)
+        or _exact_intent_candidate(request_intent=request_intent, request=request)
+        or _no_tool_candidate(request_intent=request_intent, request=request)
+    )
+
+
+def _exact_intent_candidate(
+    *, request_intent: RequestIntentV2, request: WorkflowStartRequest
+) -> SemanticRouteCandidate | None:
+    if request.selected_resources or request_intent["ambiguity"]["requires_confirmation"]:
+        return None
+    resource_types = tuple(dict.fromkeys(request_intent["requested_resource_hints"]))
+    effect_values = tuple(dict.fromkeys(request_intent["requested_effect_hints"]))
+    if len(resource_types) != 1 or len(effect_values) != 1:
+        return None
+    effect = EffectType(effect_values[0])
+    resource_type = resource_types[0]
+    if effect is EffectType.READ:
+        return SemanticRouteCandidate(
+            input_resource_types=(resource_type,),
+            output_pairs=(),
+            output_mode="ANSWER",
+            analysis_requirement=request_intent["analysis_requirement"],
+        )
+    return SemanticRouteCandidate(
+        input_resource_types=(),
+        output_pairs=((resource_type, effect),),
+        output_mode="ACTION",
+        analysis_requirement=request_intent["analysis_requirement"],
+    )
+
+
+def _selected_read_candidate(
+    *,
+    request_intent: RequestIntentV2,
+    request: WorkflowStartRequest,
+) -> SemanticRouteCandidate | None:
+    selected_input_resources = _selected_input_resource_types(request)
+    if not selected_input_resources or set(request_intent["requested_effect_hints"]) != {"READ"}:
+        return None
+    return SemanticRouteCandidate(
+        input_resource_types=selected_input_resources,
+        output_pairs=(),
+        output_mode="ANSWER",
+        analysis_requirement=request_intent["analysis_requirement"],
+        input_reason_codes=tuple(
+            (resource_type, "RESOURCE_SELECTED") for resource_type in selected_input_resources
+        ),
+    )
+
+
+def _no_tool_candidate(
+    *, request_intent: RequestIntentV2, request: WorkflowStartRequest
+) -> SemanticRouteCandidate | None:
+    if (
+        request.selected_resources
+        or request_intent["requested_resource_hints"]
+        or request_intent["requested_effect_hints"]
+    ):
+        return None
+    return SemanticRouteCandidate(
+        input_resource_types=(),
+        output_pairs=(),
+        output_mode="ANSWER",
+        analysis_requirement=request_intent["analysis_requirement"],
+    )
+
+
+def _validated_semantic_candidate(
+    value: object,
+    *,
+    request_intent: RequestIntentV2,
+    request: WorkflowStartRequest,
+) -> SemanticRouteCandidate:
+    raw = _validate_candidate(value)
+    if raw["disposition"] in {"NEEDS_CONFIRMATION", "BLOCKED"}:
+        raise ToolRouteValidationError(
+            f"tool route semantic candidate is not ready: {raw['disposition']}",
+            reason_code="TOOL_ROUTE_OVERCONFIRMATION",
+            affected_field_paths=("$.disposition",),
+        )
+    return _semantic_candidate(raw, request_intent=request_intent, request=request)
 
 
 def _semantic_candidate(
@@ -176,13 +277,41 @@ def _semantic_candidate(
         coarse_resource_category(resource) for resource in selected_input_resources
     } != {coarse_resource_category(resource) for resource in inferred_input_resources}:
         raise ToolRouteValidationError(
-            "RESOURCE_SELECTED input scope does not match the semantic route candidate"
+            "RESOURCE_SELECTED input scope does not match the semantic route candidate",
+            reason_code="TOOL_ROUTE_FORBIDDEN_INPUT_INCLUDED",
+            affected_field_paths=("$.input_resource_types",),
         )
     input_resources = selected_input_resources or inferred_input_resources
     raw_output_resources = cast(list[str], raw["output_resource_types"])
     output_effects = tuple(
         EffectType(cast(str, item)) for item in cast(list[object], raw["output_effects"])
     )
+    requested_write_effects = {
+        EffectType(item)
+        for item in request_intent["requested_effect_hints"]
+        if item != EffectType.READ.value
+    }
+    if not requested_write_effects:
+        raw_output_resources = []
+        output_effects = ()
+    elif not set(output_effects).issubset(requested_write_effects):
+        raise ToolRouteValidationError(
+            "tool route output effect exceeds the validated RequestIntent",
+            reason_code="TOOL_ROUTE_EFFECT_MISMATCH",
+            affected_field_paths=("$.output_effects",),
+        )
+    elif raw["disposition"] == "NO_TOOL_NEEDED":
+        raise ToolRouteValidationError(
+            "write RequestIntent cannot be downgraded to NO_TOOL_NEEDED",
+            reason_code="TOOL_ROUTE_OUTPUT_MODE_WRONG",
+            affected_field_paths=("$.disposition",),
+        )
+    elif not raw_output_resources or not output_effects:
+        raise ToolRouteValidationError(
+            "write RequestIntent requires a matching output resource and effect",
+            reason_code="TOOL_ROUTE_REQUIRED_OUTPUT_MISSING",
+            affected_field_paths=("$.output_resource_types", "$.output_effects"),
+        )
     if not raw_output_resources or raw["disposition"] == "NO_TOOL_NEEDED":
         output_mode: Literal["ANSWER", "ACTION"] = "ANSWER"
         output_pairs: tuple[tuple[str, EffectType], ...] = ()
@@ -199,7 +328,11 @@ def _semantic_candidate(
                 for resource, effect in zip(raw_output_resources, output_effects, strict=True)
             )
         else:
-            raise ToolRouteValidationError("resource/effect candidate cardinality is ambiguous")
+            raise ToolRouteValidationError(
+                "resource/effect candidate cardinality is ambiguous",
+                reason_code="TOOL_ROUTE_EFFECT_MISMATCH",
+                affected_field_paths=("$.output_resource_types", "$.output_effects"),
+            )
     analysis_requirement = request_intent.get("analysis_requirement", "REQUIRED")
     if analysis_requirement not in {"NONE", "REQUIRED"}:
         raise ToolRouteValidationError("analysis_requirement is invalid")
@@ -208,6 +341,9 @@ def _semantic_candidate(
         output_pairs=output_pairs,
         output_mode=output_mode,
         analysis_requirement=cast(Literal["NONE", "REQUIRED"], analysis_requirement),
+        input_reason_codes=tuple(
+            (resource_type, "RESOURCE_SELECTED") for resource_type in selected_input_resources
+        ),
     )
 
 

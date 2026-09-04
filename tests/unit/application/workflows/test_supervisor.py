@@ -32,6 +32,7 @@ from google_work_agent.application.agents.review.contracts.plan_review_result im
 )
 from google_work_agent.application.agents.state_artifact import StateArtifactMetaV1
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
+    InputToolRouteV1,
     ToolRoutePlanV2,
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
@@ -76,8 +77,9 @@ def test_request_complete__routes_to__tool_route() -> None:
     assert decision["state_update"]["finalize_intent"] is None
 
 
-def test_tool_route_ready__enters_retrieval_for__initial_query_planning() -> None:
+def test_tool_route_ready__with_frozen_input_route__enters_retrieval() -> None:
     plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [_input_route()]
     decision = route_supervisor(
         phase=WorkflowPhase.TOOL_ROUTING,
         state=_state(request_intent=_request_intent()),
@@ -93,6 +95,140 @@ def test_tool_route_ready__enters_retrieval_for__initial_query_planning() -> Non
     assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
     assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
     assert decision["state_update"]["tool_route_plan"] == plan
+
+
+def test_no_input_route__and_no_analysis__routes_directly_to_planning() -> None:
+    intent = _request_intent(analysis_requirement="NONE")
+    plan = _tool_route_plan()
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=intent),
+        result={
+            "schema_version": 1,
+            "disposition": "NO_TOOL_NEEDED",
+            "tool_route_plan": plan,
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.SOLUTION_PLANNING.value
+    assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
+    assert "retrieval_result" not in decision["state_update"]
+    assert "work_analysis_result" not in decision["state_update"]
+
+
+def test_selected_resource_input_route__with_no_analysis__still_enters_retrieval() -> None:
+    intent = _request_intent(analysis_requirement="NONE")
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [
+        _input_route(
+            resource_type="GMAIL_THREAD",
+            tool_id="gmail_get_thread",
+            reason_code="RESOURCE_SELECTED",
+        )
+    ]
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=intent),
+        result={
+            "schema_version": 1,
+            "disposition": "ROUTE_READY",
+            "tool_route_plan": plan,
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.CONTEXT_RETRIEVAL.value
+    assert decision["next_phase"] == WorkflowPhase.CONTEXT_RETRIEVAL.value
+
+
+def test_no_input_route__with_required_analysis__routes_to_work_analysis() -> None:
+    intent = _request_intent(analysis_requirement="REQUIRED")
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=intent),
+        result={
+            "schema_version": 1,
+            "disposition": "NO_TOOL_NEEDED",
+            "tool_route_plan": _tool_route_plan(),
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.WORK_ANALYSIS.value
+    assert decision["next_phase"] == WorkflowPhase.WORK_ANALYSIS.value
+
+
+def test_retrieval_complete__with_no_analysis__routes_directly_to_planning() -> None:
+    intent = _request_intent(analysis_requirement="NONE")
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [_input_route()]
+    result = cast(RetrievalResultV1, {"schema_version": 1, "evidence_refs": []})
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.CONTEXT_RETRIEVAL,
+        state=_state(request_intent=intent, tool_route_plan=plan),
+        result={"disposition": "SUFFICIENT", "typed_result": result},
+    )
+
+    assert decision["target"] == SupervisorTarget.SOLUTION_PLANNING.value
+    assert decision["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
+    assert decision["state_update"]["retrieval_result"] == result
+    assert "work_analysis_result" not in decision["state_update"]
+
+
+def test_retrieval_complete__with_explicit_analysis__routes_to_work_analysis() -> None:
+    intent = _request_intent(analysis_requirement="REQUIRED")
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [_input_route()]
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.CONTEXT_RETRIEVAL,
+        state=_state(request_intent=intent, tool_route_plan=plan),
+        result={
+            "disposition": "SUFFICIENT",
+            "typed_result": cast(
+                RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}
+            ),
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.WORK_ANALYSIS.value
+    assert decision["next_phase"] == WorkflowPhase.WORK_ANALYSIS.value
+
+
+@pytest.mark.parametrize(
+    "policy_reason_code",
+    ("POLICY_TASK_DUPLICATE_CHECK", "POLICY_CALENDAR_CONFLICT_CHECK"),
+)
+def test_policy_precondition__after_retrieval__forces_work_analysis(
+    policy_reason_code: str,
+) -> None:
+    intent = _request_intent(analysis_requirement="NONE")
+    plan = _tool_route_plan()
+    plan["input_plan"]["input_routes"] = [
+        _input_route(reason_code=policy_reason_code)
+    ]
+
+    decision = route_supervisor(
+        phase=WorkflowPhase.CONTEXT_RETRIEVAL,
+        state=_state(request_intent=intent, tool_route_plan=plan),
+        result={
+            "disposition": "SUFFICIENT",
+            "typed_result": cast(
+                RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}
+            ),
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.WORK_ANALYSIS.value
+    assert decision["next_phase"] == WorkflowPhase.WORK_ANALYSIS.value
 
 
 def test_unknown_tool__route_disposition_fails__closed_to_recovery() -> None:
@@ -602,6 +738,7 @@ def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
     request_intent: RequestIntentV2 | None = None,
+    tool_route_plan: ToolRoutePlanV2 | None = None,
     retrieval_result: RetrievalResultV1 | None = None,
     planning_result: PlanningResultV2 | None = None,
     plan_review: PlanReviewResultV2 | None = None,
@@ -625,7 +762,7 @@ def _state(
                 "requested_mode": "AUTO",
             },
             "request_intent": request_intent,
-            "tool_route_plan": None,
+            "tool_route_plan": tool_route_plan,
             "workflow_signal": None,
             "acquisition_result": None,
             "retrieval_result": retrieval_result,
@@ -648,7 +785,9 @@ def _state(
     )
 
 
-def _request_intent() -> RequestIntentV2:
+def _request_intent(
+    *, analysis_requirement: Literal["NONE", "REQUIRED"] = "REQUIRED"
+) -> RequestIntentV2:
     return {
         "schema_version": 2,
         "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
@@ -662,7 +801,7 @@ def _request_intent() -> RequestIntentV2:
         },
         "requested_effect_hints": ["READ"],
         "requested_resource_hints": ["TASK"],
-        "analysis_requirement": "REQUIRED",
+        "analysis_requirement": analysis_requirement,
     }
 
 
@@ -677,6 +816,22 @@ def _tool_route_plan() -> ToolRoutePlanV2:
         "input_plan": {"schema_version": 1, "meta": meta, "input_routes": []},
         "output_plan": {"schema_version": 1, "meta": meta, "output_mode": "ANSWER"},
         "tool_registry_version": "2026-08-06.p0",
+    }
+
+
+def _input_route(
+    *,
+    resource_type: str = "TASK",
+    tool_id: str = "tasks_list_tasks",
+    reason_code: str = "USER_REQUEST",
+) -> InputToolRouteV1:
+    return {
+        "route_id": "route-input-1",
+        "resource_type": resource_type,
+        "connector_id": "google_workspace",
+        "allowed_read_tool_ids": [tool_id],
+        "required": True,
+        "reason_codes": [reason_code],
     }
 
 

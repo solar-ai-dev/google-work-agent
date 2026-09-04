@@ -16,6 +16,9 @@ from google_work_agent.adapters.langgraph.agent_kernel import (
     ensure_llm_call_budget,
     merge_trace_context,
 )
+from google_work_agent.adapters.langgraph.main.action_evidence_projection import (
+    project_current_action_evidence,
+)
 from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     build_user_interrupt_v1,
 )
@@ -84,15 +87,18 @@ from google_work_agent.application.agents.planning.choose_answer_or_action_from_
 )
 from google_work_agent.application.agents.planning.compose_answer import (
     ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA,
+    answer_draft_output_schema,
 )
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
+    requires_argument_inference,
 )
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
 )
 from google_work_agent.application.agents.planning.draft_action_objective_per_output_route import (
     ACTION_OBJECTIVE_CANDIDATE_OUTPUT_SCHEMA,
+    requires_objective_inference,
 )
 from google_work_agent.application.agents.planning.outline_answer import (
     ANSWER_OUTLINE_OUTPUT_SCHEMA,
@@ -102,9 +108,6 @@ from google_work_agent.application.agents.planning.resolve_default_container imp
 )
 from google_work_agent.application.agents.request_understanding.contracts import (
     request_understanding_output,
-)
-from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    EvidenceDraftV1,
 )
 from google_work_agent.application.agents.state_artifact import (
     StateArtifactRefV1,
@@ -372,9 +375,16 @@ class PlanningSubgraph:
                 return state
         working = self._project_runtime_inputs(state)
         routes = cast(Mapping[str, object], working["output_plan"])["output_routes"]
-        if self._llm_runtime is not None:
+        request_intent = cast(Mapping[str, object], working["request_intent"])
+        inference_count = sum(
+            requires_objective_inference(
+                cast(Mapping[str, object], route), request_intent=request_intent
+            )
+            for route in cast(list[object], routes)
+        )
+        if self._llm_runtime is not None and inference_count:
             ensure_llm_call_budget(
-                cast(Any, working), provider_calls_requested=len(cast(list[object], routes))
+                cast(Any, working), provider_calls_requested=inference_count
             )
         patch = objective_node_module.draft_action_objective_per_output_route_node(
             cast(Mapping[str, object], working),
@@ -405,26 +415,44 @@ class PlanningSubgraph:
                     invocation_id=self._id_factory(),
                     node_state="ACTION_OBJECTIVE_COMPLETE",
                     input_projection={"route": "ACTION"},
-                    prompt_ref=self._prompt_refs[
+                    prompt_ref=self._prompt_refs.get(
                         "planning.draft_action_objective_per_output_route"
-                    ],
+                    ),
                 )
-            result["retry_budget"] = consume_llm_call_budget(cast(Any, state))
             trace_state = cast(PlanningLocalState, {**state, **result})
+            if inference_count:
+                result["retry_budget"] = consume_llm_call_budget(cast(Any, state))
             result["trace_context"] = self._trace(
                 trace_state,
                 "draft_action_objective_per_output_route",
-                self._prompt_refs["planning.draft_action_objective_per_output_route"],
+                (
+                    self._prompt_refs["planning.draft_action_objective_per_output_route"]
+                    if inference_count
+                    else None
+                ),
                 first=first,
+                llm_call_increment=inference_count,
             )
         return result
 
     def _compose_arguments_node(self, state: PlanningLocalState) -> PlanningLocalState:
         working = self._project_runtime_inputs(state)
         routes = cast(Mapping[str, object], working["output_plan"])["output_routes"]
-        if self._llm_runtime is not None:
+        request_intent = working.get("request_intent")
+        inference_count = sum(
+            requires_argument_inference(
+                cast(Mapping[str, object], route),
+                request_intent=(
+                    cast(Mapping[str, object], request_intent)
+                    if isinstance(request_intent, Mapping)
+                    else None
+                ),
+            )
+            for route in cast(list[object], routes)
+        )
+        if self._llm_runtime is not None and inference_count:
             ensure_llm_call_budget(
-                cast(Any, working), provider_calls_requested=len(cast(list[object], routes))
+                cast(Any, working), provider_calls_requested=inference_count
             )
         try:
             patch = arguments_node_module.compose_arguments_per_output_route_node(
@@ -477,12 +505,20 @@ class PlanningSubgraph:
         context.pop("confirmation_interrupt", None)
         context.pop("planning_missing_container", None)
         result["prompt_context"] = context
-        if self._llm_runtime is not None:
+        if self._llm_runtime is not None and inference_count:
             result["retry_budget"] = consume_llm_call_budget(cast(Any, state))
             result["trace_context"] = self._trace(
                 state,
                 "compose_arguments_per_output_route",
                 self._prompt_refs["planning.compose_arguments_per_output_route"],
+                llm_call_increment=inference_count,
+            )
+        elif self._llm_runtime is not None:
+            result["trace_context"] = self._trace(
+                state,
+                "compose_arguments_per_output_route",
+                None,
+                llm_call_increment=0,
             )
         return result
 
@@ -670,6 +706,14 @@ class PlanningSubgraph:
                 )
                 self._prompt_refs[prompt_id] = prompt_ref
             output_schema = schemas.get(prompt_id)
+            if prompt_id == "planning.compose_answer":
+                outline = prompt_input.get("answer_outline")
+                if not isinstance(outline, Mapping):
+                    raise ValueError("compose_answer requires answer_outline")
+                refs = outline.get("evidence_refs")
+                if not isinstance(refs, list) or not all(isinstance(ref, str) for ref in refs):
+                    raise ValueError("compose_answer requires outline evidence_refs")
+                output_schema = answer_draft_output_schema(cast(list[str], refs))
             if prompt_ref is None or output_schema is None:
                 raise ValueError(f"unsupported Planning Prompt slot: {prompt_id}")
             result = llm_runtime.infer(
@@ -712,23 +756,37 @@ class PlanningSubgraph:
             )
         return working
 
-    def _evidence(self, state: PlanningLocalState) -> list[EvidenceDraftV1]:
+    def _evidence(self, state: PlanningLocalState) -> list[dict[str, object]]:
         direct = state.get("evidence")
         if isinstance(direct, list):
-            return cast(list[EvidenceDraftV1], direct)
+            return [dict(item) for item in direct]
+        output_plan: Mapping[str, object] | None = state.get("output_plan")
+        if not isinstance(output_plan, Mapping):
+            route_plan = state.get("tool_route_plan")
+            if isinstance(route_plan, Mapping):
+                route_output_plan = route_plan.get("output_plan")
+                if isinstance(route_output_plan, dict):
+                    output_plan = route_output_plan
+        if isinstance(output_plan, Mapping) and output_plan.get("output_mode") == "ACTION":
+            if self._evidence_store is None:
+                raise ValueError("Planning evidence_store is required for Action evidence")
+            return project_current_action_evidence(
+                state=state,
+                evidence_store=self._evidence_store,
+            )
         retrieval = state.get("retrieval_result")
         if retrieval is None:
             return []
         if self._evidence_store is None:
             raise ValueError("Planning evidence_store is required for Retrieval evidence")
-        return cast(
-            list[EvidenceDraftV1],
-            resolve_evidence_projection(
+        return [
+            dict(item)
+            for item in resolve_evidence_projection(
                 store=self._evidence_store,
                 run_id=cast(str, state["run_id"]),
                 retrieval_result=cast(Any, retrieval),
-            ),
-        )
+            )
+        ]
 
     def _materialize_answer(
         self, state: PlanningLocalState, candidate: Mapping[str, object]
@@ -769,9 +827,10 @@ class PlanningSubgraph:
         self,
         state: PlanningLocalState,
         node: str,
-        prompt_ref: PromptReference,
+        prompt_ref: PromptReference | None,
         *,
         first: bool = False,
+        llm_call_increment: int = 1,
     ) -> dict[str, object]:
         assert self._graph_profile is not None
         assert self._id_factory is not None
@@ -789,10 +848,12 @@ class PlanningSubgraph:
                 agent_invocation_id=invocation_id,
                 subgraph_namespace="planning",
                 node_name=node,
-                llm_call_id=f"{state['run_id']}:planning.{node}",
+                llm_call_id=(
+                    f"{state['run_id']}:planning.{node}" if llm_call_increment else None
+                ),
                 prompt_ref=prompt_ref,
                 agent_invocation_increment=1 if first else 0,
-                llm_call_increment=1,
+                llm_call_increment=llm_call_increment,
             ),
         )
 

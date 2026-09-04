@@ -129,16 +129,45 @@ class FilesystemBackupAdapter:
         )
 
     def list_backups(self) -> list[BackupMetadataV1]:
-        return [_metadata(record) for record in self._list_records()]
+        return [
+            _metadata(record)
+            for record in self._list_records()
+            if self._is_restore_eligible(record)
+        ]
 
     def _list_records(self) -> tuple[BackupManifestRecord, ...]:
         if not self._backups_dir.exists():
             return ()
         manifests = []
         for path in sorted(self._backups_dir.glob("*.manifest.json")):
-            manifests.append(_manifest_from_path(path))
+            try:
+                manifests.append(_manifest_from_path(path))
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
         manifests.sort(key=lambda item: item.created_at_ms, reverse=True)
         return tuple(manifests)
+
+    def _is_restore_eligible(self, record: BackupManifestRecord) -> bool:
+        backup_path = self._backups_dir / f"{record.backup_id}.sqlite3"
+        if record.database_schema_version not in self._supported_restore_schema_versions:
+            return False
+        try:
+            if (
+                not backup_path.is_file()
+                or backup_path.stat().st_size != record.backup_size_bytes
+                or _sha256_file(backup_path) != record.backup_sha256
+            ):
+                return False
+            connection = sqlite3.connect(str(backup_path))
+            try:
+                return (
+                    _pragma_single_value(connection, "PRAGMA quick_check;") == "ok"
+                    and connection.execute("PRAGMA foreign_key_check;").fetchone() is None
+                )
+            finally:
+                connection.close()
+        except (OSError, sqlite3.DatabaseError, ValueError):
+            return False
 
     def _apply_retention(self, *, now_ms: int) -> None:
         manifests = list(self._list_records())
@@ -191,12 +220,40 @@ class FilesystemBackupAdapter:
         if not operation_ref.strip():
             raise ValueError("operation_ref is required")
         marker = self._restore_marker(operation_ref)
+        marker_payload: dict[str, object] = {}
         if marker.is_file():
-            payload = json.loads(marker.read_text(encoding="utf-8"))
+            marker_payload = json.loads(marker.read_text(encoding="utf-8"))
+            payload = marker_payload
             if payload.get("backup_ref") != backup_ref:
                 raise ValueError("operation_ref already belongs to a different restore")
             if payload.get("status") == "COMPLETED":
                 return RestoreResultV1(1, backup_ref, "RESTORED", None)
+            if payload.get("status") == "ROLLED_BACK":
+                return RestoreResultV1(
+                    1, backup_ref, "REJECTED", "POST_RESTORE_READINESS_FAILED"
+                )
+            if payload.get("status") == "MIGRATED":
+                pre_restore_ref = str(payload.get("pre_restore_ref") or "")
+                if self._post_restore_readiness():
+                    _write_restore_marker(
+                        marker,
+                        operation_ref,
+                        backup_ref,
+                        "COMPLETED",
+                        pre_restore_ref=pre_restore_ref,
+                    )
+                    return RestoreResultV1(1, backup_ref, "RESTORED", None)
+                self._rollback_to_backup(pre_restore_ref)
+                _write_restore_marker(
+                    marker,
+                    operation_ref,
+                    backup_ref,
+                    "ROLLED_BACK",
+                    pre_restore_ref=pre_restore_ref,
+                )
+                return RestoreResultV1(
+                    1, backup_ref, "REJECTED", "POST_RESTORE_READINESS_FAILED"
+                )
         manifest_path = self._backups_dir / f"{backup_ref}.manifest.json"
         backup_path = self._backups_dir / f"{backup_ref}.sqlite3"
         if not manifest_path.is_file() or not backup_path.is_file():
@@ -217,8 +274,19 @@ class FilesystemBackupAdapter:
                     return RestoreResultV1(1, backup_ref, "REJECTED", "BACKUP_INVALID")
             finally:
                 connection.close()
-            _write_restore_marker(marker, operation_ref, backup_ref, "ACCEPTED")
-            self._create_backup_record(f"pre-restore:{operation_ref}", allow_restore_running=True)
+            pre_restore_ref = str(marker_payload.get("pre_restore_ref") or "")
+            if not pre_restore_ref:
+                pre_restore = self._create_backup_record(
+                    f"pre-restore:{operation_ref}", allow_restore_running=True
+                )
+                pre_restore_ref = pre_restore.backup.backup_id
+            _write_restore_marker(
+                marker,
+                operation_ref,
+                backup_ref,
+                "ACCEPTED",
+                pre_restore_ref=pre_restore_ref,
+            )
             temp_path = self._database_path.with_name(f".{self._database_path.name}.restore.tmp")
             shutil.copy2(backup_path, temp_path)
             try:
@@ -237,10 +305,30 @@ class FilesystemBackupAdapter:
                 os.replace(temp_path, self._database_path)
             finally:
                 temp_path.unlink(missing_ok=True)
-            _write_restore_marker(marker, operation_ref, backup_ref, "MIGRATED")
+            _write_restore_marker(
+                marker,
+                operation_ref,
+                backup_ref,
+                "MIGRATED",
+                pre_restore_ref=pre_restore_ref,
+            )
             if not self._post_restore_readiness():
+                self._rollback_to_backup(pre_restore_ref)
+                _write_restore_marker(
+                    marker,
+                    operation_ref,
+                    backup_ref,
+                    "ROLLED_BACK",
+                    pre_restore_ref=pre_restore_ref,
+                )
                 return RestoreResultV1(1, backup_ref, "REJECTED", "POST_RESTORE_READINESS_FAILED")
-            _write_restore_marker(marker, operation_ref, backup_ref, "COMPLETED")
+            _write_restore_marker(
+                marker,
+                operation_ref,
+                backup_ref,
+                "COMPLETED",
+                pre_restore_ref=pre_restore_ref,
+            )
             return RestoreResultV1(1, backup_ref, "RESTORED", None)
         finally:
             self._maintenance_gate.end_restore()
@@ -258,10 +346,22 @@ class FilesystemBackupAdapter:
                 return OperationalReconcileResultV1("UNCERTAIN", None, None)
             if payload.get("backup_ref") != backup_ref:
                 return OperationalReconcileResultV1("UNCERTAIN", None, None)
+            if payload.get("status") == "ROLLED_BACK":
+                return OperationalReconcileResultV1(
+                    "COMPLETED",
+                    backup_ref,
+                    {
+                        "backup_ref": backup_ref,
+                        "status": "REJECTED",
+                        "detail_code": "POST_RESTORE_READINESS_FAILED",
+                    },
+                )
             if payload.get("status") == "COMPLETED":
                 return OperationalReconcileResultV1(
                     "COMPLETED", backup_ref, {"backup_ref": backup_ref, "status": "RESTORED"}
                 )
+            if payload.get("status") == "MIGRATED" and payload.get("pre_restore_ref"):
+                return OperationalReconcileResultV1("SAFE_TO_RETRY", None, None)
             manifest_path = self._backups_dir / f"{backup_ref}.manifest.json"
             if not manifest_path.is_file() or not self._database_path.is_file():
                 return OperationalReconcileResultV1("SAFE_TO_RETRY", None, None)
@@ -276,6 +376,19 @@ class FilesystemBackupAdapter:
             except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
                 return OperationalReconcileResultV1("UNCERTAIN", None, None)
         return OperationalReconcileResultV1("SAFE_TO_RETRY", None, None)
+
+    def _rollback_to_backup(self, backup_ref: str) -> None:
+        backup_path = self._backups_dir / f"{backup_ref}.sqlite3"
+        if not backup_ref or not backup_path.is_file():
+            raise RuntimeError("pre-restore backup is unavailable")
+        temp_path = self._database_path.with_name(f".{self._database_path.name}.rollback.tmp")
+        shutil.copy2(backup_path, temp_path)
+        try:
+            with temp_path.open("rb+") as stream:
+                os.fsync(stream.fileno())
+            os.replace(temp_path, self._database_path)
+        finally:
+            temp_path.unlink(missing_ok=True)
 
     def _restore_marker(self, operation_ref: str) -> Path:
         operation_hash = hashlib.sha256(operation_ref.encode("utf-8")).hexdigest()[:32]
@@ -334,7 +447,14 @@ def _atomic_write(path: Path, data: bytes) -> None:
     os.replace(temp_path, path)
 
 
-def _write_restore_marker(path: Path, operation_ref: str, backup_ref: str, status: str) -> None:
+def _write_restore_marker(
+    path: Path,
+    operation_ref: str,
+    backup_ref: str,
+    status: str,
+    *,
+    pre_restore_ref: str | None = None,
+) -> None:
     _atomic_write(
         path,
         json.dumps(
@@ -342,6 +462,7 @@ def _write_restore_marker(path: Path, operation_ref: str, backup_ref: str, statu
                 "operation_ref": operation_ref,
                 "backup_ref": backup_ref,
                 "status": status,
+                "pre_restore_ref": pre_restore_ref,
             },
             sort_keys=True,
             separators=(",", ":"),

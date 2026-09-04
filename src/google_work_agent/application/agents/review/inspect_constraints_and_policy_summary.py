@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+from google_work_agent.application.agents.review.contracts.exact_calendar_create_plan import (
+    is_exact_calendar_create_plan,
+)
+from google_work_agent.application.agents.review.contracts.exact_task_create_plan import (
+    is_exact_task_create_plan,
+)
 from google_work_agent.application.agents.review.contracts.review_findings import (
     ReviewDimensionIdV1,
     ReviewInspectorResultV1,
@@ -30,6 +36,22 @@ def inspect_constraints_and_policy_summary(
     confirmation_response: Mapping[str, object] | None = None,
 ) -> ReviewInspectorResultV1:
     constraints = request_intent.get("constraints")
+    if (
+        confirmation_response is None
+        and not policy_summary
+        and (
+            is_exact_calendar_create_plan(
+                request_intent=request_intent,
+                planning_result=planning_result,
+            )
+            or is_exact_task_create_plan(
+                request_intent=request_intent,
+                planning_result=planning_result,
+                work_analysis=work_analysis,
+            )
+        )
+    ):
+        return {"schema_version": 1, "dimension": DIMENSION, "findings": []}
     if constraints == [] and not policy_summary and confirmation_response is None:
         # This inspector may report only supplied user-constraint or policy
         # contradictions. With both bounded inputs explicitly empty there is

@@ -89,6 +89,9 @@ from google_work_agent.adapters.llm.runtime.llm_credential_router import (
     SessionMemorySecretStore,
 )
 from google_work_agent.adapters.llm.runtime.llm_runtime_status_router import LlmRuntimeStatusRouter
+from google_work_agent.adapters.llm.runtime.local_model_selection import (
+    LocalModelSelectionResolver,
+)
 from google_work_agent.adapters.llm.runtime.prompt_repair_schema_repairer import (
     PromptRepairSchemaRepairer,
 )
@@ -198,7 +201,11 @@ from google_work_agent.application.use_cases.attachment.get_attachment import (
 )
 from google_work_agent.application.use_cases.backup.create_backup import CreateBackupHandler
 from google_work_agent.application.use_cases.backup.list_backups import ListBackupsHandler
-from google_work_agent.application.use_cases.backup.restore_backup import RestoreBackupHandler
+from google_work_agent.application.use_cases.backup.restore_backup import (
+    AutomaticallyRestoreBackupCommand,
+    AutomaticallyRestoreBackupHandler,
+    RestoreBackupHandler,
+)
 from google_work_agent.application.use_cases.claim.build_claim_context import (
     BuildClaimContextHandler,
 )
@@ -315,6 +322,7 @@ from google_work_agent.application.use_cases.resource.get_task_resource_detail i
     GetTaskResourceDetailHandler,
 )
 from google_work_agent.application.use_cases.resource.issue_selection_handle import (
+    RESOURCE_SELECTION_HANDLE_TTL_MS,
     IssueSelectionHandle,
 )
 from google_work_agent.application.use_cases.resource.list_calendars import ListCalendarsHandler
@@ -426,7 +434,11 @@ from google_work_agent.application.use_cases.verification.verify_effect import (
 )
 from google_work_agent.ports.connector.connector_read_port import ConnectorReadPort
 from google_work_agent.ports.connector.connector_write_port import ConnectorWritePort
-from google_work_agent.ports.connector.contracts.google_workspace import ResourceSnapshot
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    DEFAULT_CALENDAR_ID,
+    DEFAULT_TASK_LIST_ID,
+    ResourceSnapshot,
+)
 from google_work_agent.ports.connector.mcp_client_port import MCPClientPort, MCPClientPortError
 from google_work_agent.ports.connector.oauth_credential_port import (
     OAuthConnectionMetadata,
@@ -439,10 +451,12 @@ from google_work_agent.ports.llm.llm_credential_port import LlmCredentialPort
 from google_work_agent.ports.llm.llm_runtime_status_port import (
     LlmProviderRuntimeStatus,
     LlmRuntimeStatusPort,
+    LocalModelRuntimeOptionV1,
 )
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
+from google_work_agent.ports.llm.local_model_profile import LocalModelProfileV1
 from google_work_agent.ports.llm.runtime_selection import (
     LlmRuntimeSelectionV1,
     LocalRuntimeActivationStatus,
@@ -620,6 +634,8 @@ def _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         now_ms=now_ms,
         message_id_factory=id_factory,
+        evidence_id_factory=id_factory,
+        tool_registry=tool_catalog,
     )
     complete_read_only_run = CompleteReadOnlyRunHandler(
         unit_of_work_factory=unit_of_work_factory,
@@ -1327,8 +1343,12 @@ def _load_installed_llm_runtime_selection(
 ) -> LlmRuntimeSelectionV1:
     manifest_relative = "manifests/model-manifest-v1.json"
     decision_relative = "manifests/local-model-product-decision-v1.json"
+    profile_relative = "manifests/local-model-profile-v1.json"
     if deployment_profile == "API_ONLY":
-        if manifest_relative in release_files or decision_relative in release_files:
+        if any(
+            relative in release_files
+            for relative in (manifest_relative, decision_relative, profile_relative)
+        ):
             raise CoreInitializationError("API_ONLY_LOCAL_RELEASE_ARTIFACT_FORBIDDEN")
         return LlmRuntimeSelectionV1(
             schema_version=1,
@@ -1351,8 +1371,13 @@ def _load_installed_llm_runtime_selection(
         decision_binding = release_files[decision_relative]
     except KeyError as error:
         raise CoreInitializationError("PRODUCT_DECISION_MISSING") from error
+    try:
+        profile_binding = release_files[profile_relative]
+    except KeyError as error:
+        raise CoreInitializationError("LOCAL_MODEL_PROFILE_MISSING") from error
     manifest_path = manifest_binding.resolve_verified(install_root)
     decision_path = decision_binding.resolve_verified(install_root)
+    profile_path = profile_binding.resolve_verified(install_root)
     try:
         manifest = ModelManifestV1.from_bytes(manifest_path.read_bytes())
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
@@ -1361,32 +1386,43 @@ def _load_installed_llm_runtime_selection(
         decision = LocalModelProductDecisionV1.from_bytes(decision_path.read_bytes())
     except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
         raise CoreInitializationError("PRODUCT_DECISION_INVALID") from error
+    try:
+        local_model_profile = LocalModelProfileV1.from_bytes(profile_path.read_bytes())
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        raise CoreInitializationError("LOCAL_MODEL_PROFILE_INVALID") from error
     manifest_hash = sha256(manifest.to_canonical_bytes()).hexdigest()
     if decision.model_manifest_hash != manifest_hash:
         raise CoreInitializationError("PRODUCT_DECISION_MANIFEST_MISMATCH")
     if decision.release_version != release_version:
         raise CoreInitializationError("PRODUCT_DECISION_STALE")
+    approved_models = tuple(
+        ApprovedModelInfo(
+            model_id=entry.model_id,
+            runtime="OLLAMA",
+            manifest_version="1",
+            schema_version="1",
+            minimum_runtime_version=manifest.minimum_ollama_version,
+            digest=entry.model_hash,
+        )
+        for entry in manifest.approved_models
+    )
+    approved_model_ids = {model.model_id for model in approved_models}
+    if not set(local_model_profile.model_ids).issubset(approved_model_ids):
+        raise CoreInitializationError("LOCAL_MODEL_PROFILE_MODEL_NOT_APPROVED")
     selected = next(
         (
-            entry
-            for entry in manifest.approved_models
-            if entry.model_id == decision.selected_model_id
+            model for model in approved_models if model.model_id == decision.selected_model_id
         ),
         None,
     )
     if selected is None:
         raise CoreInitializationError("PRODUCT_DECISION_MODEL_NOT_APPROVED")
+    if decision.selected_model_id != local_model_profile.reasoning_model_id:
+        raise CoreInitializationError("PRODUCT_DECISION_PROFILE_MISMATCH")
     return LlmRuntimeSelectionV1(
         schema_version=1,
         deployment_profile="LOCAL_CAPABLE",
-        selected_model=ApprovedModelInfo(
-            model_id=selected.model_id,
-            runtime="OLLAMA",
-            manifest_version="1",
-            schema_version="1",
-            minimum_runtime_version=manifest.minimum_ollama_version,
-            digest=selected.model_hash,
-        ),
+        selected_model=selected,
         ollama_endpoint_policy="FIXED_LOOPBACK_OLLAMA_V1",
         model_manifest_hash=manifest_hash,
         product_decision_hash=decision_binding.sha256,
@@ -1399,7 +1435,19 @@ def _load_installed_llm_runtime_selection(
             supported_architecture=decision.supported_architecture,
         ),
         release_version=release_version,
+        approved_models=approved_models,
+        local_model_profile=local_model_profile,
     )
+
+
+def _load_development_local_model_profile(working_directory: Path) -> LocalModelProfileV1:
+    path = working_directory / "config" / "local-model-profile-v1.json"
+    try:
+        return LocalModelProfileV1.from_bytes(path.read_bytes())
+    except FileNotFoundError as error:
+        raise CoreInitializationError("LOCAL_MODEL_PROFILE_MISSING") from error
+    except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as error:
+        raise CoreInitializationError("LOCAL_MODEL_PROFILE_INVALID") from error
 
 
 def _build_verified_frontend_site(
@@ -1574,6 +1622,7 @@ class SafeModeRecoveryBindings:
     list_backups_handler: ListBackupsHandler
     create_backup_handler: CreateBackupHandler
     restore_backup_handler: RestoreBackupHandler
+    automatically_restore_backup_handler: AutomaticallyRestoreBackupHandler
     request_shutdown_handler: RequestShutdownHandler
 
 
@@ -1747,7 +1796,15 @@ class DeferredApiContainer:
             self.core_initialization_in_progress = False
             self.safe_mode_controller.enable(error.safe_code)
             self.readiness_aggregator.fail(error.safe_code)
-            self._bind_safe_mode_recovery()
+            bindings = self._bind_safe_mode_recovery()
+            if bindings is not None:
+                try:
+                    await asyncio.to_thread(
+                        bindings.automatically_restore_backup_handler,
+                        AutomaticallyRestoreBackupCommand(error.safe_code),
+                    )
+                except Exception:
+                    self.safe_mode_controller.enable("AUTOMATIC_RESTORE_FAILED")
             return
         except Exception:
             self.core_initialization_in_progress = False
@@ -1793,14 +1850,15 @@ class DeferredApiContainer:
             if hasattr(core, name):
                 setattr(self, name, getattr(core, name))
 
-    def _bind_safe_mode_recovery(self) -> None:
+    def _bind_safe_mode_recovery(self) -> SafeModeRecoveryBindings | None:
         if self._recovery_builder is None:
-            return
+            return None
         bindings = self._recovery_builder(self._retry_core_after_restore)
         self.list_backups_handler = bindings.list_backups_handler
         self.create_backup_handler = bindings.create_backup_handler
         self.restore_backup_handler = bindings.restore_backup_handler
         self.request_shutdown_handler = bindings.request_shutdown_handler
+        return bindings
 
     def _retry_core_after_restore(self) -> bool:
         if self._event_loop is None or self._closed:
@@ -1894,6 +1952,9 @@ class _UnavailableStartupLlmStatus:
             error_code="CORE_INITIALIZATION_INCOMPLETE",
         )
 
+    def list_local_models(self) -> tuple[LocalModelRuntimeOptionV1, ...]:
+        return ()
+
 
 @dataclass(slots=True)
 class _ShutdownComponent:
@@ -1968,10 +2029,15 @@ def build_safe_mode_recovery_bindings(
         marker_path=root / "shutdown" / "request.json",
         request_process_exit=request_process_exit,
     )
+    restore_handler = RestoreBackupHandler(backups=backups, replay=replay)
     return SafeModeRecoveryBindings(
         list_backups_handler=ListBackupsHandler(backups),
         create_backup_handler=CreateBackupHandler(backups=backups, replay=replay),
-        restore_backup_handler=RestoreBackupHandler(backups=backups, replay=replay),
+        restore_backup_handler=restore_handler,
+        automatically_restore_backup_handler=AutomaticallyRestoreBackupHandler(
+            backups=backups,
+            restore=restore_handler,
+        ),
         request_shutdown_handler=RequestShutdownHandler(shutdown=shutdown, replay=replay),
     )
 
@@ -2066,6 +2132,12 @@ def build_production_runtime(
     frontend_site: _VerifiedFrontendSite | _DevelopmentFrontendSite | None = (
         _build_development_frontend_site(working_directory.resolve())
     )
+    development_local_model_profile = (
+        _load_development_local_model_profile(install_root)
+        if configuration_source == "EXPLICIT_DEVELOPMENT"
+        and deployment_profile == "LOCAL_CAPABLE"
+        else None
+    )
     runtime_selection = LlmRuntimeSelectionV1(
         schema_version=1,
         deployment_profile=deployment_profile,
@@ -2076,10 +2148,21 @@ def build_production_runtime(
         local_runtime_activation_status=(
             LocalRuntimeActivationStatus.DISABLED_BY_DEPLOYMENT_PROFILE
             if deployment_profile == "API_ONLY"
-            else LocalRuntimeActivationStatus.DEFERRED_UNTIL_PRODUCT_DECISION
+            else LocalRuntimeActivationStatus.ACTIVE
         ),
-        requirements=None,
+        requirements=(
+            None
+            if deployment_profile == "API_ONLY"
+            else LocalRuntimeRequirementsV1(
+                minimum_cpu_logical_cores=4,
+                minimum_ram_bytes=8 * 1024**3,
+                minimum_vram_bytes=4 * 1024**3,
+                supported_os="WINDOWS",
+                supported_architecture="AMD64",
+            )
+        ),
         release_version=release_version,
+        local_model_profile=development_local_model_profile,
     )
     if configuration_source == "SIGNED_RELEASE_MANIFEST":
         prompt_manifest_path = _load_verified_product_release_prompt_bundle(
@@ -2385,7 +2468,10 @@ def build_production_runtime(
             timezone_provider=lambda: settings_service.get_settings().timezone,
             work_hours_provider=work_hours_provider,
             default_tasklist_id_provider=lambda: (
-                settings_service.get_settings().default_tasklist_id
+                settings_service.get_settings().default_tasklist_id or DEFAULT_TASK_LIST_ID
+            ),
+            default_calendar_id_provider=lambda: (
+                settings_service.get_settings().default_calendar_id or DEFAULT_CALENDAR_ID
             ),
             attachment_verifier=attachment_staging,
             resume_target_registry=resume_target_registry,
@@ -2467,6 +2553,7 @@ def build_production_runtime(
                 api_contract_version=api_contract_version,
             ),
             selected_resources=context.selected_resources,
+            user_message_id=context.user_message_id,
         )
 
     def _initial_target(admission: WorkflowExecutionAdmissionV1) -> AgentNodeResumeTargetV2:
@@ -2685,7 +2772,7 @@ def build_production_runtime(
         signing_secret=selection_handle_secret,
         service_instance_id=service_instance_id,
         now_ms=clock.now_ms,
-        ttl_ms=5 * 60 * 1000,
+        ttl_ms=RESOURCE_SELECTION_HANDLE_TTL_MS,
     )
     resolve_selection_handle = ResolveSelectionHandle(
         signing_secret=selection_handle_secret,
@@ -2734,10 +2821,14 @@ def build_production_runtime(
         ConnectorResourceAccess(
             gateway=read_projection,
             default_calendar_id_provider=(
-                lambda: llm_runtime.settings_service().default_calendar_id
+                lambda: (
+                    llm_runtime.settings_service().default_calendar_id or DEFAULT_CALENDAR_ID
+                )
             ),
             default_tasklist_id_provider=(
-                lambda: llm_runtime.settings_service().default_tasklist_id
+                lambda: (
+                    llm_runtime.settings_service().default_tasklist_id or DEFAULT_TASK_LIST_ID
+                )
             ),
             timezone_provider=lambda: llm_runtime.settings_service().timezone,
         ),
@@ -3120,9 +3211,18 @@ def _build_llm_runtime(
     ollama_transport = OllamaHTTPClient()
     ollama_probe = LoopbackOllamaProbe(transport=ollama_transport)
     gemini_transport = GeminiHTTPClient()
+    local_model_selection = LocalModelSelectionResolver(
+        runtime_selection=runtime_selection,
+        catalog=ollama_transport,
+        allow_development_models=(
+            prompt_execution_scope == DEVELOPMENT_SMOKE
+            and runtime_selection.deployment_profile == "LOCAL_CAPABLE"
+        ),
+    )
     hardware_probe = WindowsHardwareProbeAdapter(
         runtime_selection=runtime_selection,
         ollama_probe=ollama_probe,
+        selected_model_provider=local_model_selection.get_selected_model,
     )
     status_service = LlmRuntimeStatusRouter(
         runtime_selection=runtime_selection,
@@ -3131,6 +3231,7 @@ def _build_llm_runtime(
         hardware_probe=hardware_probe,
         runtime_policy=RuntimePolicy(),
         api_provider_name="gemini",
+        local_model_selection=local_model_selection,
     )
     structured_inference = StructuredInferenceRuntimeRouter(
         before_provider_dispatch=account_provider_dispatch,

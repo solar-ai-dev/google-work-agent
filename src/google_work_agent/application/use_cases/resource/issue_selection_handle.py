@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from json import dumps
 from typing import Literal
 
+RESOURCE_SELECTION_HANDLE_TTL_MS = 24 * 60 * 60 * 1000
+
 
 @dataclass(frozen=True, slots=True)
 class ResourceSelectionHandlePayloadV1:

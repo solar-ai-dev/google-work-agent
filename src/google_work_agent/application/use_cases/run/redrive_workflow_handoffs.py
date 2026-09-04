@@ -41,6 +41,9 @@ from google_work_agent.ports.system.contracts.workflow_handoff import WorkflowHa
 
 _RUN_NOT_EXECUTABLE = "RUN_NOT_EXECUTABLE"
 _CHECKPOINT_MISMATCH_RECOVERED = "CHECKPOINT_MISMATCH_RECOVERED"
+_RUN_AWAITS_USER_DECISION = frozenset(
+    {RunStatusV1.WAITING_CONFIRMATION, RunStatusV1.WAITING_APPROVAL}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +100,12 @@ class RedriveWorkflowHandoffsHandler:
                 continue
             with self._unit_of_work_factory() as unit_of_work:
                 current_run = unit_of_work.runs.get(run_id)
+            if (
+                current_run is not None
+                and current_run.status in _RUN_AWAITS_USER_DECISION
+                and handoff.status == "CONSUMED"
+            ):
+                continue
             if current_run is None or (
                 is_preempting_run_status(current_run.status)
                 and handoff.status != "BLOCKED_BINDING"

@@ -5,6 +5,7 @@ export type RuntimeSummary = {
   service_instance_id: string;
   connectors: Array<{ schema_version: 1; connector_id: string; connection_status: "CONNECTING" | "CONNECTED" | "DISCONNECTED" | "REAUTH_REQUIRED" | "UNAVAILABLE"; account_ref: string | null; scope_status: "READY" | "INSUFFICIENT" | "UNKNOWN"; retry_at_ms: number | null }>;
   llm_providers: Array<{ schema_version: 1; provider: string; configured: boolean; availability: "READY" | "UNAVAILABLE" | "DISABLED"; model_id: string | null; error_code: string | null }>;
+  local_models: Array<{ schema_version: 1; model_id: string; installed: boolean; approved: boolean; selected: boolean }>;
   component_circuits: Array<Record<string, unknown>>;
   active_run_budget: Record<string, unknown> | null;
   recovery_required: boolean;

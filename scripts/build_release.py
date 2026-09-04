@@ -80,6 +80,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--model-manifest", type=Path)
     parser.add_argument("--local-model-product-decision", type=Path)
+    parser.add_argument("--local-model-profile", type=Path)
     parser.add_argument("--app-version", required=True)
     parser.add_argument(
         "--build-channel", choices=("DEVELOPMENT", "STAGING", "PRODUCTION"), required=True
@@ -137,6 +138,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             local_model_product_decision=(
                 arguments.local_model_product_decision.resolve()
                 if arguments.local_model_product_decision is not None
+                else None
+            ),
+            local_model_profile=(
+                arguments.local_model_profile.resolve()
+                if arguments.local_model_profile is not None
                 else None
             ),
         ),

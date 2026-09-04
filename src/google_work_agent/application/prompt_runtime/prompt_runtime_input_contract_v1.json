@@ -46,7 +46,7 @@
       "prompt_slot_id": "request_understanding.detect_ambiguity",
       "runtime_node_id": "request.detect_ambiguity",
       "input_schema_version": 1,
-      "required_root_fields": ["user_request", "goal_candidate"],
+      "required_root_fields": ["user_request", "goal_candidate", "selected_resource_refs"],
       "optional_root_fields": ["confirmation_response"],
       "output_schema_version": 1
     },
@@ -167,7 +167,7 @@
       "runtime_node_id": "planning.compose_arguments_per_output_route",
       "input_schema_version": 1,
       "required_root_fields": ["output_route", "action_objective", "tool_schema"],
-      "optional_root_fields": ["work_analysis", "evidence", "confirmation_response"],
+      "optional_root_fields": ["request_intent", "work_analysis", "evidence", "confirmation_response"],
       "output_schema_version": 1
     },
     {

@@ -8,6 +8,7 @@ import os
 import re
 import socket
 import subprocess
+import sys
 import threading
 from collections.abc import Sequence
 from contextlib import suppress
@@ -114,7 +115,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else:
                     server.run(sockets=[server_socket])
                 exit_code[0] = 0
-            except Exception:
+            except Exception as error:
+                print(
+                    f"Development service failed: {type(error).__name__}: {error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
                 exit_code[0] = 1
 
         thread = threading.Thread(target=run_server, name="gwa-development-server")

@@ -91,6 +91,13 @@ def select_evidence(
     eligible_candidates = [
         candidate for candidate in rag_candidates if candidate["segment_id"] not in excluded
     ]
+    deterministic_selection = _exact_selected_read_selection(
+        request_intent=request_intent,
+        candidates=eligible_candidates,
+        exclusion_obligations=obligations,
+    )
+    if deterministic_selection is not None:
+        return deterministic_selection, retry_budget
     projection = _ranked_segments_projection(eligible_candidates, segments)
     candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
     result = llm_runtime.infer(
@@ -158,6 +165,35 @@ def select_evidence(
             )
         except ValueError:
             return _empty_selection(obligations), decision["run_budget"]
+
+
+def _exact_selected_read_selection(
+    *,
+    request_intent: RequestIntentV2,
+    candidates: list[RagCandidateV1],
+    exclusion_obligations: Collection[str],
+) -> EvidenceSelectionResultV2 | None:
+    """Select the sole exact selected-resource segment without semantic inference."""
+    if (
+        request_intent["analysis_requirement"] != "NONE"
+        or set(request_intent["requested_effect_hints"]) != {"READ"}
+        or len(candidates) != 1
+        or "EXACT_RESOURCE" not in candidates[0]["reason_codes"]
+    ):
+        return None
+    segment_id = candidates[0]["segment_id"]
+    return {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": segment_id,
+                "role": "SUPPORTS",
+                "relevance_reason": "EXACT_SELECTED_RESOURCE",
+            }
+        ],
+        "selected_segment_ids": [segment_id],
+        "excluded_segment_ids": _stable_unique(exclusion_obligations),
+    }
 
 
 def _ranked_segments_projection(

@@ -1,24 +1,25 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiClientError } from "../../api/client";
-import type { CalendarContainer, TaskListContainer } from "../../api/contract";
 import type { RuntimeSummary } from "../diagnostics";
-import { listCalendars, listTaskLists } from "../resource_browser/api/list_resources";
 import type { GoogleConnection } from "./api/google_connection_operations";
 import { getSettings, type SettingsView } from "./api/get_settings";
 import { getLlmCredentialStatus, storeLlmCredential, type LlmCredentialStatus } from "./api/llm_credential_operations";
+import { updateRuntimeMode } from "./api/update_runtime_mode";
 import { updateSettings } from "./api/update_settings";
 
 type Props = {
   runtime: RuntimeSummary;
   google: GoogleConnection;
+  statusLine: string;
   onConnectGoogle: () => void;
   onRefreshConnections: () => Promise<void>;
-  onComplete: (timezone: string) => void;
+  onComplete: () => void;
 };
 
 export function FirstRunOnboardingScreen({
   runtime,
   google,
+  statusLine,
   onConnectGoogle,
   onRefreshConnections,
   onComplete,
@@ -31,11 +32,6 @@ export function FirstRunOnboardingScreen({
   const [consent, setConsent] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [storageMode, setStorageMode] = useState<"KEYRING" | "SESSION_ONLY">("KEYRING");
-  const [calendarId, setCalendarId] = useState("");
-  const [taskListId, setTaskListId] = useState("");
-  const [calendars, setCalendars] = useState<CalendarContainer[]>([]);
-  const [taskLists, setTaskLists] = useState<TaskListContainer[]>([]);
-  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Seoul");
   const commandIds = useRef(new Map<string, string>());
 
   useEffect(() => {
@@ -46,9 +42,6 @@ export function FirstRunOnboardingScreen({
         setSettings(settingsResponse);
         setLLM(llmResponse);
         setConsent(settingsResponse.external_llm_consent);
-        setCalendarId(settingsResponse.default_calendar_id ?? "");
-        setTaskListId(settingsResponse.default_tasklist_id ?? "");
-        setTimezone(settingsResponse.timezone);
       })
       .catch((cause: unknown) => {
         if (active) setError(errorMessage(cause, "설정 상태를 불러오지 못했습니다."));
@@ -59,35 +52,18 @@ export function FirstRunOnboardingScreen({
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    if (google.connection_status !== "CONNECTED") return;
-    let active = true;
-    void Promise.allSettled([listCalendars(), listTaskLists()]).then(([calendarResult, taskListResult]) => {
-      if (!active) return;
-      if (calendarResult.status === "fulfilled") {
-        setCalendars(calendarResult.value.items);
-        setCalendarId((current) => current || calendarResult.value.items.find((item) => item.primary)?.calendar_id || calendarResult.value.items[0]?.calendar_id || "");
-      }
-      if (taskListResult.status === "fulfilled") {
-        setTaskLists(taskListResult.value.items);
-        setTaskListId((current) => current || taskListResult.value.items[0]?.tasklist_id || "");
-      }
-      if (calendarResult.status === "rejected" && taskListResult.status === "rejected") {
-        setError("Google 기본 리소스를 불러오지 못했습니다. 연결을 다시 확인해 주세요.");
-      }
-    });
-    return () => { active = false; };
-  }, [google.connection_status]);
-
-  const apiProvider = useMemo(() => llm, [llm]);
-  const apiAvailable = apiProvider?.validation_status === "VALID";
+  const apiAvailable = llm?.validation_status === "VALID";
+  const localProvider = runtime.llm_providers.find((item) => item.provider === "LOCAL_GPU");
+  const selectedLocalModel = runtime.local_models.find(
+    (item) => item.selected && item.installed && item.approved,
+  );
+  const localAvailable = Boolean(
+    selectedLocalModel
+    && localProvider?.availability === "READY",
+  );
+  const llmReady = localAvailable || apiAvailable;
   const diagnosticsReady = runtime.launcher_status === "READY" && runtime.migration_status === "READY";
   const consentSaved = Boolean(settings?.external_llm_consent);
-  const defaultsReady = Boolean(
-    settings?.default_calendar_id
-    && settings.default_tasklist_id
-    && settings.timezone,
-  );
 
   function commandIdFor(operation: string): string {
     let commandId = commandIds.current.get(operation);
@@ -113,21 +89,15 @@ export function FirstRunOnboardingScreen({
       }
       const response = await getLlmCredentialStatus();
       setLLM(response);
+      const updated = await updateSettings(commandIdFor("onboarding:api-mode"), {
+        preferred_llm_mode: "AUTO",
+      });
+      commandIds.current.delete("onboarding:api-mode");
+      await updateRuntimeMode(commandIdFor("onboarding:runtime:auto"), "AUTO");
+      commandIds.current.delete("onboarding:runtime:auto");
+      setSettings(updated);
       await onRefreshConnections();
     }, true);
-  }
-
-  async function completeSetup(): Promise<void> {
-    await run(async () => {
-      const response = await updateSettings(commandIdFor("onboarding:complete"), {
-        default_calendar_id: calendarId.trim(),
-        default_tasklist_id: taskListId.trim(),
-        timezone: timezone.trim(),
-      });
-      commandIds.current.delete("onboarding:complete");
-      setSettings(response);
-      onComplete(response.timezone);
-    });
   }
 
   async function run(operation: () => Promise<void>, clearSecret = false): Promise<void> {
@@ -148,6 +118,7 @@ export function FirstRunOnboardingScreen({
       <section className="startup-card" aria-label="최초 설정">
         <h1>Google Work Agent 시작하기</h1>
         <p>필수 항목을 순서대로 확인합니다. 완료된 항목은 다시 입력하지 않습니다.</p>
+        <p role="status" aria-live="polite">{statusLine}</p>
         {loading ? <p role="status">설정 상태를 확인하고 있습니다.</p> : null}
         {error ? <p className="status-bad" role="alert">{error}</p> : null}
         <ol className="card-list">
@@ -163,21 +134,14 @@ export function FirstRunOnboardingScreen({
           <ChecklistItem title="PC와 Runtime 진단" complete={diagnosticsReady}>
             <p>Launcher {runtime.launcher_status} · 배포 프로필 {runtime.deployment_profile}</p>
           </ChecklistItem>
-          <ChecklistItem title="API LLM 연결" complete={apiAvailable}>
+          <ChecklistItem title="LLM 자동 연결" complete={llmReady}>
+            <p>시스템이 Local LLM을 우선 확인하고 사용할 수 없으면 구성된 API LLM을 사용합니다.</p>
             <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
             <label>저장 방식<select value={storageMode} onChange={(event) => setStorageMode(event.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}><option value="KEYRING">PC에 안전하게 저장</option><option value="SESSION_ONLY">이번 실행에서만 사용</option></select></label>
-            <button className="button-primary" type="button" onClick={() => void connectLLM()} disabled={busy}>저장하고 연결 검사</button>
+            <button className="button-primary" type="button" onClick={() => void connectLLM()} disabled={busy || !apiKey.trim()}>API Key 저장 후 자동 연결</button>
           </ChecklistItem>
-          {runtime.deployment_profile === "LOCAL_CAPABLE" ? (
-            <ChecklistItem title="Local Runtime 진단" complete={runtime.llm_providers.some((item) => item.provider === "LOCAL_GPU" && item.availability === "READY")}>
-              <p>Local GPU {runtime.llm_providers.find((item) => item.provider === "LOCAL_GPU")?.availability ?? "UNAVAILABLE"}. 앱은 모델을 자동 설치하지 않습니다.</p>
-            </ChecklistItem>
-          ) : null}
-          <ChecklistItem title="기본 리소스와 시간대" complete={defaultsReady}>
-            <label>기본 Calendar<select value={calendarId} onChange={(event) => setCalendarId(event.target.value)}><option value="">선택</option>{calendars.map((item) => <option key={item.calendar_id} value={item.calendar_id}>{item.title}{item.primary ? " (기본)" : ""}</option>)}</select></label>
-            <label>기본 Task List<select value={taskListId} onChange={(event) => setTaskListId(event.target.value)}><option value="">선택</option>{taskLists.map((item) => <option key={item.tasklist_id} value={item.tasklist_id}>{item.title}</option>)}</select></label>
-            <label>Timezone<input value={timezone} onChange={(event) => setTimezone(event.target.value)} /></label>
-            <button className="button-primary" type="button" onClick={() => void completeSetup()} disabled={busy || google.connection_status !== "CONNECTED" || google.missing_required_scopes.length > 0 || !consentSaved || !diagnosticsReady || !apiAvailable || !calendarId.trim() || !taskListId.trim() || !timezone.trim()}>설정 완료하고 시작</button>
+          <ChecklistItem title="시작 준비" complete={false}>
+            <button className="button-primary" type="button" onClick={onComplete} disabled={busy || google.connection_status !== "CONNECTED" || google.missing_required_scopes.length > 0 || !consentSaved || !diagnosticsReady || !llmReady}>설정 완료하고 시작</button>
           </ChecklistItem>
         </ol>
       </section>

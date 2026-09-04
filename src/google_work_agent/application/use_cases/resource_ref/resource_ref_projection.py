@@ -10,6 +10,24 @@ from google_work_agent.ports.connector.contracts.google_workspace import (
     ResourceType,
 )
 
+_DURABLE_RESOURCE_TYPES = frozenset(
+    {
+        ResourceType.GMAIL_DRAFT,
+        ResourceType.GMAIL_MESSAGE,
+        ResourceType.GMAIL_THREAD,
+        ResourceType.TASK_LIST,
+        ResourceType.TASK,
+        ResourceType.CALENDAR,
+        ResourceType.CALENDAR_EVENT,
+    }
+)
+
+
+def is_durable_resource_type(resource_type: ResourceType) -> bool:
+    """Return whether a Connector resource may be persisted as a ResourceRef."""
+
+    return resource_type in _DURABLE_RESOURCE_TYPES
+
 
 def minimal_resource_metadata(snapshot: ResourceSnapshot) -> dict[str, object]:
     """Return the bounded metadata whitelist stored with one ResourceRef.
@@ -59,16 +77,7 @@ def resource_ref_from_snapshot(
     """Build one durable minimal ResourceRef using explicit connector identity."""
     if not connector_id:
         raise ValueError("ResourceRef projection requires connector_id")
-    durable_types = {
-        ResourceType.GMAIL_DRAFT,
-        ResourceType.GMAIL_MESSAGE,
-        ResourceType.GMAIL_THREAD,
-        ResourceType.TASK_LIST,
-        ResourceType.TASK,
-        ResourceType.CALENDAR,
-        ResourceType.CALENDAR_EVENT,
-    }
-    if snapshot.resource_type not in durable_types:
+    if not is_durable_resource_type(snapshot.resource_type):
         raise ValueError(
             f"resource type is not durable ResourceRef material: {snapshot.resource_type.value}"
         )

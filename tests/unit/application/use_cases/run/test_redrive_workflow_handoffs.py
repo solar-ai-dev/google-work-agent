@@ -349,6 +349,75 @@ def test_recovery_required_run__blocks_normal_dispatch__with_zero_wep_calls(
     assert _handoff_status(database_path, "h-1") == "PENDING"
 
 
+def test_waiting_confirmation__blocks_consumed__checkpoint_redrive(
+    tmp_path: Path,
+) -> None:
+    database_path = _database(tmp_path, run_status="WAITING_CONFIRMATION")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        unit_of_work.commit()
+    with connect_sqlite(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE workflow_handoffs
+            SET status = 'CONSUMED', applied_checkpoint_id = 'cp-1',
+                applied_checkpoint_generation = 1, consumed_at_ms = 10
+            WHERE handoff_id = 'h-1';
+            """
+        )
+        connection.commit()
+    calls: list[str] = []
+
+    def schedule(command: object) -> RunExecutionAcceptedV1:
+        calls.append(command.handoff_id)  # type: ignore[attr-defined]
+        return RunExecutionAcceptedV1(1, True, "ACCEPTED")
+
+    result = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory,
+        schedule_run_execution=schedule,  # type: ignore[arg-type]
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
+    )(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.accepted == 0
+    assert result.inspected == 0
+    assert result.actionable_count == 0
+    assert not result.has_more
+    assert calls == []
+    assert _run_status(database_path, "r-1") == "WAITING_CONFIRMATION"
+
+
+def test_waiting_approval__redrives_pending__user_handoff(tmp_path: Path) -> None:
+    database_path = _database(tmp_path, run_status="WAITING_APPROVAL")
+    factory = sqlite_unit_of_work_factory(database_path, now_ms=lambda: 10)
+    with factory() as unit_of_work:
+        unit_of_work.workflow_handoffs.stage_pending(_stage("h-1", "cmd-1"))
+        unit_of_work.commit()
+    execution = _ExecutionPort()
+    handler = RedriveWorkflowHandoffsHandler(
+        unit_of_work_factory=factory,
+        schedule_run_execution=ScheduleRunExecutionHandler(
+            unit_of_work_factory=factory,
+            workflow_execution=execution,
+            id_factory=lambda: "admission-1",
+        ),
+        require_recovery=RequireRecoveryHandler(
+            unit_of_work_factory=factory,
+            now_ms=lambda: 20,
+            checkpoint_port=sqlite_checkpoint(database_path),
+        ),
+    )
+
+    result = handler(RedriveWorkflowHandoffsCommand(limit=10))
+
+    assert result.accepted == 1
+    assert execution.submitted == ["h-1"]
+
+
 def test_newer_recovery_preemption__blocks_stale_retrieval__restart_before_cache_reader(
     tmp_path: Path,
 ) -> None:

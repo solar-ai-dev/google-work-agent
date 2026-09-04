@@ -205,6 +205,27 @@ def test_create_requires__evidence_but__not_existing_target() -> None:
     assert result["result"] == "REQUIRE_APPROVAL"
 
 
+def test_create_accepts__current_run_user_message__as_evidence() -> None:
+    plan = _task_create_plan()
+    plan["actions"][0]["evidence_refs"] = ["message-1"]
+    result = _call(
+        plan,
+        reader=_ResourceReader({}),
+        evidence=[
+            {
+                "schema_version": 1,
+                "evidence_id": "message-1",
+                "origin_type": "USER_MESSAGE",
+                "message_id": "message-1",
+                "kind": "USER_REQUEST",
+                "excerpt": "Create a new task.",
+            }
+        ],
+    )
+
+    assert result["result"] == "REQUIRE_APPROVAL"
+
+
 def test_invalid_tool__effect_pair__blocks() -> None:
     plan = _task_create_plan()
     plan["actions"][0]["effect"] = "DELETE"

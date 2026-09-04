@@ -4,6 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
+from google_work_agent.application.agents.review.contracts.exact_calendar_create_plan import (
+    is_exact_calendar_create_plan,
+)
+from google_work_agent.application.agents.review.contracts.exact_task_create_plan import (
+    is_exact_task_create_plan,
+)
 from google_work_agent.application.agents.review.contracts.review_findings import (
     ReviewDimensionIdV1,
     ReviewInspectorResultV1,
@@ -27,6 +33,20 @@ def inspect_action_scope_and_route(
     work_analysis: Mapping[str, object] | None = None,
     confirmation_response: Mapping[str, object] | None = None,
 ) -> ReviewInspectorResultV1:
+    if confirmation_response is None and (
+        is_exact_calendar_create_plan(
+            request_intent=request_intent,
+            planning_result=planning_result,
+            tool_route_plan=tool_route_plan,
+        )
+        or is_exact_task_create_plan(
+            request_intent=request_intent,
+            planning_result=planning_result,
+            work_analysis=work_analysis,
+            tool_route_plan=tool_route_plan,
+        )
+    ):
+        return {"schema_version": 1, "dimension": DIMENSION, "findings": []}
     prompt_input: dict[str, object] = {
         "request_intent": dict(request_intent),
         "tool_route_plan": dict(tool_route_plan),

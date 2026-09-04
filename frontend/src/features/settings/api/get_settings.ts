@@ -6,6 +6,7 @@ export type SettingsView = {
   default_tasklist_id: string | null;
   default_calendar_id: string | null;
   preferred_llm_mode: "AUTO" | "LOCAL_GPU" | "API_LLM";
+  preferred_local_model_id: string | null;
   external_llm_consent: boolean;
   retention_days: number;
   theme: "LIGHT" | "DARK";

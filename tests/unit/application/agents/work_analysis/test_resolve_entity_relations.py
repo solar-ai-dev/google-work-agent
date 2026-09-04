@@ -29,6 +29,26 @@ def test_entity_relation__is_candidate__only() -> None:
     assert result == output["relation_candidates"]
 
 
+def test_entity_relation__binds_output_references__to_validated_inputs() -> None:
+    runtime = WorkAnalysisRuntimeFake({"relation_candidates": []})
+
+    resolve_entity_relations(
+        work_facts=[fact("f1"), fact("f2", "PERSON")],
+        evidence=[],
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref("work_analysis.resolve_entity_relations", "resolve_entity_relations"),
+        allowed_evidence_refs={"ev-2", "ev-1"},
+        requested_mode="AUTO",
+    )
+
+    output_schema = runtime.calls[0]["output_schema"]
+    properties = output_schema.json_schema["properties"]  # type: ignore[union-attr]
+    item_properties = properties["relation_candidates"]["items"]["properties"]
+    assert item_properties["source_fact_id"]["enum"] == ["f1", "f2"]
+    assert item_properties["target_fact_id"]["enum"] == ["f1", "f2"]
+    assert item_properties["evidence_refs"]["items"]["enum"] == ["ev-1", "ev-2"]
+
+
 def test_entity_relation__rejects_guarded__kind() -> None:
     output = {
         "relation_candidates": [

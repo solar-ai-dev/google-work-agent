@@ -34,6 +34,34 @@ IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "analysis_requirement",
         ],
         "additionalProperties": False,
+        "allOf": [
+            {
+                "if": {
+                    "properties": {
+                        "requested_effect_hints": {"type": "array", "minItems": 1}
+                    },
+                    "required": ["requested_effect_hints"],
+                },
+                "then": {
+                    "properties": {
+                        "requested_resource_hints": {"type": "array", "minItems": 1}
+                    }
+                },
+            },
+            {
+                "if": {
+                    "properties": {
+                        "requested_resource_hints": {"type": "array", "minItems": 1}
+                    },
+                    "required": ["requested_resource_hints"],
+                },
+                "then": {
+                    "properties": {
+                        "requested_effect_hints": {"type": "array", "minItems": 1}
+                    }
+                },
+            },
+        ],
         "properties": {
             "goal": {"type": "string"},
             "completion_conditions": {"type": "array", "items": {"type": "string"}},
@@ -68,12 +96,46 @@ IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "requested_effect_hints": {
                 "type": "array",
                 "items": {"enum": ["READ", "CREATE", "UPDATE", "SEND", "DELETE"]},
+                "description": (
+                    "Effects on Google Workspace resources only. Retrieving, summarizing, "
+                    "or analyzing an existing resource is READ; producing an assistant "
+                    "answer or summary is never CREATE. CREATE, UPDATE, SEND, and DELETE "
+                    "apply only when the user requests that external effect, and an "
+                    "explicitly forbidden effect must not appear."
+                ),
             },
             "requested_resource_hints": {
                 "type": "array",
-                "items": {"type": "string", "minLength": 1},
+                "items": {
+                    "enum": [
+                        "GMAIL_THREAD",
+                        "GMAIL_MESSAGE",
+                        "GMAIL_DRAFT",
+                        "GMAIL_ATTACHMENT",
+                        "TASK_LIST",
+                        "TASK",
+                        "CALENDAR",
+                        "CALENDAR_EVENT",
+                        "CALENDAR_FREEBUSY",
+                    ]
+                },
+                "uniqueItems": True,
+                "description": (
+                    "Semantic resource concepts explicitly named or necessarily targeted. "
+                    "Gmail or email lookup uses GMAIL_THREAD, Google Tasks work uses TASK, "
+                    "and Google Calendar event work uses CALENDAR_EVENT. Empty only when "
+                    "the request needs no Google Workspace resource."
+                ),
             },
-            "analysis_requirement": {"enum": ["NONE", "REQUIRED"]},
+            "analysis_requirement": {
+                "enum": ["NONE", "REQUIRED"],
+                "description": (
+                    "REQUIRED only for downstream business analysis such as relationships, "
+                    "dependencies, conflicts, duplicates, follow-up actions, or operational "
+                    "risk. Reading or summarizing one selected resource is NONE, but an "
+                    "explicit request to analyze its implications or next actions is REQUIRED."
+                ),
+            },
         },
     },
 )
@@ -111,7 +173,49 @@ def identify_goal(
         prompt_input,
         IDENTIFY_GOAL_OUTPUT_SCHEMA,
     )
-    return _validate_goal_candidate(result.structured_output)
+    return _apply_selected_resource_authority(
+        _validate_goal_candidate(result.structured_output),
+        request=request,
+    )
+
+
+def _apply_selected_resource_authority(
+    candidate: RequestGoalCandidateV1,
+    *,
+    request: WorkflowStartRequest,
+) -> RequestGoalCandidateV1:
+    """Preserve trusted UI selection facts outside model-owned semantics."""
+    if request.entry_mode != "RESOURCE_SELECTED" or not request.selected_resources:
+        return candidate
+
+    resource_ids = list(dict.fromkeys(ref.resource_id for ref in request.selected_resources))
+    constraints = list(candidate["constraints"])
+    constrained_resource_ids = {
+        str(item)
+        for constraint in constraints
+        if constraint["kind"] == "RESOURCE"
+        for item in (
+            constraint["value"]
+            if isinstance(constraint["value"], list)
+            else [constraint["value"]]
+        )
+    }
+    missing_resource_ids = [
+        resource_id for resource_id in resource_ids if resource_id not in constrained_resource_ids
+    ]
+    if missing_resource_ids:
+        constraints.append(
+            {
+                "kind": "RESOURCE",
+                "field": "selected_resource_id",
+                "value": missing_resource_ids,
+            }
+        )
+
+    effects = list(candidate["requested_effect_hints"])
+    if "READ" not in effects:
+        effects.insert(0, "READ")
+    return {**candidate, "constraints": constraints, "requested_effect_hints": effects}
 
 
 def _validate_goal_candidate(value: object) -> RequestGoalCandidateV1:

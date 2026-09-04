@@ -14,10 +14,12 @@ from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
 from google_work_agent.adapters.system.sqlite_checkpoint import SqliteCheckpointAdapter
+from google_work_agent.ports.persistence.unit_of_work import UnitOfWork
 from google_work_agent.ports.system.checkpoint_port import CheckpointPort
 from google_work_agent.ports.system.contracts.checkpoint import GraphCheckpointEnvelopeV1
 from google_work_agent.ports.system.contracts.workflow_handoff import (
     AgentNodeResumeTargetV2,
+    ConfirmationResumeControlV1,
     RunExecutionRefV1,
     WorkflowExecutionAdmissionV1,
     WorkflowExecutionBindingV1,
@@ -92,6 +94,137 @@ def test_failed_pre_settlement__admission_can_be__redriven_in_same_process(
     finally:
         adapter.close()
         checkpoint.close()
+
+
+def test_same_resume_admission__with_incomplete_control__repairs_materialization() -> None:
+    target = AgentNodeResumeTargetV2(
+        "AGENT_NODE",
+        "REQUEST_UNDERSTANDING",
+        "SIX_REQUEST_UNDERSTANDING",
+        "request.finalize",
+        "SIX_ROLE_BASELINE",
+        "v1",
+    )
+    admission = WorkflowExecutionAdmissionV1(
+        schema_version=1,
+        admission_id="admission-2",
+        handoff_id="handoff-2",
+        handoff_run_sequence=2,
+        submission_kind="NORMAL_HANDOFF",
+        effective_binding=WorkflowExecutionBindingV1(
+            schema_version=1,
+            execution_kind="RESUME",
+            run_id="run-1",
+            langgraph_thread_id="thread-1",
+            graph_profile="SIX_ROLE_BASELINE",
+            graph_version="v1",
+            requested_mode="AUTO",
+            checkpoint_id="checkpoint-1",
+            checkpoint_generation=1,
+            resume_target=target,
+        ),
+        expected_run_version=2,
+    )
+    control = ConfirmationResumeControlV1(
+        kind="CONFIRMATION_RESPONSE",
+        confirmation_response={
+            "schema_version": 1,
+            "response_kind": "FREE_TEXT",
+            "selected_option": None,
+            "free_text": "second answer",
+        },
+        policy_confirmation_receipt=None,
+    )
+    handoff = WorkflowHandoffV1(
+        schema_version=1,
+        handoff_id="handoff-2",
+        trigger_command_id="confirm-2",
+        execution=RunExecutionRefV1(
+            1,
+            "RESUME",
+            "run-1",
+            "thread-1",
+            "SIX_ROLE_BASELINE",
+            "v1",
+            "AUTO",
+            target,
+        ),
+        checkpoint_id="checkpoint-1",
+        checkpoint_generation=1,
+        run_sequence=2,
+        control_kind="CONFIRMATION_RESPONSE",
+        control=control,
+        control_payload_hash="a" * 64,
+        status="DISPATCHED",
+        last_submit_reason=None,
+        execution_admission=admission,
+        applied_checkpoint_id=None,
+        applied_checkpoint_generation=None,
+        version=1,
+    )
+    latest = GraphCheckpointEnvelopeV1(
+        schema_version=1,
+        checkpoint_id="checkpoint-1",
+        checkpoint_generation=1,
+        run_id="run-1",
+        langgraph_thread_id="thread-1",
+        graph_profile="SIX_ROLE_BASELINE",
+        graph_version="v1",
+        owner_scope="REQUEST_UNDERSTANDING",
+        registered_resume_target=target,
+        applied_handoff_id="handoff-1",
+        execution_admission_id="admission-2",
+        active_handoff_id="handoff-2",
+        active_handoff_run_sequence=2,
+        retrieval_cache_requirements=(),
+        created_at_ms=1,
+        checkpoint_blob=b"checkpoint",
+    )
+
+    class _CheckpointPort:
+        def __init__(self) -> None:
+            self.current = latest
+            self.flush_count = 0
+
+        def load_same_run_checkpoint(
+            self, _run_id: str, _thread_id: str
+        ) -> GraphCheckpointEnvelopeV1:
+            return self.current
+
+        def store_same_run_checkpoint(self, value: GraphCheckpointEnvelopeV1) -> None:
+            self.current = value
+
+        def flush(self) -> None:
+            self.flush_count += 1
+
+    port = _CheckpointPort()
+    materialized: list[str] = []
+
+    def materialize_resume(
+        _admission: WorkflowExecutionAdmissionV1,
+        pending_handoff: WorkflowHandoffV1,
+    ) -> GraphCheckpointEnvelopeV1:
+        materialized.append(pending_handoff.handoff_id)
+        return port.current
+
+    adapter = BackgroundRunExecutorAdapter(
+        unit_of_work_factory=cast(
+            Callable[[], UnitOfWork], lambda: cast(UnitOfWork, object())
+        ),
+        checkpoint_port=cast(CheckpointPort, port),
+        materialize_admission_checkpoint=materialize_resume,
+        invoke_semantic_owner=lambda _admission, _handoff: None,
+        release_active_lineage=lambda _run_id, _thread_id, _handoff_id, _sequence: None,
+    )
+    try:
+        repaired = adapter._prepare_admission_checkpoint(admission, handoff)
+    finally:
+        adapter.close()
+
+    assert materialized == ["handoff-2"]
+    assert repaired.applied_handoff_id == "handoff-2"
+    assert port.current == repaired
+    assert port.flush_count == 1
 
 
 def test_stale_admission__is_retired_before__semantic_owner_io(tmp_path: Path) -> None:

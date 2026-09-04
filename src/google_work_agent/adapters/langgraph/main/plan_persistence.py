@@ -6,18 +6,19 @@ from collections.abc import Callable, Mapping
 from json import dumps
 from typing import TYPE_CHECKING, Any, cast
 
+from google_work_agent.adapters.langgraph.main.action_evidence_projection import (
+    project_current_action_evidence,
+)
 from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     _acquired_resource_by_handle,
     _require_state_value,
     _resource_handle_for_ref,
+    request_from_state,
 )
 from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     RunScopedResourceIdentityReader,
     resolve_exact_target_evidence_handle,
-)
-from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
-    resolve_evidence_projection,
 )
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionPlanDraftV2,
@@ -49,6 +50,7 @@ from google_work_agent.application.use_cases.resource_ref.persist_resource_ref i
     persist_registered_resource_ref,
 )
 from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    is_durable_resource_type,
     resource_ref_from_snapshot,
 )
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
@@ -135,7 +137,7 @@ def target_handle_for_action(
     *,
     run_id: str,
     action: PlannedActionV2,
-    evidence_by_id: Mapping[str, EvidenceDraftV1],
+    evidence_by_id: Mapping[str, Mapping[str, object]],
     resource_identity_reader: RunScopedResourceIdentityReader,
 ) -> str | None:
     if action["effect"] == "CREATE":
@@ -266,9 +268,8 @@ class PlanPersistenceMixin:
         action_id_map = {action["action_id"]: action["action_id"] for action in plan["actions"]}
         retrieval_result = _require_state_value(state["retrieval_result"], "retrieval_result")
         evidence_ids = evidence_ids_from_plan(plan)
-        # Retrieval evidence ids are logical, run-scoped references. Persisted
-        # Evidence ids are repository-wide identities and must stay unique when
-        # a later Run selects the same external resource segment.
+        # Planning evidence ids are logical, run-scoped references. Persisted
+        # Evidence ids are repository-wide identities and must stay unique.
         evidence_id_map = {item: self._id_factory() for item in evidence_ids}
         if replan_from_plan_id is not None and not any(
             plan.id == replan_from_plan_id for plan in plans
@@ -282,12 +283,15 @@ class PlanPersistenceMixin:
             plan_id = self._id_factory()
             action_id_map = {action["action_id"]: self._id_factory() for action in plan["actions"]}
 
-        evidence_drafts = {
-            item["evidence_id"]: item
-            for item in resolve_evidence_projection(
-                store=self._evidence_store, run_id=run_id, retrieval_result=retrieval_result
-            )
-        }
+        evidence_drafts: dict[str, Mapping[str, object]] = {}
+        for item in project_current_action_evidence(
+                state=state,
+                evidence_store=self._evidence_store,
+        ):
+            evidence_id = item.get("evidence_id")
+            if not isinstance(evidence_id, str) or not evidence_id:
+                raise ValueError("Planning evidence projection requires evidence_id")
+            evidence_drafts[evidence_id] = item
         missing_evidence = set(evidence_ids) - set(evidence_drafts)
         if missing_evidence:
             raise LookupError(
@@ -295,24 +299,13 @@ class PlanPersistenceMixin:
             )
         acquisition = _require_state_value(state["acquisition_result"], "acquisition_result")
         mapped_evidence = tuple(
-            WriteEvidenceDraft(
-                evidence_id=evidence_id_map[evidence_id],
-                origin_type=EvidenceOriginType.GOOGLE_RESOURCE,
-                kind=evidence_drafts[evidence_id]["kind"],
-                excerpt=evidence_drafts[evidence_id]["excerpt"],
-                locator_json=_current_retrieval_locator(
-                    retrieval_result=retrieval_result,
-                    evidence=evidence_drafts[evidence_id],
-                ),
-                resource_ref_id=self._resolve_target_resource_ref_for_connector(
-                    run_id=run_id,
-                    connector_id=_connector_id_for_evidence_handle(
-                        state=state,
-                        resource_handle=evidence_drafts[evidence_id]["resource_handle"],
-                    ),
-                    resource_handle=evidence_drafts[evidence_id]["resource_handle"],
-                    acquisition_result=acquisition,
-                ),
+            self._materialize_write_evidence(
+                state=state,
+                retrieval_result=retrieval_result,
+                acquisition_result=acquisition,
+                logical_evidence_id=evidence_id,
+                persisted_evidence_id=evidence_id_map[evidence_id],
+                draft=evidence_drafts[evidence_id],
             )
             for evidence_id in evidence_ids
         )
@@ -395,6 +388,98 @@ class PlanPersistenceMixin:
         if not publish_response.applied:
             raise RuntimeError(f"publish_write_plan failed: {publish_response.result_code}")
         return plan_id
+
+    def _materialize_write_evidence(
+        self,
+        *,
+        state: GraphState,
+        retrieval_result: RetrievalResultV1,
+        acquisition_result: AcquisitionResultV1,
+        logical_evidence_id: str,
+        persisted_evidence_id: str,
+        draft: Mapping[str, object],
+    ) -> WriteEvidenceDraft:
+        if draft.get("origin_type") == EvidenceOriginType.USER_MESSAGE.value:
+            request = request_from_state(state)
+            message_id = draft.get("message_id")
+            excerpt = draft.get("excerpt")
+            if (
+                logical_evidence_id != request.user_message_id
+                or message_id != request.user_message_id
+                or excerpt != request.request_text
+                or draft.get("kind") != "USER_REQUEST"
+            ):
+                raise ValueError("USER_MESSAGE evidence does not match current Run request")
+            return WriteEvidenceDraft(
+                evidence_id=persisted_evidence_id,
+                origin_type=EvidenceOriginType.USER_MESSAGE,
+                kind="USER_REQUEST",
+                excerpt=request.request_text,
+                message_id=message_id,
+            )
+
+        kind = draft.get("kind")
+        excerpt = draft.get("excerpt")
+        resource_handle = draft.get("resource_handle")
+        if (
+            not isinstance(kind, str)
+            or not kind
+            or not isinstance(excerpt, str)
+            or not excerpt
+            or not isinstance(resource_handle, str)
+            or not resource_handle
+        ):
+            raise ValueError("Retrieval evidence projection is invalid")
+        resource_ref_id = self._resolve_evidence_resource_ref_for_connector(
+            run_id=state["run_id"],
+            connector_id=_connector_id_for_evidence_handle(
+                state=state,
+                resource_handle=resource_handle,
+            ),
+            resource_handle=resource_handle,
+            acquisition_result=acquisition_result,
+        )
+        return WriteEvidenceDraft(
+            evidence_id=persisted_evidence_id,
+            origin_type=(
+                EvidenceOriginType.GOOGLE_RESOURCE
+                if resource_ref_id is not None
+                else EvidenceOriginType.DERIVED
+            ),
+            kind=kind,
+            excerpt=excerpt,
+            locator_json=_current_retrieval_locator(
+                retrieval_result=retrieval_result,
+                evidence=cast(EvidenceDraftV1, draft),
+            ),
+            resource_ref_id=resource_ref_id,
+        )
+
+    def _resolve_evidence_resource_ref_for_connector(
+        self,
+        *,
+        run_id: str,
+        connector_id: str,
+        resource_handle: str,
+        acquisition_result: AcquisitionResultV1,
+    ) -> str | None:
+        resource = _acquired_resource_by_handle(
+            acquisition_result=acquisition_result,
+            resource_handle=resource_handle,
+        )
+        if resource is None:
+            raise LookupError(
+                f"evidence resource handle was not acquired for this run: {resource_handle}"
+            )
+        resource_type = ResourceType(str(resource["resource_type"]))
+        if not is_durable_resource_type(resource_type):
+            return None
+        return self._resolve_target_resource_ref_for_connector(
+            run_id=run_id,
+            connector_id=connector_id,
+            resource_handle=resource_handle,
+            acquisition_result=acquisition_result,
+        )
 
     def _plan_summary(self, state: GraphState) -> str:
         request_intent = _require_state_value(state.get("request_intent"), "request_intent")

@@ -108,6 +108,7 @@ from google_work_agent.application.agents.retrieval.finalize_retrieval import (
 )
 from google_work_agent.application.agents.retrieval.plan_query import (
     DEFAULT_RETRIEVAL_BUDGET,
+    deterministic_initial_query_plan,
     followup_retrieval_planner_input,
     initial_retrieval_planner_input,
 )
@@ -283,6 +284,9 @@ def _runtime_route_constraint_policies(
                 frozenset({"KEYWORD"})
                 if coarse_resource_category(route["resource_type"]) == "EMAIL"
                 and "gmail_search_threads" in route["allowed_read_tool_ids"]
+                else frozenset({"CONTAINER_REF"})
+                if route["resource_type"]
+                in {"TASK", "CALENDAR_EVENT", "CALENDAR_FREEBUSY"}
                 else frozenset()
             ),
         )
@@ -911,7 +915,15 @@ class RetrievalSubgraph:
                 validated_container_refs=validated_container_refs,
             )
         )
-        ensure_llm_call_budget(state)
+        deterministic_plan = deterministic_initial_query_plan(
+            prompt_input=prompt_input,
+            frozen_routes=frozen_routes,
+            route_policies=route_policies,
+            validated_resource_refs=validated_resource_refs,
+            validated_container_refs=validated_container_refs,
+        )
+        if deterministic_plan is None:
+            ensure_llm_call_budget(state)
         patch = plan_query_node(
             cast(
                 Any,
@@ -937,11 +949,14 @@ class RetrievalSubgraph:
         )
         query_plan = cast(RetrievalQueryPlanV2, patch["query_plan"])
         revised_retry_budget = cast(RunBudgetV2, patch["retry_budget"])
+        llm_invoked = deterministic_plan is None
         return {
             **state,
             "query_plan": query_plan,
-            "retry_budget": consume_llm_call_budget(
-                {**state, "retry_budget": revised_retry_budget}
+            "retry_budget": (
+                consume_llm_call_budget({**state, "retry_budget": revised_retry_budget})
+                if llm_invoked
+                else revised_retry_budget
             ),
         }
 
@@ -965,7 +980,15 @@ class RetrievalSubgraph:
             if candidate_ref is not None:
                 detail_resource = find_detail_resource(candidate_ref, prior_results)
                 if detail_resource is None:
-                    raise RetrievalReadBindingError("DETAIL_FETCH candidate is not cache-bound")
+                    detail_resource = self._selected_detail_resource(
+                        state,
+                        resource_type=plan["resource_type"],
+                        resource_ref=candidate_ref,
+                    )
+                if detail_resource is None:
+                    raise RetrievalReadBindingError(
+                        "DETAIL_FETCH candidate is neither cache-bound nor current-Run selected"
+                    )
             resource_refs = [
                 ref
                 for constraint in plan["effective_constraints"]

@@ -25,6 +25,11 @@ RetrievalConstraintKindV1 = Literal[
     "STATUS_SCOPE",
 ]
 RetrievalOperationV2 = Literal["SEARCH", "NEXT_PAGE", "DETAIL_FETCH", "FREEBUSY"]
+RetrievalValidationReasonCodeV1 = Literal[
+    "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID",
+    "QUERY_OPERATION_FIELD_MISMATCH",
+    "RETRIEVAL_ROUTE_SCOPE_VIOLATION",
+]
 TemporalAxisV1 = Literal["MESSAGE_TIME", "TASK_SCHEDULED_DATE", "EVENT_TIME", "AVAILABILITY_WINDOW"]
 ParticipantRoleV1 = Literal["ANY", "SENDER", "RECIPIENT", "ATTENDEE"]
 StatusScopeValueV1 = Literal[
@@ -130,6 +135,17 @@ class SourceFetchPlanV1(TypedDict):
 class RetrievalV2ValidationError(ValueError):
     """A Retrieval V2 semantic plan violates its typed authority boundary."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: RetrievalValidationReasonCodeV1 = "RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID",
+        affected_field_paths: tuple[str, ...] = (),
+    ) -> None:
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.affected_field_paths = affected_field_paths
+
 
 _KINDS = frozenset(
     {"TEMPORAL_RANGE", "PARTICIPANT", "KEYWORD", "RESOURCE_REF", "CONTAINER_REF", "STATUS_SCOPE"}
@@ -222,14 +238,22 @@ def validate_route_query_intent_v2(
     if not isinstance(route_id, str) or route_id not in frozen_routes:
         raise RetrievalV2ValidationError("route_query.route_id is not frozen")
     if operation not in {"SEARCH", "NEXT_PAGE", "DETAIL_FETCH", "FREEBUSY"}:
-        raise RetrievalV2ValidationError("route_query.operation is invalid")
+        raise RetrievalV2ValidationError(
+            "route_query.operation is invalid",
+            reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+            affected_field_paths=("$.route_queries[].operation",),
+        )
     if not _non_empty_strings(intent["reason_codes"]):
         raise RetrievalV2ValidationError("route_query.reason_codes must be non-empty strings")
     search_spec = intent["search_spec"]
     detail_candidate_ref = intent["detail_candidate_ref"]
     if operation in {"SEARCH", "FREEBUSY"}:
         if detail_candidate_ref is not None:
-            raise RetrievalV2ValidationError("search operation cannot include detail_candidate_ref")
+            raise RetrievalV2ValidationError(
+                "search operation cannot include detail_candidate_ref",
+                reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+                affected_field_paths=("$.route_queries[].detail_candidate_ref",),
+            )
         validated_spec = validate_search_spec_v1(
             search_spec,
             route_id=route_id,
@@ -239,18 +263,32 @@ def validate_route_query_intent_v2(
         )
     elif operation == "DETAIL_FETCH":
         if search_spec is not None:
-            raise RetrievalV2ValidationError("DETAIL_FETCH cannot include search_spec")
-        if (
-            not isinstance(detail_candidate_ref, str)
-            or detail_candidate_ref not in detail_candidate_refs
-        ):
             raise RetrievalV2ValidationError(
-                "DETAIL_FETCH requires a validated detail_candidate_ref"
+                "DETAIL_FETCH cannot include search_spec",
+                reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+                affected_field_paths=("$.route_queries[].search_spec",),
+            )
+        route_resource_refs = (validated_resource_refs or {}).get(route_id, ())
+        if not isinstance(detail_candidate_ref, str) or detail_candidate_ref not in {
+            *detail_candidate_refs,
+            *route_resource_refs,
+        }:
+            raise RetrievalV2ValidationError(
+                "DETAIL_FETCH requires a validated candidate or selected-resource ref",
+                reason_code="RETRIEVAL_ROUTE_SCOPE_VIOLATION",
+                affected_field_paths=("$.route_queries[].detail_candidate_ref",),
             )
         validated_spec = None
     else:
         if search_spec is not None or detail_candidate_ref is not None:
-            raise RetrievalV2ValidationError("NEXT_PAGE cannot contain semantic payload")
+            raise RetrievalV2ValidationError(
+                "NEXT_PAGE cannot contain semantic payload",
+                reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+                affected_field_paths=(
+                    "$.route_queries[].search_spec",
+                    "$.route_queries[].detail_candidate_ref",
+                ),
+            )
         validated_spec = None
     return {
         "route_id": route_id,
@@ -400,7 +438,11 @@ def _validate_constraint(
             or validated_resource_refs is None
             or not set(ref_values).issubset(validated_resource_refs)
         ):
-            raise RetrievalV2ValidationError("resource refs must be validated for route")
+            raise RetrievalV2ValidationError(
+                "resource refs must be validated for route",
+                reason_code="RETRIEVAL_ROUTE_SCOPE_VIOLATION",
+                affected_field_paths=("$.route_queries[].search_spec.constraints[].resource_refs",),
+            )
         return {"kind": "RESOURCE_REF", "resource_refs": ref_values}
     if kind == "CONTAINER_REF":
         _exact_keys(constraint, {"kind", "container_refs"}, "constraint")
@@ -411,7 +453,11 @@ def _validate_constraint(
             or validated_container_refs is None
             or not set(ref_values).issubset(validated_container_refs)
         ):
-            raise RetrievalV2ValidationError("container refs must be validated for route")
+            raise RetrievalV2ValidationError(
+                "container refs must be validated for route",
+                reason_code="RETRIEVAL_ROUTE_SCOPE_VIOLATION",
+                affected_field_paths=("$.route_queries[].search_spec.constraints[].container_refs",),
+            )
         return {"kind": "CONTAINER_REF", "container_refs": ref_values}
     _exact_keys(constraint, {"kind", "values"}, "constraint")
     values = constraint["values"]

@@ -10,6 +10,7 @@ class ComposeArgumentsInputV1(TypedDict):
     output_routes: list[dict[str, object]]
     objectives: list[dict[str, object]]
     evidence: list[dict[str, object]]
+    request_intent: NotRequired[dict[str, object]]
     work_analysis: NotRequired[dict[str, object]]
     confirmation_response: NotRequired[dict[str, object]]
 
@@ -34,6 +35,11 @@ def project_compose_arguments_per_output_route_input(
         "objectives": objective_items,
         "evidence": evidence_items,
     }
+    request_intent = state.get("request_intent")
+    if request_intent is not None:
+        if not isinstance(request_intent, Mapping):
+            raise ValueError("request_intent must be an object")
+        result["request_intent"] = dict(request_intent)
     work_analysis = state.get("work_analysis")
     confirmation = state.get("confirmation_response")
     if work_analysis is not None:

@@ -17,6 +17,7 @@ def create_bundle_inputs(
     *,
     model_manifest: Path | None = None,
     local_model_product_decision: Path | None = None,
+    local_model_profile: Path | None = None,
 ) -> ApplicationBundleInputs:
     directories = {
         name: root / name
@@ -77,4 +78,5 @@ def create_bundle_inputs(
         prompt_manifest=prompt_manifest,
         model_manifest=model_manifest,
         local_model_product_decision=local_model_product_decision,
+        local_model_profile=local_model_profile,
     )

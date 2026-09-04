@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from copy import deepcopy
 from typing import cast
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
@@ -59,6 +60,7 @@ EXTRACT_WORK_FACTS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                         "derivation": {"enum": ["EXPLICIT", "DERIVED"]},
                         "evidence_refs": {
                             "type": "array",
+                            "uniqueItems": True,
                             "items": {"type": "string", "minLength": 1},
                         },
                     },
@@ -105,17 +107,34 @@ def extract_work_facts(
             seen.add(fact_id)
         return value
 
+    bounded_schema = _bind_allowed_evidence_refs(allowed_evidence_refs)
     result = llm_runtime.infer(
         requested_mode,
         prompt_ref,
         prompt_input,
-        EXTRACT_WORK_FACTS_OUTPUT_SCHEMA,
+        bounded_schema,
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [
         cast(WorkFactV1, dict(item))
         for item in cast(list[dict[str, object]], root["fact_candidates"])
     ]
+
+
+def _bind_allowed_evidence_refs(allowed_evidence_refs: set[str]) -> OutputSchemaDefinition:
+    """Bind fact citations to evidence owned by the current Retrieval revision."""
+
+    schema = deepcopy(EXTRACT_WORK_FACTS_OUTPUT_SCHEMA.json_schema)
+    properties = cast(dict[str, object], schema["properties"])
+    candidates = cast(dict[str, object], properties["fact_candidates"])
+    candidate = cast(dict[str, object], candidates["items"])
+    candidate_properties = cast(dict[str, object], candidate["properties"])
+    evidence_refs = cast(dict[str, object], candidate_properties["evidence_refs"])
+    evidence_refs["items"] = {"type": "string", "enum": sorted(allowed_evidence_refs)}
+    return OutputSchemaDefinition(
+        schema_version=EXTRACT_WORK_FACTS_OUTPUT_SCHEMA.schema_version,
+        json_schema=schema,
+    )
 
 
 __all__ = ["EXTRACT_WORK_FACTS_OUTPUT_SCHEMA", "extract_work_facts"]

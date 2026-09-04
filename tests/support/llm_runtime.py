@@ -15,6 +15,7 @@ def settings_view(
     *,
     preferred_llm_mode: str = "AUTO",
     external_llm_consent: bool = True,
+    preferred_local_model_id: str | None = None,
 ) -> SettingsViewV1:
     return SettingsViewV1(
         schema_version=1,
@@ -38,6 +39,7 @@ def settings_view(
         max_retry_attempts_per_run=1,
         circuit_failure_threshold=3,
         circuit_open_duration_ms=30_000,
+        preferred_local_model_id=preferred_local_model_id,
     )
 
 

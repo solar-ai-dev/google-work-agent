@@ -238,7 +238,7 @@ def test_gmail_count__traversal_skips_per__thread_metadata_hydration(
     assert cast(dict[str, object], cast(list[object], payload["items"])[0])["payload"] == {}
 
 
-def test_gmail_thread__detail_tool__contract_is_unchanged(
+def test_gmail_thread__detail_tool__includes_full_thread_content(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def google_api(
@@ -246,22 +246,12 @@ def test_gmail_thread__detail_tool__contract_is_unchanged(
         _url: str,
         params: dict[str, str] | None = None,
     ) -> dict[str, object]:
-        assert params == {"format": "metadata"}
+        assert params == {"format": "full"}
+        message = _gmail_message("message-1", "2000", "Please reply with an available date.")
         return {
             "historyId": "9",
             "snippet": "Thread preview",
-            "messages": [
-                {
-                    "id": "message-1",
-                    "payload": {
-                        "headers": [
-                            {"name": "From", "value": "pm@example.com"},
-                            {"name": "To", "value": "user@example.com"},
-                            {"name": "Subject", "value": "Project sync"},
-                        ]
-                    },
-                }
-            ],
+            "messages": [message],
         }
 
     monkeypatch.setattr(server, "_google_api", google_api)
@@ -269,10 +259,20 @@ def test_gmail_thread__detail_tool__contract_is_unchanged(
     thread = GetThreadOperation().execute(_state(), {"thread_id": "thread-1"})
 
     assert cast(dict[str, object], cast(dict[str, object], thread["item"])["payload"]) == {
-        "subject": "Project sync",
+        "subject": "Project update",
         "snippet": "Thread preview",
-        "participants": ["pm@example.com", "user@example.com"],
+        "participants": [
+            "Kim Daeri <kim.daeri@example.com>",
+            "User <user@example.com>",
+        ],
         "message_ids": ["message-1"],
+        "body": (
+            "From: Kim Daeri <kim.daeri@example.com>\n"
+            "To: User <user@example.com>\n"
+            "Date: Mon, 10 Aug 2026 09:15:00 +0900\n"
+            "Subject: Project update\n"
+            "Please reply with an available date."
+        ),
     }
 
 

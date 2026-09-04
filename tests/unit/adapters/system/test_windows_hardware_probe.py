@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from subprocess import CompletedProcess
 
 import pytest
 from tests.support.fakes import approved_model
@@ -79,3 +80,23 @@ def test_release_gate__receives_only__observed_facts(monkeypatch: pytest.MonkeyP
     assert profile.ram_total_bytes == 16 * 1024**3
     assert profile.vram_total_bytes == 8 * 1024**3
     assert profile.local_runtime_eligible is True
+
+
+def test_nvidia_probe__with_large_vram__uses_untruncated_nvidia_smi_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        probe_module.subprocess,
+        "run",
+        lambda *args, **kwargs: CompletedProcess(
+            args=args,
+            returncode=0,
+            stdout="NVIDIA GeForce RTX 3070 Ti, 8192\n",
+            stderr="",
+        ),
+    )
+
+    assert probe_module._probe_nvidia_gpu(1.0) == (
+        "NVIDIA GeForce RTX 3070 Ti",
+        8 * 1024**3,
+    )

@@ -30,6 +30,7 @@ from google_work_agent.ports.llm.approved_model_manifest import ModelManifestV1
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
+from google_work_agent.ports.llm.local_model_profile import LocalModelProfileV1
 from release.profiles import DeploymentProfile, ReleaseArtifactProfile
 from release.profiles.api_only import build_api_only_profile
 from release.profiles.local_capable import build_local_capable_profile
@@ -57,6 +58,7 @@ class ApplicationBundleInputs:
     prompt_manifest: Path
     model_manifest: Path | None = None
     local_model_product_decision: Path | None = None
+    local_model_profile: Path | None = None
 
 
 def assemble_application_bundle(
@@ -107,9 +109,14 @@ def assemble_application_bundle(
             or not inputs.local_model_product_decision.is_file()
         ):
             raise ValueError("LOCAL_CAPABLE requires an explicit local model product decision")
+        if inputs.local_model_profile is None or not inputs.local_model_profile.is_file():
+            raise ValueError("LOCAL_CAPABLE requires an explicit local model profile")
         model_manifest = ModelManifestV1.from_bytes(inputs.model_manifest.read_bytes())
         product_decision = LocalModelProductDecisionV1.from_bytes(
             inputs.local_model_product_decision.read_bytes()
+        )
+        local_model_profile = LocalModelProfileV1.from_bytes(
+            inputs.local_model_profile.read_bytes()
         )
         manifest_bytes = model_manifest.to_canonical_bytes()
         if product_decision.model_manifest_hash != sha256(manifest_bytes).hexdigest():
@@ -118,11 +125,26 @@ def assemble_application_bundle(
             entry.model_id for entry in model_manifest.approved_models
         }:
             raise ValueError("local model product decision selects an unapproved model")
+        approved_model_ids = {entry.model_id for entry in model_manifest.approved_models}
+        if not set(local_model_profile.model_ids).issubset(approved_model_ids):
+            raise ValueError("local model profile references an unapproved model")
+        if product_decision.selected_model_id != local_model_profile.reasoning_model_id:
+            raise ValueError("local model product decision/profile mismatch")
         (manifests_dir / "model-manifest-v1.json").write_bytes(manifest_bytes + b"\n")
         (manifests_dir / "local-model-product-decision-v1.json").write_bytes(
             product_decision.to_canonical_bytes() + b"\n"
         )
-    elif inputs.model_manifest is not None or inputs.local_model_product_decision is not None:
+        (manifests_dir / "local-model-profile-v1.json").write_bytes(
+            local_model_profile.to_canonical_bytes() + b"\n"
+        )
+    elif any(
+        value is not None
+        for value in (
+            inputs.model_manifest,
+            inputs.local_model_product_decision,
+            inputs.local_model_profile,
+        )
+    ):
         raise ValueError("API_ONLY must not receive local model release artifacts")
 
     definitions = (

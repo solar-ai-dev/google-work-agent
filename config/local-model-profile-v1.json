@@ -1,0 +1,1 @@
+{"default_inference_class":"REASONING","models":{"REASONING":"qwen3.5:9b","WORKER":"qwen3.5:9b"},"profile_id":"qwen3.5-9b-single-model-v1","prompt_inference_classes":{},"runtime":"OLLAMA","schema_version":1}

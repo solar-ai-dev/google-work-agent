@@ -63,6 +63,7 @@ class SettingsViewV1:
     max_retry_attempts_per_run: int
     circuit_failure_threshold: int
     circuit_open_duration_ms: int
+    preferred_local_model_id: str | None = None
 
 
 class SettingsPort(Protocol):

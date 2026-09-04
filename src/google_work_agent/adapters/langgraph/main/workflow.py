@@ -14,6 +14,9 @@ from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 from langgraph.types import interrupt
 
 from google_work_agent.adapters.langgraph.invocation import WorkflowInvocationCoordinator
+from google_work_agent.adapters.langgraph.main.action_evidence_projection import (
+    project_current_action_evidence,
+)
 from google_work_agent.adapters.langgraph.main.application_services import (
     WorkflowApplicationServices,
     WorkflowRuntimeHooks,
@@ -139,6 +142,10 @@ from google_work_agent.application.agents.planning.contracts.action_plan_draft i
 from google_work_agent.application.agents.planning.contracts.domain_validation import (
     DomainValidationResult,
 )
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+    RetrievalResultV1,
+)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
@@ -188,6 +195,9 @@ from google_work_agent.application.use_cases.recovery.resolve_recovery import (
 )
 from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
+)
+from google_work_agent.application.use_cases.resource_ref.resource_ref_projection import (
+    resource_ref_from_snapshot,
 )
 from google_work_agent.application.use_cases.run.begin_planning import (
     BeginPlanningCommand,
@@ -248,7 +258,11 @@ from google_work_agent.domain.plan.model import PlanReviewStatus
 from google_work_agent.domain.recovery.model import RecoveryResolution
 from google_work_agent.domain.resource_ref.model import ResourceRef as ResourceRefRecord
 from google_work_agent.domain.run.model import RunStatusV1
-from google_work_agent.ports.connector.contracts.google_workspace import GoogleWorkspaceGatewayError
+from google_work_agent.ports.connector.contracts.google_workspace import (
+    GoogleWorkspaceGatewayError,
+    ResourceSnapshot,
+    ResourceType,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import (
     LLMErrorCode,
     LLMInvocationError,
@@ -887,6 +901,23 @@ class _WorkflowRuntimeComposition:
     ) -> object:
         run_id = cast(str, state["run_id"])
         payload = self._terminal_command_payload(run_id, intent)
+        retrieval_result = state.get("retrieval_result")
+        evidence_drafts: tuple[EvidenceDraftV1, ...] = ()
+        retrieval_artifact_id = None
+        if isinstance(retrieval_result, Mapping) and retrieval_result.get("evidence_refs"):
+            typed_retrieval_result = cast(RetrievalResultV1, retrieval_result)
+            evidence_drafts = tuple(
+                resolve_evidence_projection(
+                    store=self._evidence_store,
+                    run_id=run_id,
+                    retrieval_result=typed_retrieval_result,
+                )
+            )
+            retrieval_artifact_id = typed_retrieval_result["meta"]["artifact_id"]
+        resource_ref_drafts = self._answer_context_resource_refs(
+            state=state,
+            evidence_drafts=evidence_drafts,
+        )
         return self._complete_answer_only(
             CompleteAnswerOnlyRunCommand(
                 command_id=self._terminal_command_id(payload),
@@ -899,8 +930,67 @@ class _WorkflowRuntimeComposition:
                     Literal["SUCCESS", "PARTIAL"],
                     intent["terminal_message"].result_kind,
                 ),
+                retrieval_artifact_id=retrieval_artifact_id,
+                evidence_drafts=evidence_drafts,
+                resource_ref_drafts=resource_ref_drafts,
             )
         )
+
+    def _answer_context_resource_refs(
+        self,
+        *,
+        state: Mapping[str, object],
+        evidence_drafts: tuple[EvidenceDraftV1, ...],
+    ) -> tuple[ResourceRefRecord, ...]:
+        if not evidence_drafts:
+            return ()
+        run_id = self._required_string(state.get("run_id"), "run_id")
+        with self._unit_of_work_factory() as unit_of_work:
+            existing_handles = {
+                _resource_handle_for_ref(item)
+                for item in unit_of_work.resource_refs.list_for_run_bounded(run_id, limit=1000)
+            }
+        acquisition_result = state.get("acquisition_result")
+        if not isinstance(acquisition_result, Mapping):
+            raise LookupError("answer evidence has no acquisition result")
+
+        resource_refs: list[ResourceRefRecord] = []
+        for draft in evidence_drafts:
+            handle = draft["resource_handle"]
+            if handle in existing_handles:
+                continue
+            acquired = _acquired_resource_by_handle(
+                acquisition_result=cast(Any, acquisition_result),
+                resource_handle=handle,
+            )
+            if acquired is None:
+                raise LookupError(f"answer evidence resource was not acquired: {handle}")
+            payload = cast(dict[str, Any], acquired["payload"])
+            snapshot = ResourceSnapshot(
+                fixture_snapshot_id=str(acquired.get("fixture_snapshot_id") or "runtime"),
+                resource_type=ResourceType(str(acquired["resource_type"])),
+                resource_id=str(acquired["resource_id"]),
+                parent_id=cast(str | None, acquired.get("parent_id")),
+                related_resource_ids=tuple(
+                    str(item)
+                    for item in cast(list[object], acquired.get("related_resource_ids", []))
+                ),
+                version=str(acquired.get("version") or ""),
+                recovery_fingerprint=cast(str | None, acquired.get("recovery_fingerprint")),
+                payload=payload,
+            )
+            resource_refs.append(
+                resource_ref_from_snapshot(
+                    run_id=run_id,
+                    connector_id=_connector_id_for_evidence_handle(
+                        state=cast(GraphState, state),
+                        resource_handle=handle,
+                    ),
+                    snapshot=snapshot,
+                    captured_at_ms=self._now_ms(),
+                )
+            )
+        return tuple(resource_refs)
 
     def _terminal_complete_read_only(
         self, state: Mapping[str, object], intent: TerminalCommitIntentV1
@@ -1096,15 +1186,10 @@ class _WorkflowRuntimeComposition:
             and isinstance(planning_result.get("meta"), Mapping)
         ):
             run_id = self._required_string(typed_state.get("run_id"), "run_id")
-            retrieval_result = _require_state_value(
-                typed_state.get("retrieval_result"), "retrieval_result"
-            )
-            evidence_drafts = list(
-                resolve_evidence_projection(
-                    store=self._evidence_store,
-                    run_id=run_id,
-                    retrieval_result=retrieval_result,
-                )
+            _require_state_value(typed_state.get("retrieval_result"), "retrieval_result")
+            evidence_drafts = project_current_action_evidence(
+                state=typed_state,
+                evidence_store=self._evidence_store,
             )
             with self._unit_of_work_factory() as unit_of_work:
                 resource_refs = {
@@ -2168,6 +2253,7 @@ class _WorkflowRuntimeComposition:
             run_budget=dict(request.run_budget),
             correlation=request.correlation,
             selected_resources=request.selected_resources,
+            user_message_id=request.user_message_id,
         )
 
     def _required_string(self, value: object, field_name: str) -> str:

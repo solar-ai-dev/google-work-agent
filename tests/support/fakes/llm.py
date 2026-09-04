@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.local_model_catalog_port import InstalledLocalModelV1
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ApprovedModelInfo,
     AvailabilityState,
@@ -118,6 +119,10 @@ class FakeOllamaTransport:
     )
     invocations: list[dict[str, object]] = field(default_factory=list)
     queued_payloads: deque[object] = field(default_factory=deque)
+    installed_models: tuple[InstalledLocalModelV1, ...] = ()
+
+    def list_installed_models(self) -> tuple[InstalledLocalModelV1, ...]:
+        return self.installed_models
 
     def probe(self, *, endpoint: str, model_id: str | None, timeout_seconds: int) -> ProbeResult:
         self.invocations.append(

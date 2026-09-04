@@ -95,6 +95,7 @@ class PendingInterruptV1:
 class ActionSnapshotResult:
     action_id: str
     tool_name: str
+    arguments: dict[str, object]
     status: str
     version: int
     effect_type: str
@@ -130,6 +131,7 @@ class GetExecutionContextResult:
     status: str
     version: int
     request_text: str
+    user_message_id: str | None
     selected_resource_ids: tuple[str, ...]
     run_budget: RunBudgetV2
     selected_resources: tuple[SelectedResourceRef, ...] = ()
@@ -326,6 +328,7 @@ class GetRunSnapshotHandler:
             status=run.status.value,
             version=run.version,
             request_text="" if first_user_message is None else first_user_message.content,
+            user_message_id=None if first_user_message is None else first_user_message.id,
             selected_resource_ids=tuple(record.resource_id for record in resources),
             run_budget=validate_run_budget_v2(loads(run.budget_json)),
             selected_resources=tuple(_selected_resource_ref(record) for record in resources),
@@ -398,6 +401,9 @@ def _action_snapshot(
 ) -> ActionSnapshotResult:
     status = ActionStatusV1(action.status)
     effect_type = EffectType(action.effect_type)
+    arguments = loads(action.arguments_json)
+    if not isinstance(arguments, dict):
+        raise ValueError("persisted Action arguments must be an object")
     editable_fields: tuple[str, ...] = ()
     if tool_registry is not None:
         entry = tool_registry.get_required(action.connector_id, action.tool_name)
@@ -407,6 +413,7 @@ def _action_snapshot(
     return ActionSnapshotResult(
         action_id=action.id,
         tool_name=action.tool_name,
+        arguments=arguments,
         status=status.value,
         version=action.version,
         effect_type=effect_type.value,

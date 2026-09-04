@@ -14,6 +14,7 @@ from google_work_agent.ports.connector.connector_failure import (
     normalize_google_workspace_failure,
 )
 from google_work_agent.ports.connector.contracts.google_workspace import (
+    DEFAULT_CALENDAR_ID,
     GoogleWorkspaceGatewayError,
     ResourcePage,
     ResourceSnapshot,
@@ -255,7 +256,7 @@ class ListResourcesHandler:
         )
 
     def _list_calendar(self, query: ListResourcesQuery) -> ResourceListPage:
-        calendar_id = query.calendar_id or self.access.default_calendar_id() or "primary"
+        calendar_id = query.calendar_id or self.access.default_calendar_id() or DEFAULT_CALENDAR_ID
         time_min, time_max = _resolve_calendar_window(
             query.time_min,
             query.time_max,

@@ -62,10 +62,13 @@ def test_answer_only__reaches_terminal_through__real_production_composition(
     assert {
         "request_understanding.identify_goal",
         "request_understanding.detect_ambiguity",
-        "tool_routing.determine_io_resources",
         "planning.outline_answer",
         "planning.compose_answer",
     }.issubset(invoked)
+    assert not any(prompt_id.startswith("tool_routing.") for prompt_id in invoked)
+    assert not any(prompt_id.startswith("retrieval.") for prompt_id in invoked)
+    assert not any(prompt_id.startswith("work_analysis.") for prompt_id in invoked)
+    assert not any(prompt_id.startswith("review.") for prompt_id in invoked)
 
 
 @pytest.mark.parametrize(
@@ -123,6 +126,69 @@ def test_google_reads_reach__terminal_through_actual__retrieval_and_mcp(
         event for event in _mcp_events(runtime_root) if event["tool_name"] == expected_tool
     ]
     assert len(read_events) == 1
+    invoked = {
+        str(item["prompt_id"])
+        for item in transport.invocations
+        if item.get("kind") == "invoke"
+    }
+    assert "tool_routing.select_tool_if_needed" not in invoked
+    assert "retrieval.plan_query" in invoked
+    assert not any(prompt_id.startswith("work_analysis.") for prompt_id in invoked)
+
+
+@pytest.mark.parametrize("profile", tuple(GraphProfile))
+def test_selected_gmail_resource__uses_exact_detail__without_routing_or_query_llm(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    profile: GraphProfile,
+) -> None:
+    runtime_root = tmp_path / "selected-gmail-read" / profile.value
+    transport = LangGraphE2EGeminiTransport()
+    container = _build_container(
+        runtime_root,
+        transport=transport,
+        monkeypatch=monkeypatch,
+        profile=profile,
+    )
+    with TestClient(
+        create_app(container),
+        base_url="http://127.0.0.1:8000",
+        headers=_API_HEADERS,
+    ) as client:
+        _bootstrap(client)
+        resources = client.get(
+            "/api/v1/resources/gmail",
+            params={"query": "E2E", "page_size": 1},
+            headers={"X-API-Contract-Version": "1"},
+        )
+        assert resources.status_code == 200, resources.text
+        item = cast(list[dict[str, object]], resources.json()["items"])[0]
+        run_id = _start_run(
+            client,
+            _create_conversation(client, "selected-gmail-read"),
+            "E2E:GMAIL_READ summarize selected evidence",
+            entry_mode="RESOURCE_SELECTED",
+            selected_resource_handles=[str(item["selection_handle"])],
+        )
+        snapshot = _wait_for_status(client, run_id, {"COMPLETED"})
+
+    assert snapshot["terminal_result_kind"] == "SUCCESS"
+    names = [event["tool_name"] for event in _mcp_events(runtime_root)]
+    assert names.count("gmail_search_threads") == 1  # Sidebar listing only.
+    assert names.count("gmail_get_thread") == 1
+    invoked = [
+        str(item["prompt_id"])
+        for item in transport.invocations
+        if item.get("kind") == "invoke"
+    ]
+    assert "tool_routing.select_tool_if_needed" not in invoked
+    assert not any(prompt_id.startswith("retrieval.") for prompt_id in invoked)
+    assert not any(prompt_id.startswith("work_analysis.") for prompt_id in invoked)
+    assert invoked == [
+        "request_understanding.identify_goal",
+        "planning.outline_answer",
+        "planning.compose_answer",
+    ]
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
@@ -172,6 +238,17 @@ def test_approved_write_executes__claims_and_verifies__through_real_mcp(
         if event["tool_name"] == "tasks_create_task"
     )
     assert isinstance(write_arguments.get("claim_context"), dict)
+    invoked = {
+        str(item["prompt_id"])
+        for item in transport.invocations
+        if item.get("kind") == "invoke"
+    }
+    assert "tool_routing.select_tool_if_needed" not in invoked
+    assert "retrieval.plan_query" in invoked
+    assert "work_analysis.extract_work_facts" in invoked
+    assert "work_analysis.detect_duplicate_conflict_candidates" not in invoked
+    assert "review.inspect_action_scope_and_route" in invoked
+    assert "review.inspect_constraints_and_policy_summary" not in invoked
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
@@ -418,6 +495,12 @@ def test_verification_mismatch__requires_explicit__partial_resolution(
     assert completed["terminal_result_kind"] == "PARTIAL"
     names = [event["tool_name"] for event in _mcp_events(runtime_root)]
     assert names.count("calendar_create_event") == 1
+    invoked = {
+        str(item["prompt_id"])
+        for item in transport.invocations
+        if item.get("kind") == "invoke"
+    }
+    assert "work_analysis.detect_duplicate_conflict_candidates" not in invoked
 
 
 @pytest.mark.parametrize("profile", tuple(GraphProfile))
@@ -841,7 +924,14 @@ def _create_conversation(client: TestClient, suffix: str) -> str:
     return str(response.json()["conversation_id"])
 
 
-def _start_run(client: TestClient, conversation_id: str, request_text: str) -> str:
+def _start_run(
+    client: TestClient,
+    conversation_id: str,
+    request_text: str,
+    *,
+    entry_mode: str = "AGENT_SEARCH",
+    selected_resource_handles: list[str] | None = None,
+) -> str:
     response = client.post(
         "/api/v1/runs",
         json={
@@ -849,8 +939,8 @@ def _start_run(client: TestClient, conversation_id: str, request_text: str) -> s
             "command_id": f"start-{request_text.split(':', maxsplit=1)[-1].split()[0].lower()}",
             "conversation_id": conversation_id,
             "request_text": request_text,
-            "entry_mode": "AGENT_SEARCH",
-            "selected_resource_handles": [],
+            "entry_mode": entry_mode,
+            "selected_resource_handles": selected_resource_handles or [],
             "requested_mode": "API_LLM",
         },
     )

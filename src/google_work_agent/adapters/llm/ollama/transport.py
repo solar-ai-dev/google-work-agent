@@ -10,6 +10,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from google_work_agent.ports.llm.local_model_catalog_port import InstalledLocalModelV1
+from google_work_agent.ports.llm.runtime_selection import OLLAMA_FIXED_LOOPBACK_ENDPOINT
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     AvailabilityState,
@@ -141,6 +143,29 @@ class _OllamaStructuredInferenceMechanics:
 class OllamaHTTPClient(OllamaTransport):
     """Minimal stdlib HTTP client for local loopback Ollama."""
 
+    def list_installed_models(self) -> tuple[InstalledLocalModelV1, ...]:
+        try:
+            payload = _get_json(
+                endpoint=OLLAMA_FIXED_LOOPBACK_ENDPOINT,
+                path="/api/tags",
+                timeout_seconds=2,
+            )
+        except (TimeoutError, HTTPError, URLError, ValueError):
+            return ()
+        raw_models = payload.get("models", [])
+        if not isinstance(raw_models, list):
+            return ()
+        models = {
+            name: InstalledLocalModelV1(
+                model_id=name,
+                digest=_optional_str(item.get("digest")),
+            )
+            for item in raw_models
+            if isinstance(item, dict)
+            and (name := str(item.get("name", "")).strip())
+        }
+        return tuple(models[name] for name in sorted(models))
+
     def probe(self, *, endpoint: str, model_id: str | None, timeout_seconds: int) -> ProbeResult:
         _validate_loopback_endpoint(endpoint)
         try:
@@ -224,6 +249,7 @@ class OllamaHTTPClient(OllamaTransport):
                 sort_keys=True,
             ),
             "stream": False,
+            "think": False,
             "format": dict(output_schema.json_schema),
         }
         # docs/15 section 9.5 (Runtime Prompt Activation Gate): "options" is
@@ -245,13 +271,18 @@ class OllamaHTTPClient(OllamaTransport):
             timeout_seconds=timeout_seconds,
         )
         content = response.get("response", "{}")
+        total_duration_ns = _optional_int(response.get("total_duration"))
         return ProviderResponsePayload(
             content=content,
             model=str(response.get("model", model_id)),
             provider_request_id=None,
             input_tokens=_optional_int(response.get("prompt_eval_count")),
             output_tokens=_optional_int(response.get("eval_count")),
-            latency_ms=_optional_int(response.get("total_duration")) or 0,
+            latency_ms=(
+                0
+                if total_duration_ns is None
+                else max(0, total_duration_ns // 1_000_000)
+            ),
             estimated_cost_usd=None,
         )
 

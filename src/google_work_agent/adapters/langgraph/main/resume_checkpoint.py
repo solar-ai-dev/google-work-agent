@@ -207,7 +207,7 @@ class ResumeCheckpointMixin:
         if binding is None:
             return None
         snapshot = self._graph.get_state(
-            self._config_for_thread(binding.workflow_key), subgraphs=True
+            self._config_for_thread(binding.workflow_key)
         )
         latest = self._checkpoint_port.load_same_run_checkpoint(run_id, binding.langgraph_thread_id)
         if latest is None or latest.registered_resume_target is None:

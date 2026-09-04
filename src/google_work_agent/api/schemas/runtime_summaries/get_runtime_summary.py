@@ -32,6 +32,14 @@ class LlmRuntimeStatusV1(ApiModel):
     error_code: str | None
 
 
+class LocalModelOptionV1(ApiModel):
+    schema_version: Literal[1]
+    model_id: str
+    installed: bool
+    approved: bool
+    selected: bool
+
+
 class ComponentCircuitStatusV1(ApiModel):
     schema_version: Literal[1]
     key: ComponentCircuitKeyV1
@@ -70,6 +78,7 @@ class RuntimeDetailResponseV1(ApiModel):
     service_instance_id: str
     connectors: list[ConnectorRuntimeStatusV1]
     llm_providers: list[LlmRuntimeStatusV1]
+    local_models: list[LocalModelOptionV1]
     component_circuits: list[ComponentCircuitStatusV1]
     active_run_budget: RunBudgetSummaryV1 | None
     recovery_required: bool

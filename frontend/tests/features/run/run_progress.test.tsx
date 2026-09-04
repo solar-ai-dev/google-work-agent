@@ -13,6 +13,12 @@ test("RunProgress exposes only server-projected cancel and resume actions", asyn
   expect(onResume).toHaveBeenCalledWith("SAFE_CHECKPOINT_RESUME");
 });
 
+test("RunProgress hides stale safe-resume actions while a run is active", () => {
+  const snapshot = { run: { status: "ANALYZING", next_allowed_commands: ["REQUEST_CANCEL"] }, execution_status: { action_count: 0, terminal_action_count: 0 }, terminal_result_kind: "NONE", error: { actions: [{ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" }] } } as RunSnapshot;
+  render(<RunProgress snapshot={snapshot} busy={null} onCancel={vi.fn()} onResume={vi.fn()} />);
+  expect(screen.queryByRole("button", { name: "재개" })).not.toBeInTheDocument();
+});
+
 test.each([
   ["tool_routing", { route_revision: 1, input_route_count: 2, output_mode: "ACTION" }, "도구 경로 에이전트 · 사용할 경로 2개를 정했습니다."],
   ["retrieval_progress", { coverage: "PARTIAL", completed_sources: 1, total_sources: 3 }, "자료 검색 에이전트 · 컨텍스트 1/3개를 확인하고 있습니다."],

@@ -29,9 +29,6 @@ from google_work_agent.application.agents.planning.contracts.domain_validation i
 from google_work_agent.application.agents.planning.contracts.planning_tool_schema import (
     planning_tool_argument_schema,
 )
-from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
-    EvidenceDraftV1,
-)
 from google_work_agent.application.agents.review.contracts.plan_review_result import (
     PlanReviewResultV2,
 )
@@ -114,7 +111,7 @@ class CanonicalDomainValidationService:
         planning_result: ActionPlanDraftV2,
         plan_review: PlanReviewResultV2,
         work_analysis_result: WorkAnalysisResultV2 | None,
-        evidence_drafts: Sequence[EvidenceDraftV1],
+        evidence_drafts: Sequence[Mapping[str, object]],
         policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1],
         resource_identity_reader: RunScopedResourceIdentityReader,
     ) -> DomainValidationOutputV1:
@@ -137,7 +134,7 @@ def build_domain_validation_output_from_v2(
     planning_result: ActionPlanDraftV2,
     plan_review: PlanReviewResultV2,
     work_analysis_result: WorkAnalysisResultV2 | None,
-    evidence_drafts: Sequence[EvidenceDraftV1],
+    evidence_drafts: Sequence[Mapping[str, object]],
     policy_confirmation_receipts: Sequence[PolicyConfirmationReceiptV1],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
@@ -195,7 +192,7 @@ def validate_action_plan_draft_v2_for_domain(
     value: object,
     *,
     run_id: str,
-    evidence_drafts: Sequence[EvidenceDraftV1],
+    evidence_drafts: Sequence[Mapping[str, object]],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
     validate_action_arguments: ValidateActionArgumentsHandler,
@@ -334,7 +331,7 @@ def _validate_action(
     *,
     path: str,
     run_id: str,
-    evidence_by_id: Mapping[str, EvidenceDraftV1],
+    evidence_by_id: Mapping[str, Mapping[str, object]],
     resource_identity_reader: RunScopedResourceIdentityReader,
     tool_registry: SignedToolRegistry,
     validate_action_arguments: ValidateActionArgumentsHandler,
@@ -420,7 +417,7 @@ def resolve_exact_target_evidence_handle(
     tool_id: str,
     arguments: Mapping[str, object],
     evidence_refs: Sequence[str],
-    evidence_by_id: Mapping[str, EvidenceDraftV1],
+    evidence_by_id: Mapping[str, Mapping[str, object]],
     run_id: str,
     resource_identity_reader: RunScopedResourceIdentityReader,
     path: str,
@@ -434,7 +431,9 @@ def resolve_exact_target_evidence_handle(
 
     target_handles: set[str] = set()
     for evidence_ref in evidence_refs:
-        handle = evidence_by_id[evidence_ref]["resource_handle"]
+        handle = evidence_by_id[evidence_ref].get("resource_handle")
+        if not isinstance(handle, str) or not handle:
+            continue
         identity = resource_identity_reader.resolve_resource_identity(
             run_id=run_id,
             resource_handle=handle,
@@ -523,14 +522,28 @@ def _validate_acyclic(adjacency: Mapping[str, Sequence[str]]) -> None:
         visit(action_id)
 
 
-def _evidence_index(evidence_drafts: Sequence[EvidenceDraftV1]) -> dict[str, EvidenceDraftV1]:
-    result: dict[str, EvidenceDraftV1] = {}
+def _evidence_index(
+    evidence_drafts: Sequence[Mapping[str, object]],
+) -> dict[str, Mapping[str, object]]:
+    result: dict[str, Mapping[str, object]] = {}
     for draft in evidence_drafts:
         evidence_id = draft.get("evidence_id")
         resource_handle = draft.get("resource_handle")
         if not isinstance(evidence_id, str) or not evidence_id:
             raise CanonicalDomainValidationError("EvidenceDraftV1.evidence_id is invalid")
-        if not isinstance(resource_handle, str) or not resource_handle:
+        if draft.get("origin_type") == "USER_MESSAGE":
+            if (
+                draft.get("schema_version") != 1
+                or draft.get("message_id") != evidence_id
+                or draft.get("kind") != "USER_REQUEST"
+                or not isinstance(draft.get("excerpt"), str)
+                or not draft.get("excerpt")
+                or resource_handle is not None
+            ):
+                raise CanonicalDomainValidationError(
+                    "current Run USER_MESSAGE evidence projection is invalid"
+                )
+        elif not isinstance(resource_handle, str) or not resource_handle:
             raise CanonicalDomainValidationError("EvidenceDraftV1.resource_handle is invalid")
         existing = result.get(evidence_id)
         if existing is not None and existing != draft:

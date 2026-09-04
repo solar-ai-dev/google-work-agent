@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import pytest
 from tests.support.external_llm_scope import ExternalScopeCheckpoint
@@ -67,6 +67,17 @@ class _Status:
         return LlmProviderRuntimeStatus(1, provider, True, "READY", "model", None)
 
     def get_approved_model(self, model_id: str) -> ApprovedModelInfo | None:
+        return ApprovedModelInfo(model_id, "OLLAMA", "1", "1")
+
+    def get_selected_model(self) -> ApprovedModelInfo:
+        return ApprovedModelInfo("qwen3.5:9b", "OLLAMA", "1", "1")
+
+    def get_model_for_prompt(self, prompt_id: str) -> ApprovedModelInfo:
+        model_id = (
+            "qwen3.5:4b"
+            if prompt_id == "request_understanding.identify_goal"
+            else "qwen3.5:9b"
+        )
         return ApprovedModelInfo(model_id, "OLLAMA", "1", "1")
 
 
@@ -166,6 +177,24 @@ def test_api_only_local_request__fails_before__either_provider_dispatch() -> Non
     assert raised.value.code is LLMErrorCode.RUNTIME_MODE_BLOCKED
     assert api.calls == 0
     assert local.calls == 0
+
+
+def test_local_request__uses_profile__model_for_prompt() -> None:
+    checkpoint = ExternalScopeCheckpoint(scope=_scope())
+    local = _Provider(runtime=ActualRuntime.LOCAL_GPU)
+    router = _router(checkpoint=checkpoint, api=_Provider(), local=local)
+    selected: list[str] = []
+    router.ollama_provider_factory = lambda model: selected.append(model.model_id) or local
+
+    router.infer(
+        "LOCAL_GPU",
+        replace(PROMPT, prompt_id="request_understanding.identify_goal"),
+        {"user_request": "hello"},
+        SCHEMA,
+    )
+
+    assert selected == ["qwen3.5:4b"]
+    assert local.calls == 1
 
 
 @pytest.mark.parametrize("published", [None, _scope(scope_hash="different")])

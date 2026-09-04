@@ -69,3 +69,45 @@ def test_select_evidence__preserves_stable__exclusion_obligations() -> None:
     prompt_input = cast(dict[str, object], runtime.calls[0]["prompt_input"])
     projected = cast(list[dict[str, object]], prompt_input["ranked_segments"])
     assert [item["segment_id"] for item in projected] == ["segment-2"]
+
+
+def test_select_evidence__sole_exact_selected_read__skips_llm() -> None:
+    runtime = FakeLLMRuntime()
+    intent = _intent()
+    intent["analysis_requirement"] = "NONE"
+    intent["constraints"] = [
+        {"kind": "RESOURCE", "field": "selected_resource_id", "value": ["thread-42"]}
+    ]
+    segment = SourceSegment(
+        "segment-42",
+        "gmail_thread:thread-42",
+        "GMAIL",
+        "gmail_thread",
+        "thread-42",
+        None,
+        None,
+        {},
+        "From: sender@example.com\nSubject: request\nPlease reply next week.",
+    )
+
+    result, _ = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=[
+            {
+                "segment_id": segment.segment_id,
+                "resource_ref": segment.resource_handle,
+                "retrieval_score": 40.0,
+                "reason_codes": ["EXACT_RESOURCE"],
+            }
+        ],
+        segments=[segment],
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert runtime.calls == []
+    assert result["selected_segment_ids"] == ["segment-42"]
+    assert result["evidence_drafts"][0]["role"] == "SUPPORTS"

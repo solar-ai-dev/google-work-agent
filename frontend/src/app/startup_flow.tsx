@@ -136,10 +136,24 @@ export function StartupFlow({ children }: Props): JSX.Element {
       const account = google.connection_status === "CONNECTED" && firstAccount.account === null
         ? (await getCurrentGoogleAccount()).account
         : firstAccount.account;
+      const apiConfigured = runtime.llm_providers.some(
+        (item) => item.provider === "API_LLM" && item.configured,
+      );
+      const localModelSelected = Boolean(
+        runtime.local_models.some(
+          (item) => item.selected && item.installed && item.approved,
+        ),
+      );
+      const llmConfigured = settings.preferred_llm_mode === "LOCAL_GPU"
+        ? localModelSelected
+        : settings.preferred_llm_mode === "API_LLM"
+          ? apiConfigured
+          : apiConfigured || localModelSelected;
       const setupCompleted = Boolean(
-        settings.default_calendar_id
-        && settings.default_tasklist_id
-        && settings.timezone,
+        google.connection_status === "CONNECTED"
+        && google.missing_required_scopes.length === 0
+        && settings.external_llm_consent
+        && llmConfigured,
       );
       setContext({
         runtime,
@@ -174,7 +188,7 @@ export function StartupFlow({ children }: Props): JSX.Element {
   }, [runStartup]);
 
   const fallback = state.phase === "safe-mode"
-    ? <SafeModeRecovery reason={state.checks.map((check) => check.detail).filter(Boolean).join(", ") || "복구가 필요합니다."} onRetry={() => void runStartup()} />
+    ? <SafeModeRecovery reason={Array.from(new Set(state.checks.map((check) => check.detail).filter(Boolean))).join(", ") || "CORE_INITIALIZATION_FAILED"} />
     : <StartupCheckScreen state={state} onRetry={() => void runStartup()} />;
   return (
     <ApiCompatibilityGate

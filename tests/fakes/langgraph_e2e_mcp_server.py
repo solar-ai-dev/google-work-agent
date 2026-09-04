@@ -232,10 +232,18 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
             ]
             if not items and tool_name == "gmail_search_threads":
                 items = [_read_fixture(tool_name, arguments)]
+            resources = cast(
+                dict[str, dict[str, object]], state.setdefault("resources", {})
+            )
+            for item in items:
+                resources[_resource_key(item)] = item
             _save_state(state)
             return {"items": items, "next_page_token": None}
+        item = _read_fixture(tool_name, arguments)
+        resources = cast(dict[str, dict[str, object]], state.setdefault("resources", {}))
+        resources[_resource_key(item)] = item
         _save_state(state)
-        return {"items": [_read_fixture(tool_name, arguments)], "next_page_token": None}
+        return {"items": [item], "next_page_token": None}
     if tool_name in _write_tools():
         item = _write_fixture(tool_name, arguments, counts[tool_name])
         resources = cast(dict[str, dict[str, object]], state.setdefault("resources", {}))

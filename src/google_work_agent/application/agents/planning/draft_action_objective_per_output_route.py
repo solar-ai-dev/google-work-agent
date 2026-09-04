@@ -61,21 +61,37 @@ def draft_action_objective_per_output_route(
         for ref in (item.get("evidence_ref") or item.get("evidence_id") or item.get("id"),)
         if isinstance(ref, str) and ref
     }
+    deterministic_evidence_refs = [
+        ref
+        for item in evidence
+        for ref in (item.get("evidence_ref") or item.get("evidence_id") or item.get("id"),)
+        if isinstance(ref, str) and ref
+    ]
     seen: set[str] = set()
     for route in output_routes:
         route_id = route.get("route_id")
         if not isinstance(route_id, str) or not route_id or route_id in seen:
             raise ValueError("output route_id must be unique and non-empty")
         seen.add(route_id)
-        prompt_input: dict[str, object] = {
-            "user_request": user_request,
-            "request_intent": dict(request_intent),
-            "output_route": dict(route),
-            "evidence": [dict(item) for item in evidence],
-        }
-        if work_analysis is not None:
-            prompt_input["work_analysis"] = dict(work_analysis)
-        candidate = invoke(PROMPT_ID, prompt_input)
+        candidate: Mapping[str, object] | None = _deterministic_create_objective(
+            route=route,
+            request_intent=request_intent,
+        )
+        if candidate is not None:
+            candidate = {
+                **candidate,
+                "evidence_refs": list(dict.fromkeys(deterministic_evidence_refs)),
+            }
+        if candidate is None:
+            prompt_input: dict[str, object] = {
+                "user_request": user_request,
+                "request_intent": dict(request_intent),
+                "output_route": dict(route),
+                "evidence": [dict(item) for item in evidence],
+            }
+            if work_analysis is not None:
+                prompt_input["work_analysis"] = dict(work_analysis)
+            candidate = invoke(PROMPT_ID, prompt_input)
         objective = candidate.get("objective")
         target_semantics = candidate.get("target_semantics")
         scope_constraints = candidate.get("scope_constraints")
@@ -107,4 +123,113 @@ def draft_action_objective_per_output_route(
     return tuple(result)
 
 
-__all__ = ["ACTION_OBJECTIVE_CANDIDATE_OUTPUT_SCHEMA", "draft_action_objective_per_output_route"]
+def requires_objective_inference(
+    route: Mapping[str, object], *, request_intent: Mapping[str, object]
+) -> bool:
+    return (
+        _deterministic_create_objective(
+            route=route,
+            request_intent=request_intent,
+        )
+        is None
+    )
+
+
+def _deterministic_create_objective(
+    *, route: Mapping[str, object], request_intent: Mapping[str, object]
+) -> ActionObjectiveCandidateV1 | None:
+    return _deterministic_calendar_create_objective(
+        route=route,
+        request_intent=request_intent,
+    ) or _deterministic_task_create_objective(
+        route=route,
+        request_intent=request_intent,
+    )
+
+
+def _deterministic_calendar_create_objective(
+    *, route: Mapping[str, object], request_intent: Mapping[str, object]
+) -> ActionObjectiveCandidateV1 | None:
+    route_id = route.get("route_id")
+    if (
+        route.get("resource_type") != "CALENDAR_EVENT"
+        or route.get("effect") != "CREATE"
+        or route.get("selected_tool_id") != "calendar_create_event"
+        or not isinstance(route_id, str)
+        or request_intent.get("requested_resource_hints") != ["CALENDAR_EVENT"]
+        or request_intent.get("requested_effect_hints") != ["CREATE"]
+    ):
+        return None
+    ambiguity = request_intent.get("ambiguity")
+    if isinstance(ambiguity, Mapping) and ambiguity.get("requires_confirmation") is True:
+        return None
+    constraints = request_intent.get("constraints")
+    if not isinstance(constraints, Sequence) or isinstance(constraints, (str, bytes)):
+        return None
+    scope_constraints: list[str] = []
+    for item in constraints:
+        if not isinstance(item, Mapping):
+            return None
+        field, value = item.get("field"), item.get("value")
+        if not isinstance(field, str) or not isinstance(value, str):
+            return None
+        scope_constraints.append(f"{field}: {value}")
+    if not scope_constraints:
+        return None
+    return {
+        "schema_version": 1,
+        "route_id": route_id,
+        "objective": "Create the exact calendar event specified by the validated request intent.",
+        "target_semantics": "CALENDAR_EVENT",
+        "scope_constraints": scope_constraints,
+        "evidence_refs": [],
+    }
+
+
+def _deterministic_task_create_objective(
+    *, route: Mapping[str, object], request_intent: Mapping[str, object]
+) -> ActionObjectiveCandidateV1 | None:
+    route_id = route.get("route_id")
+    if (
+        route.get("resource_type") != "TASK"
+        or route.get("effect") != "CREATE"
+        or route.get("selected_tool_id") != "tasks_create_task"
+        or not isinstance(route_id, str)
+        or request_intent.get("requested_resource_hints") != ["TASK"]
+        or request_intent.get("requested_effect_hints") != ["CREATE"]
+    ):
+        return None
+    ambiguity = request_intent.get("ambiguity")
+    if not isinstance(ambiguity, Mapping) or ambiguity.get("requires_confirmation") is not False:
+        return None
+    constraints = request_intent.get("constraints")
+    if (
+        not isinstance(constraints, Sequence)
+        or isinstance(constraints, (str, bytes))
+        or len(constraints) != 1
+    ):
+        return None
+    title = constraints[0]
+    if (
+        not isinstance(title, Mapping)
+        or title.get("kind") != "RESOURCE"
+        or title.get("field") != "title"
+        or not isinstance(title.get("value"), str)
+        or not title["value"]
+    ):
+        return None
+    return {
+        "schema_version": 1,
+        "route_id": route_id,
+        "objective": "Create the exact task specified by the validated request intent.",
+        "target_semantics": "TASK",
+        "scope_constraints": [f"title: {title['value']}"],
+        "evidence_refs": [],
+    }
+
+
+__all__ = [
+    "ACTION_OBJECTIVE_CANDIDATE_OUTPUT_SCHEMA",
+    "draft_action_objective_per_output_route",
+    "requires_objective_inference",
+]

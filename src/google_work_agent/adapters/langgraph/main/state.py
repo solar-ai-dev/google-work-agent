@@ -130,6 +130,7 @@ class RunInputV1(TypedDict):
 
     entry_mode: Literal["AGENT_SEARCH", "RESOURCE_SELECTED"]
     user_request: str
+    user_message_id: str | None
     selected_resource_refs: list[dict[str, str | None]]
     requested_mode: Literal["AUTO", "LOCAL_GPU", "API_LLM"]
 
@@ -240,6 +241,7 @@ def initial_graph_state(
         "run_input": {
             "entry_mode": cast(Literal["AGENT_SEARCH", "RESOURCE_SELECTED"], request.entry_mode),
             "user_request": request.request_text,
+            "user_message_id": request.user_message_id,
             "selected_resource_refs": [
                 {
                     "source": item.source,
@@ -347,12 +349,17 @@ def request_from_run_input_state(state: Mapping[str, object]) -> WorkflowStartRe
         raise TypeError("workflow state is missing RunInputV1")
     entry_mode = raw_input.get("entry_mode")
     user_request = raw_input.get("user_request")
+    user_message_id = raw_input.get("user_message_id")
     requested_mode = raw_input.get("requested_mode")
     raw_refs = raw_input.get("selected_resource_refs")
     if entry_mode not in {"AGENT_SEARCH", "RESOURCE_SELECTED"}:
         raise ValueError("run_input.entry_mode is invalid")
     if not isinstance(user_request, str) or not user_request.strip():
         raise ValueError("run_input.user_request is required")
+    if user_message_id is not None and (
+        not isinstance(user_message_id, str) or not user_message_id
+    ):
+        raise ValueError("run_input.user_message_id is invalid")
     if requested_mode not in {"AUTO", "LOCAL_GPU", "API_LLM"}:
         raise ValueError("run_input.requested_mode is invalid")
     if not isinstance(raw_refs, list):
@@ -397,4 +404,5 @@ def request_from_run_input_state(state: Mapping[str, object]) -> WorkflowStartRe
         correlation=envelope.correlation,
         run_budget=dict(run_budget),
         selected_resources=tuple(selected_resources),
+        user_message_id=cast(str | None, user_message_id),
     )

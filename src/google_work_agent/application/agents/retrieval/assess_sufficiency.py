@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
@@ -60,6 +61,21 @@ def assess_sufficiency(
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> SufficiencyResultV2:
     """Assess evidence completeness, then apply the deterministic insufficient-data guard."""
+    if _is_complete_selected_gmail_read(
+        request_intent=request_intent,
+        tool_route_plan=tool_route_plan,
+        acquisition_result=acquisition_result,
+        evidence_drafts=evidence_drafts,
+        confirmation_response=confirmation_response,
+    ):
+        return {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
+    if _is_complete_calendar_create_policy_read(
+        request_intent=request_intent,
+        tool_route_plan=tool_route_plan,
+        acquisition_result=acquisition_result,
+        confirmation_response=confirmation_response,
+    ):
+        return {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
     prompt_input: dict[str, object] = {
         "request_intent": request_intent,
         "selected_evidence": selected_evidence_prompt_projection(evidence_drafts),
@@ -78,11 +94,140 @@ def assess_sufficiency(
         SUFFICIENCY_OUTPUT_SCHEMA,
     )
     validated = validate_sufficiency_result_v2(result.structured_output)
+    validated = _fail_closed_on_empty_required_acquisition(
+        validated,
+        tool_route_plan=tool_route_plan,
+        acquisition_result=acquisition_result,
+        evidence_drafts=evidence_drafts,
+    )
     return enforce_sufficiency_guard(
         validated,
         request_intent=request_intent,
         retry_budget=retry_budget,
         evidence_supported_partial_possible=bool(evidence_drafts),
+    )
+
+
+def _fail_closed_on_empty_required_acquisition(
+    result: SufficiencyResultV2,
+    *,
+    tool_route_plan: ToolRoutePlanV2 | None,
+    acquisition_result: AcquisitionResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+) -> SufficiencyResultV2:
+    """Do not treat a completed-but-empty required lookup as evidence."""
+    if (
+        tool_route_plan is None
+        or acquisition_result["status"] != "COMPLETE"
+        or evidence_drafts
+        or not any(
+            route["required"] for route in tool_route_plan["input_plan"]["input_routes"]
+        )
+    ):
+        return result
+    issue: SufficiencyIssueV2 = {
+        "slot": "required_source_evidence",
+        "issue_type": "MISSING",
+        "required": True,
+        "resolution_source": "GOOGLE",
+        "safety_critical": False,
+        "reason_codes": ["REQUIRED_SOURCE_RETURNED_NO_RESOURCES"],
+    }
+    return {
+        "schema_version": 2,
+        "status": result["status"],
+        "issues": [*result["issues"], issue],
+    }
+
+
+def _is_complete_selected_gmail_read(
+    *,
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2 | None,
+    acquisition_result: AcquisitionResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+    confirmation_response: ConfirmationResponseProjectionV1 | None,
+) -> bool:
+    if (
+        confirmation_response is not None
+        or tool_route_plan is None
+        or tool_route_plan["output_plan"]["output_mode"] != "ANSWER"
+        or request_intent["analysis_requirement"] != "NONE"
+        or set(request_intent["requested_effect_hints"]) != {"READ"}
+        or acquisition_result["status"] != "COMPLETE"
+        or acquisition_result["missing_slots"]
+        or not evidence_drafts
+    ):
+        return False
+    routes = tool_route_plan["input_plan"]["input_routes"]
+    if len(routes) != 1:
+        return False
+    route = routes[0]
+    return (
+        route["resource_type"] == "GMAIL_THREAD"
+        and route["required"]
+        and "RESOURCE_SELECTED" in route["reason_codes"]
+        and all(draft["resource_handle"].startswith("gmail_thread:") for draft in evidence_drafts)
+    )
+
+
+def _is_complete_calendar_create_policy_read(
+    *,
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2 | None,
+    acquisition_result: AcquisitionResultV1,
+    confirmation_response: ConfirmationResponseProjectionV1 | None,
+) -> bool:
+    """Accept a fully executed exact Calendar conflict-check plan without an LLM.
+
+    A completed event lookup may correctly return zero resources.  Together
+    with the authoritative calendar and free/busy reads this is a complete
+    policy input, not a missing-data signal that should trigger a broader
+    search.
+    """
+
+    if (
+        confirmation_response is not None
+        or tool_route_plan is None
+        or request_intent["analysis_requirement"] != "NONE"
+        or set(request_intent["requested_effect_hints"]) != {"CREATE"}
+        or set(request_intent["requested_resource_hints"]) != {"CALENDAR_EVENT"}
+        or acquisition_result["status"] != "COMPLETE"
+        or acquisition_result["missing_slots"]
+    ):
+        return False
+    output_routes = tool_route_plan["output_plan"].get("output_routes")
+    if (
+        tool_route_plan["output_plan"]["output_mode"] != "ACTION"
+        or not isinstance(output_routes, list)
+        or len(output_routes) != 1
+        or not isinstance(output_routes[0], Mapping)
+        or output_routes[0].get("effect") != "CREATE"
+        or output_routes[0].get("resource_type") != "CALENDAR_EVENT"
+    ):
+        return False
+    input_routes = tool_route_plan["input_plan"]["input_routes"]
+    if {route["resource_type"] for route in input_routes} != {
+        "CALENDAR",
+        "CALENDAR_EVENT",
+        "CALENDAR_FREEBUSY",
+    }:
+        return False
+    if any(
+        not route["required"]
+        or route["reason_codes"] != ["POLICY_CALENDAR_CONFLICT_CHECK"]
+        for route in input_routes
+    ):
+        return False
+    summaries_by_route = {
+        summary.get("route_id"): summary
+        for summary in acquisition_result["source_summaries"]
+        if isinstance(summary.get("route_id"), str)
+    }
+    return all(
+        route["route_id"] in summaries_by_route
+        and summaries_by_route[route["route_id"]].get("status") == "COMPLETE"
+        for route in input_routes
     )
 
 

@@ -5,10 +5,14 @@ import pytest
 from google_work_agent.adapters.persistence.connection import connect_sqlite
 from google_work_agent.adapters.persistence.migration import apply_migrations
 from google_work_agent.adapters.persistence.sqlite.unit_of_work import sqlite_unit_of_work_factory
+from google_work_agent.application.tool_registry.load_signed_tool_registry import (
+    load_signed_tool_registry,
+)
 from google_work_agent.application.use_cases.run.complete_answer_only_run import (
     CompleteAnswerOnlyRunCommand,
     CompleteAnswerOnlyRunHandler,
 )
+from google_work_agent.domain.resource_ref.model import ResourceRef
 from google_work_agent.domain.results import ResultCode
 from google_work_agent.domain.run.model import RunStatusV1
 
@@ -143,6 +147,145 @@ def test_answer_only__completion_is__atomic(answer_only_database: Path) -> None:
             ).fetchone()[0]
         )
         assert tuple(aggregate_counts) == (0, 0, 0, 0, 0)
+    finally:
+        connection.close()
+
+
+def test_answer_only__persists_selected_context__with_terminal_result(
+    answer_only_database: Path,
+) -> None:
+    connection = connect_sqlite(answer_only_database)
+    try:
+        connection.execute(
+            """
+            INSERT INTO resource_refs (
+                id, run_id, connector_id, resource_type, resource_id,
+                captured_at_ms, metadata_json
+            ) VALUES (
+                'resource-1', 'run-1', 'google_workspace', 'gmail_thread',
+                'thread-42', 10, '{}'
+            );
+            """
+        )
+    finally:
+        connection.close()
+    evidence_ids = iter(["evidence-persisted-1"])
+    service = CompleteAnswerOnlyRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
+        now_ms=lambda: 1000,
+        message_id_factory=lambda: "message-1",
+        evidence_id_factory=lambda: next(evidence_ids),
+    )
+
+    response = service(
+        CompleteAnswerOnlyRunCommand(
+            command_id="command-context-1",
+            conversation_id="conversation-1",
+            run_id="run-1",
+            assistant_message="done",
+            expected_version=0,
+            request_hash="f" * 64,
+            retrieval_artifact_id="retrieval-1",
+            evidence_drafts=(
+                {
+                    "schema_version": 1,
+                    "evidence_id": "logical-evidence-1",
+                    "resource_handle": "gmail_thread:thread-42",
+                    "segment_id": "segment-42",
+                    "kind": "excerpt",
+                    "excerpt": "From: sender@example.com\nSubject: request",
+                    "locator": {},
+                    "reason_codes": ["SUPPORTS"],
+                },
+            ),
+        )
+    )
+
+    assert response.applied
+    connection = connect_sqlite(answer_only_database)
+    try:
+        evidence = connection.execute(
+            """
+            SELECT id, resource_ref_id, excerpt, locator_json
+            FROM evidence WHERE run_id = 'run-1';
+            """
+        ).fetchone()
+        assert evidence["id"] == "evidence-persisted-1"
+        assert evidence["resource_ref_id"] == "resource-1"
+        assert evidence["excerpt"].startswith("From:")
+        assert '"retrieval_artifact_id": "retrieval-1"' in evidence["locator_json"]
+        assert '"role": "SUPPORTS"' in evidence["locator_json"]
+    finally:
+        connection.close()
+
+
+def test_answer_only__persists_acquired_resource__with_search_evidence(
+    answer_only_database: Path,
+) -> None:
+    service = CompleteAnswerOnlyRunHandler(
+        unit_of_work_factory=sqlite_unit_of_work_factory(answer_only_database),
+        now_ms=lambda: 1000,
+        message_id_factory=lambda: "message-1",
+        evidence_id_factory=lambda: "evidence-persisted-1",
+        tool_registry=load_signed_tool_registry(),
+    )
+
+    response = service(
+        CompleteAnswerOnlyRunCommand(
+            command_id="command-search-context-1",
+            conversation_id="conversation-1",
+            run_id="run-1",
+            assistant_message="done",
+            expected_version=0,
+            request_hash="s" * 64,
+            retrieval_artifact_id="retrieval-search-1",
+            evidence_drafts=(
+                {
+                    "schema_version": 1,
+                    "evidence_id": "logical-evidence-1",
+                    "resource_handle": "gmail_thread:thread-search-42",
+                    "segment_id": "segment-search-42",
+                    "kind": "excerpt",
+                    "excerpt": "From: sender@example.com\nSubject: request",
+                    "locator": {},
+                    "reason_codes": ["SUPPORTS"],
+                },
+            ),
+            resource_ref_drafts=(
+                ResourceRef(
+                    id="resource-search-1",
+                    run_id="run-1",
+                    connector_id="google_workspace",
+                    resource_type="gmail_thread",
+                    resource_id="thread-search-42",
+                    parent_resource_id=None,
+                    canonical_url=None,
+                    title="request",
+                    event_time_ms=None,
+                    version_token="v1",
+                    metadata_json='{"title": "request"}',
+                    captured_at_ms=900,
+                ),
+            ),
+        )
+    )
+
+    assert response.applied
+    connection = connect_sqlite(answer_only_database)
+    try:
+        resource = connection.execute(
+            "SELECT id, connector_id, resource_type, resource_id FROM resource_refs;"
+        ).fetchone()
+        evidence = connection.execute(
+            "SELECT resource_ref_id FROM evidence WHERE run_id = 'run-1';"
+        ).fetchone()
+        assert tuple(resource) == (
+            "resource-search-1",
+            "google_workspace",
+            "gmail_thread",
+            "thread-search-42",
+        )
+        assert evidence["resource_ref_id"] == "resource-search-1"
     finally:
         connection.close()
 

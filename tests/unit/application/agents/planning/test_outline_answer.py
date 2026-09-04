@@ -46,3 +46,18 @@ def test_outline_rejects__evidence_outside__current_projection() -> None:
                 "evidence_refs": ["previous-run"],
             },
         )
+
+
+def test_outline__materializes_only__available_evidence_identity() -> None:
+    result = outline_answer(
+        user_request="Summarize.",
+        request_intent={"goal": "summary"},
+        work_analysis=None,
+        evidence=[{"evidence_id": "evidence-only", "excerpt": "fact"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "sections": ["Conclusion"],
+            "evidence_refs": ["invented-reference"],
+        },
+    )
+
+    assert result["evidence_refs"] == ["evidence-only"]

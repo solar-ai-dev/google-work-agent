@@ -44,6 +44,9 @@ from google_work_agent.application.agents.request_understanding.contracts import
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     EvidenceDraftV1,
 )
+from google_work_agent.application.agents.work_analysis import (
+    detect_duplicate_conflict_candidates as duplicate_candidates,
+)
 from google_work_agent.application.agents.work_analysis.assemble_work_analysis import (
     required_override_confirmation_kind,
 )
@@ -181,6 +184,7 @@ class WorkAnalysisSubgraph:
             route_after_extract_work_facts,
             {
                 "resolve_entity_relations": "resolve_entity_relations",
+                "detect_duplicate_conflict_candidates": "detect_duplicate_conflict_candidates",
                 "validate_relations": "validate_relations",
             },
         )
@@ -296,10 +300,9 @@ class WorkAnalysisSubgraph:
                 ),
             },
         )
-        if not returned["fact_candidates"]:
-            returned["entity_relation_candidates"] = []
-            returned["temporal_dependency_candidates"] = []
-            returned["duplicate_conflict_candidates"] = []
+        returned["entity_relation_candidates"] = []
+        returned["temporal_dependency_candidates"] = []
+        returned["duplicate_conflict_candidates"] = []
         return returned
 
     def _resolve_entity_relations_node(
@@ -351,7 +354,11 @@ class WorkAnalysisSubgraph:
     def _detect_duplicate_conflict_candidates_node(
         self, state: WorkAnalysisLocalState
     ) -> WorkAnalysisLocalState:
-        ensure_llm_call_budget(state)
+        llm_required = duplicate_candidates.duplicate_conflict_candidate_llm_required(
+            state.get("fact_candidates", [])
+        )
+        if llm_required:
+            ensure_llm_call_budget(state)
         patch = detect_duplicate_conflict_candidates_node(
             cast(Any, state),
             llm_runtime=self._llm_runtime,
@@ -363,11 +370,19 @@ class WorkAnalysisSubgraph:
             WorkAnalysisLocalState,
             {
                 **patch,
-                "retry_budget": consume_llm_call_budget(state),
+                "retry_budget": (
+                    consume_llm_call_budget(state)
+                    if llm_required
+                    else state["retry_budget"]
+                ),
                 "trace_context": self._trace(
                     state,
                     "detect_duplicate_conflict_candidates",
-                    self._prompt_refs["detect_duplicate_conflict_candidates"],
+                    (
+                        self._prompt_refs["detect_duplicate_conflict_candidates"]
+                        if llm_required
+                        else None
+                    ),
                 ),
             },
         )

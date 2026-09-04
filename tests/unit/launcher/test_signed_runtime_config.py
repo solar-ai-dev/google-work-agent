@@ -28,6 +28,10 @@ from google_work_agent.ports.llm.approved_model_manifest import (
 from google_work_agent.ports.llm.local_model_product_decision import (
     LocalModelProductDecisionV1,
 )
+from google_work_agent.ports.llm.local_model_profile import (
+    LocalInferenceClass,
+    LocalModelProfileV1,
+)
 from release.profiles import DeploymentProfile
 
 
@@ -97,7 +101,10 @@ def test_local_capable__projects_only_release__verified_model_allowlist(
     manifest = ModelManifestV1(
         schema_version=1,
         minimum_ollama_version="0.6.0",
-        approved_models=(ApprovedModelEntryV1("qwen2.5:7b", "a" * 63 + "b"),),
+        approved_models=(
+            ApprovedModelEntryV1("qwen3.5:4b", "a" * 63 + "b"),
+            ApprovedModelEntryV1("qwen3.5:9b", "b" * 63 + "a"),
+        ),
     )
     manifest_path.write_bytes(manifest.to_canonical_bytes() + b"\n")
     decision_relative = "manifests/local-model-product-decision-v1.json"
@@ -107,7 +114,7 @@ def test_local_capable__projects_only_release__verified_model_allowlist(
         decision_status="APPROVED_FOR_LOCAL_PROFILE",
         release_version="1.2.3",
         deployment_profile="LOCAL_CAPABLE",
-        selected_model_id="qwen2.5:7b",
+        selected_model_id="qwen3.5:9b",
         model_manifest_hash=hashlib.sha256(manifest.to_canonical_bytes()).hexdigest(),
         candidate_config_hash=hashlib.sha256(b"candidate").hexdigest(),
         minimum_cpu_logical_cores=4,
@@ -117,9 +124,21 @@ def test_local_capable__projects_only_release__verified_model_allowlist(
         supported_architecture="AMD64",
     )
     decision_path.write_bytes(decision.to_canonical_bytes() + b"\n")
+    profile_relative = "manifests/local-model-profile-v1.json"
+    profile_path = tmp_path / profile_relative
+    profile = LocalModelProfileV1(
+        schema_version=1,
+        profile_id="test-profile",
+        runtime="OLLAMA",
+        worker_model_id="qwen3.5:4b",
+        reasoning_model_id="qwen3.5:9b",
+        default_inference_class=LocalInferenceClass.REASONING,
+        prompt_inference_classes=(),
+    )
+    profile_path.write_bytes(profile.to_canonical_bytes() + b"\n")
     release_files = {
         path: _VerifiedReleaseFile.from_payload(_release_row(tmp_path, path))
-        for path in (relative, decision_relative)
+        for path in (relative, decision_relative, profile_relative)
     }
 
     selection = _load_installed_llm_runtime_selection(
@@ -130,8 +149,9 @@ def test_local_capable__projects_only_release__verified_model_allowlist(
     )
 
     assert selection.selected_model is not None
-    assert selection.selected_model.digest == "a" * 63 + "b"
+    assert selection.selected_model.digest == "b" * 63 + "a"
     assert selection.selected_model.minimum_runtime_version == "0.6.0"
+    assert selection.local_model_profile == profile
 
 
 def test_api_only__rejects_accidental__local_model_manifest(tmp_path: Path) -> None:

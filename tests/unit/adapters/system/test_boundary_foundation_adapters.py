@@ -226,6 +226,71 @@ def test_backup_create_restore__and_reconciliation_are__operation_ref_safe(tmp_p
         connection.close()
 
 
+def test_backup_restore__rolls_back_current_database__when_readiness_fails(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "app.sqlite3"
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute("CREATE TABLE sample (value TEXT NOT NULL)")
+        connection.execute("INSERT INTO sample VALUES ('original')")
+    finally:
+        connection.close()
+    adapter = FilesystemBackupAdapter(
+        database_path=database_path,
+        backups_dir=tmp_path / "backups",
+        clock=_Clock(),
+        maintenance_gate=_MaintenanceGate(),
+        release_version="test",
+        domain_contract_version="test",
+        schema_version="0019",
+        supported_restore_schema_versions=("0019",),
+        post_restore_readiness=lambda: False,
+    )
+    backup = adapter.create_backup("backup-before-change")
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute("UPDATE sample SET value='current'")
+    finally:
+        connection.close()
+
+    restored = adapter.restore_backup(backup.backup_ref, "restore-with-failed-readiness")
+
+    assert restored.status == "REJECTED"
+    assert restored.detail_code == "POST_RESTORE_READINESS_FAILED"
+    connection = connect_sqlite(database_path)
+    try:
+        assert connection.execute("SELECT value FROM sample").fetchone()[0] == "current"
+    finally:
+        connection.close()
+
+
+def test_backup_inventory__with_tampered_candidate__excludes_restore_candidate(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "app.sqlite3"
+    connection = connect_sqlite(database_path)
+    try:
+        connection.execute("CREATE TABLE sample (value TEXT NOT NULL)")
+    finally:
+        connection.close()
+    backups_dir = tmp_path / "backups"
+    adapter = FilesystemBackupAdapter(
+        database_path=database_path,
+        backups_dir=backups_dir,
+        clock=_Clock(),
+        maintenance_gate=_MaintenanceGate(),
+        release_version="test",
+        domain_contract_version="test",
+        schema_version="0019",
+    )
+    backup = adapter.create_backup("tamper-candidate")
+    with (backups_dir / f"{backup.backup_ref}.sqlite3").open("ab") as stream:
+        stream.write(b"tampered")
+
+    assert adapter.list_backups() == []
+
+
 def test_process_maintenance_gate__consumes_live_state__and_serializes_restore() -> None:
     active = False
     gate = ProcessMaintenanceGateAdapter(has_active_write=lambda: active)

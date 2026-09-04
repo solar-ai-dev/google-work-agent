@@ -90,8 +90,14 @@ class _IdFactory:
 
 
 class _ComponentInferencePort:
-    def __init__(self, *, request_confirmation: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        request_confirmation: bool = False,
+        work_fact_count: int = 0,
+    ) -> None:
         self.request_confirmation = request_confirmation
+        self.work_fact_count = work_fact_count
         self.calls: list[str] = []
 
     def infer(
@@ -128,14 +134,15 @@ class _ComponentInferencePort:
                 "goal": "schedule team sync" if has_confirmation else "summarize status",
                 "completion_conditions": ["return a result"],
                 "constraints": [],
-                "requested_effect_hints": ["READ"],
-                "requested_resource_hints": [],
+                "requested_effect_hints": ["CREATE"] if has_confirmation else [],
+                "requested_resource_hints": ["CALENDAR_EVENT"] if has_confirmation else [],
                 "analysis_requirement": "NONE",
             }
         if prompt_id == "request_understanding.detect_ambiguity":
             needs_confirmation = self.request_confirmation and not has_confirmation
             return {
                 "requires_confirmation": needs_confirmation,
+                "missing_information_owner": "USER" if needs_confirmation else "NONE",
                 "reason_codes": ["MISSING_TARGET"] if needs_confirmation else [],
                 "missing_fields": ["target"] if needs_confirmation else [],
             }
@@ -190,7 +197,25 @@ class _ComponentInferencePort:
         if prompt_id == "retrieval.assess_sufficiency":
             return {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
         if prompt_id == "work_analysis.extract_work_facts":
-            return {"fact_candidates": []}
+            return {
+                "fact_candidates": [
+                    {
+                        "fact_id": f"fact-{index}",
+                        "kind": "TASK",
+                        "subject": f"task-{index}",
+                        "value": f"task-{index}",
+                        "derivation": "EXPLICIT",
+                        "evidence_refs": [],
+                    }
+                    for index in range(self.work_fact_count)
+                ]
+            }
+        if prompt_id in {
+            "work_analysis.resolve_entity_relations",
+            "work_analysis.resolve_temporal_dependencies",
+            "work_analysis.detect_duplicate_conflict_candidates",
+        }:
+            return {"relation_candidates": []}
         if prompt_id == "work_analysis.assess_information_gaps":
             return {
                 "disposition": "COMPLETE",
@@ -304,6 +329,48 @@ def _answer_route_plan(*, with_input_route: bool = False) -> dict[str, object]:
         },
         "tool_registry_version": "component-test",
     }
+
+
+def _task_create_route_plan() -> dict[str, object]:
+    result = _answer_route_plan()
+    result["input_plan"] = {
+        "schema_version": 1,
+        "meta": {
+            "artifact_id": "input-task-1",
+            "revision": 1,
+            "based_on": [{"artifact_id": "intent-1", "revision": 1}],
+        },
+        "input_routes": [
+            {
+                "route_id": "input-task-route",
+                "resource_type": "TASK",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["tasks_list_tasks"],
+                "required": True,
+                "reason_codes": ["POLICY_TASK_DUPLICATE_CHECK"],
+            }
+        ],
+    }
+    result["output_plan"] = {
+        "schema_version": 1,
+        "meta": {
+            "artifact_id": "output-task-1",
+            "revision": 1,
+            "based_on": [{"artifact_id": "intent-1", "revision": 1}],
+        },
+        "output_mode": "ACTION",
+        "output_routes": [
+            {
+                "route_id": "output-task-route",
+                "resource_type": "TASK",
+                "connector_id": "google_workspace",
+                "effect": "CREATE",
+                "selected_tool_id": "tasks_create_task",
+                "reason_codes": ["USER_REQUEST"],
+            }
+        ],
+    }
+    return result
 
 
 def _retrieval_result() -> dict[str, object]:
@@ -449,6 +516,39 @@ def test_work_analysis__compiled_normal_path__produces_analysis() -> None:
     assert result["work_analysis_result"]["schema_version"] == 2
     assert result["__target__"] == "SOLUTION_PLANNING"
     assert ("finalize", "assess_operational_risks") in _edge_set(graph)
+
+
+def test_work_analysis__policy_only__skips_unrelated_relation_llms() -> None:
+    state = _state(initial_target="work_analysis")
+    intent = _intent()
+    intent["requested_effect_hints"] = ["CREATE"]
+    intent["requested_resource_hints"] = ["TASK"]
+    state["request_intent"] = cast(Any, intent)
+    state["tool_route_plan"] = cast(Any, _task_create_route_plan())
+    state["retrieval_result"] = cast(Any, _retrieval_result())
+    llm = _ComponentInferencePort(work_fact_count=2)
+    graph = WorkAnalysisSubgraph(
+        llm_runtime=llm,
+        prompt_manifest_path=None,
+        prompt_execution_scope=DEVELOPMENT_SMOKE,
+        id_factory=_IdFactory(),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        transition_run=lambda _run_id, _transition: None,
+        merge_decision=cast(Any, _merge_decision),
+        evidence_store=RunScopedEvidenceStore(),
+        confirm_inline=cast(Any, _confirm_early),
+    ).build()
+
+    with provider_dispatch_execution_scope():
+        result = graph.invoke(state)
+
+    assert result["work_analysis_result"]["schema_version"] == 2
+    assert llm.calls == [
+        "work_analysis.extract_work_facts",
+        "work_analysis.detect_duplicate_conflict_candidates",
+        "work_analysis.assess_information_gaps",
+        "work_analysis.assess_operational_risks",
+    ]
 
 
 def test_planning__compiled_normal_path__produces_answer() -> None:

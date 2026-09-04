@@ -15,6 +15,7 @@ from google_work_agent.application.agents.tool_routing.contracts.semantic_route_
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     ScopeExpansionRequiredV1,
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.use_cases.run.policy_confirmation_receipt import (
     PolicyConfirmationReceiptV1,
@@ -26,6 +27,41 @@ from google_work_agent.domain.canonical import calculate_canonical_json_hash
 class PolicyPreconditionResolutionV1:
     candidate: SemanticRouteCandidate
     workflow_signal: ScopeExpansionRequiredV1 | None
+
+
+_ANALYSIS_REQUIRED_REASON_CODES = frozenset(
+    {
+        "POLICY_TASK_DUPLICATE_CHECK",
+        "POLICY_CALENDAR_CONFLICT_CHECK",
+    }
+)
+
+
+def effective_analysis_required(
+    *,
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2,
+) -> bool:
+    """Derive Work Analysis applicability from current semantic artifacts.
+
+    Request Understanding owns the explicit analysis requirement. Policy
+    preconditions may additionally require analysis; their frozen IN-route
+    reason codes preserve that decision through Tool Routing without a second
+    durable skip flag.
+    """
+
+    if request_intent["analysis_requirement"] == "REQUIRED":
+        return True
+    return policy_analysis_required(tool_route_plan)
+
+
+def policy_analysis_required(tool_route_plan: ToolRoutePlanV2) -> bool:
+    """Return whether frozen Policy preconditions require guarded analysis."""
+    return any(
+        reason_code in _ANALYSIS_REQUIRED_REASON_CODES
+        for route in tool_route_plan["input_plan"]["input_routes"]
+        for reason_code in route["reason_codes"]
+    )
 
 
 def resolve_policy_preconditions(
@@ -128,9 +164,6 @@ def _merge_required_reads(
         analysis_requirement=candidate.analysis_requirement,
         input_reason_codes=tuple(sorted(reason_codes.items())),
     )
-
-
-__all__ = ["PolicyPreconditionResolutionV1", "resolve_policy_preconditions"]
 
 
 # Preserved scope-expansion policy is owned by this precondition operation.
@@ -305,4 +338,11 @@ def _decision_context(
     }
 
 
-__all__ = ["ScopeExpansionResolver", "build_policy_confirmation_receipt"]
+__all__ = [
+    "PolicyPreconditionResolutionV1",
+    "ScopeExpansionResolver",
+    "build_policy_confirmation_receipt",
+    "effective_analysis_required",
+    "policy_analysis_required",
+    "resolve_policy_preconditions",
+]

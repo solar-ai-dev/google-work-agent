@@ -400,6 +400,7 @@ def test_run_snapshot__rest_projection_includes__structured_action_risk() -> Non
             ActionSnapshot(
                 action_id="action-1",
                 tool_name="tasks_create_task",
+                arguments={"payload": {"title": "Ship report"}},
                 status="PROPOSED",
                 version=0,
                 effect_type="CREATE",
@@ -439,6 +440,9 @@ def test_run_snapshot__rest_projection_includes__structured_action_risk() -> Non
 
     assert response.status_code == 200
     assert response.json()["actions"][0]["risk"] == risk
+    assert response.json()["actions"][0]["arguments"] == {
+        "payload": {"title": "Ship report"}
+    }
     assert response.json()["recovery"] == {
         "reason_code": "VERIFICATION_MISMATCH",
         "target": {"target_kind": "ACTION", "action_id": "action-1"},

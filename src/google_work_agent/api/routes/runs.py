@@ -318,8 +318,11 @@ def get_run_context(
     if dependencies.get_execution_context_handler is None:
         raise RuntimeError("execution-context handler is not configured")
     context = dependencies.get_execution_context_handler(GetExecutionContextQuery(run_id=run_id))
+    context_payload = None if context is None else asdict(context)
+    if context_payload is not None:
+        context_payload.pop("user_message_id", None)
     return RunContextResponse(
-        context=None if context is None else ExecutionContextResponse(**asdict(context)),
+        context=None if context_payload is None else ExecutionContextResponse(**context_payload),
         api_contract_version=dependencies.api_contract_version,
     )
 

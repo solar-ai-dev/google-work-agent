@@ -67,6 +67,7 @@ def compose_arguments_per_output_route_node(
                 routes,
                 objectives=cast(list[ActionObjectiveCandidateV1], projected["objectives"]),
                 bound_tool_schemas=bound_schemas,
+                request_intent=projected.get("request_intent"),
                 work_analysis=projected.get("work_analysis"),
                 evidence=projected["evidence"],
                 invoke=invoke,

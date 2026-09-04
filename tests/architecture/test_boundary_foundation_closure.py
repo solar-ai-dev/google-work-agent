@@ -35,7 +35,7 @@ PORT_METHODS = {
         "get_credential_status",
         "reconcile_credential",
     },
-    "ports/llm/llm_runtime_status_port.py": {"get_status"},
+    "ports/llm/llm_runtime_status_port.py": {"get_status", "list_local_models"},
     "ports/keyring/secret_store_port.py": {"put", "get", "delete"},
     "ports/system/checkpoint_port.py": {
         "create_workflow_binding",

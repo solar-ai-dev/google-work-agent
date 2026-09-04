@@ -43,7 +43,11 @@ class LangGraphCheckpointControlAdapter:
             raise ValueError(f"{control.kind} requires a concrete runnable node")
         self._assert_exact_checkpoint(checkpoint)
         writes = _command_writes(native_resume_command(control, goto_node=goto_node))
-        self._store_idempotent(checkpoint, writes)
+        self._store_idempotent(
+            checkpoint,
+            writes,
+            replace_resume=control.kind == "CONFIRMATION_RESPONSE",
+        )
         if not self.contains_control(checkpoint, control, goto_node=goto_node):
             raise ValueError("workflow control was not durably materialized")
 
@@ -76,11 +80,17 @@ class LangGraphCheckpointControlAdapter:
         self,
         checkpoint: GraphCheckpointEnvelopeV1,
         writes: list[tuple[str, object]],
+        *,
+        replace_resume: bool = False,
     ) -> None:
         existing = self._pending_null_writes(checkpoint)
         for channel, value in writes:
             previous = existing.get(channel)
-            if previous is not None and previous != value:
+            if (
+                previous is not None
+                and previous != value
+                and not (replace_resume and channel == "__resume__")
+            ):
                 raise ValueError(
                     f"checkpoint already contains a different pending write: {channel}"
                 )

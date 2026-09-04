@@ -4,7 +4,10 @@ type RecoveryProjection = NonNullable<RunSnapshot["recovery"]>;
 
 export function RecoveryCard({ snapshot, busy, onResolve, onErrorAction = () => undefined }: { snapshot: RunSnapshot; busy: string | null; onResolve: (kind: RecoveryProjection["allowed_resolution_kinds"][number]) => void; onErrorAction?: (kind: "REAUTHENTICATE_GOOGLE" | "OPEN_SETTINGS" | "OPEN_DIAGNOSTICS") => void }): JSX.Element | null {
   const recovery = snapshot.recovery;
-  if (!recovery && !snapshot.error) return null;
+  const transientResumeOnlyError = snapshot.error
+    && snapshot.error.actions.some((action) => action.kind === "RESUME_SAFE_CHECKPOINT")
+    && !["RECOVERY_REQUIRED", "FAILED", "BLOCKED"].includes(snapshot.run.status);
+  if (!recovery && (!snapshot.error || transientResumeOnlyError)) return null;
   return (
     <article className="info-card">
       <strong>Recovery</strong>

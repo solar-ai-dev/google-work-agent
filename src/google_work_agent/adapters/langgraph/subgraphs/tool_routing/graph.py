@@ -42,6 +42,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ScopeExpansionRequiredV1,
     ToolRouteResultV1,
 )
+from google_work_agent.application.agents.tool_routing.determine_io_resources import (
+    requires_io_resource_inference,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PRODUCT_RELEASE,
     PromptExecutionScope,
@@ -195,6 +198,12 @@ class ToolRoutingSubgraph:
                 "final_route": None,
             }
         working_state = cast(ToolRouteStateV1, {**state, **initial_fields})
+        uses_llm = requires_io_resource_inference(
+            request_intent=_require_state_value(
+                working_state.get("request_intent"), "request_intent"
+            ),
+            request=request,
+        )
         patch = determine_io_resources_node(
             working_state,
             llm_runtime=self._llm_runtime,
@@ -211,9 +220,11 @@ class ToolRoutingSubgraph:
             "trace_context": self._trace(
                 working_state,
                 node_name="determine_io_resources",
-                llm_call_id=f"{request.run_id}:route.determine_resources",
-                prompt_ref=self._determine_prompt_ref,
-                llm_call_increment=1,
+                llm_call_id=(
+                    f"{request.run_id}:route.determine_resources" if uses_llm else None
+                ),
+                prompt_ref=self._determine_prompt_ref if uses_llm else None,
+                llm_call_increment=1 if uses_llm else 0,
                 invocation_id=invocation_id,
                 agent_invocation_increment=1 if is_first_node else 0,
             ),

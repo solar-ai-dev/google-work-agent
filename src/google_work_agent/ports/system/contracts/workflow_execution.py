@@ -59,6 +59,7 @@ class WorkflowStartRequest:
     correlation: WorkflowCorrelationContext
     run_budget: Mapping[str, JsonValue] = field(default_factory=dict)
     selected_resources: tuple[SelectedResourceRef, ...] = ()
+    user_message_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
