@@ -188,6 +188,23 @@ def test_compose_answer__with_internal_fact_terms__removes_them_from_prose() -> 
     assert "risks" not in result["answer"]
 
 
+def test_korean_answer__with_ungrounded_foreign_script__removes_only_generated_text() -> None:
+    result = compose_answer(
+        user_request="메일을 한국어로 요약해줘.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["핵심"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "e1", "excerpt": "담당자 王敏, 완료 시점은 미정"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": "담당자는 王敏이며 완료 시点是 명시되지 않았습니다.",
+            "evidence_refs": ["e1"],
+        },
+    )
+
+    assert result["answer"] == "담당자는 王敏이며 완료 시 명시되지 않았습니다."
+
+
 def test_compose_empty_gmail_read__explains_search_result_without_llm() -> None:
     invoked = False
 

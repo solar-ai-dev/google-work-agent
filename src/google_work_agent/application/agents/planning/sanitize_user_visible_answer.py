@@ -15,6 +15,7 @@ _INTERNAL_FIELD_LABELS = re.compile(
     r"`?(?:work_facts|evidence_refs|reason_codes|risks|thought_process)`?",
     re.IGNORECASE,
 )
+_FOREIGN_SCRIPT_FRAGMENT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u0400-\u04ff]+")
 
 
 def sanitize_user_visible_answer(
@@ -22,6 +23,7 @@ def sanitize_user_visible_answer(
     *,
     internal_refs: Iterable[str],
     user_request: str,
+    source_texts: Iterable[str] = (),
 ) -> str:
     """Replace diagnostic-only refs and codes while retaining natural prose."""
 
@@ -35,6 +37,13 @@ def sanitize_user_visible_answer(
     result = _INTERNAL_REFERENCE_TOKEN.sub(reference_label, result)
     result = _INTERNAL_FIELD_LABELS.sub(reference_label, result)
     result = _REASON_CODE.sub(state_label, result)
+    if korean:
+        source_text = "\n".join(source_texts)
+        result = _FOREIGN_SCRIPT_FRAGMENT.sub(
+            lambda match: match.group(0) if match.group(0) in source_text else "",
+            result,
+        )
+        result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
 
 

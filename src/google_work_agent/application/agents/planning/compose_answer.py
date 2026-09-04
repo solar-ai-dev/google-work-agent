@@ -141,6 +141,11 @@ def compose_answer(
         normalized_answer,
         internal_refs=[*allowed, *refs],
         user_request=user_request,
+        source_texts=[
+            excerpt
+            for item in approved_evidence
+            if isinstance((excerpt := item.get("excerpt")), str)
+        ],
     )
     return {"schema_version": 2, "answer": visible_answer, "evidence_refs": list(refs)}
 
