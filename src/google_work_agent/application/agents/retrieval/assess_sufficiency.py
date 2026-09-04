@@ -304,8 +304,13 @@ def decide_insufficient_data(context: InsufficientDataContext) -> InsufficientDa
     """Apply the canonical fail-closed precedence independently of LLM confidence."""
 
     required = tuple(issue for issue in context.issues if issue.required)
+    if any(issue.resolution_source is ResolutionSource.POLICY for issue in required):
+        return InsufficientDataDisposition.BLOCKED
     if any(
-        issue.safety_critical or issue.resolution_source is ResolutionSource.POLICY
+        issue.safety_critical
+        and not (
+            context.read_only and issue.resolution_source is ResolutionSource.GOOGLE
+        )
         for issue in required
     ):
         return InsufficientDataDisposition.BLOCKED

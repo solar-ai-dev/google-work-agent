@@ -300,6 +300,65 @@ def test_assess_sufficiency__requires_each_selected_gmail_thread_detail_for_anal
     assert result["issues"][-1]["reason_codes"] == ["CANDIDATE_DETAIL_REQUIRED"]
 
 
+def test_assess_sufficiency__read_only_google_gap__cannot_block_candidate_detail() -> None:
+    blocked_google_gap = {
+        "schema_version": 2,
+        "status": "BLOCKED",
+        "issues": [
+            {
+                "slot": "latest_decision",
+                "issue_type": "MISSING",
+                "required": True,
+                "resolution_source": "GOOGLE",
+                "safety_critical": True,
+                "reason_codes": ["CONTENT_NOT_EXPOSED"],
+            }
+        ],
+    }
+    runtime = FakeLLMRuntime(deque([_llm_result(blocked_google_gap)]))
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    route_plan = _tool_route_plan(
+        [
+            {
+                "route_id": "route-gmail",
+                "resource_type": "GMAIL_THREAD",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+                "required": True,
+                "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
+            }
+        ]
+    )
+
+    result = assess_sufficiency(
+        llm_runtime=runtime,
+        prompt_ref=SUFFICIENCY_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        tool_route_plan=route_plan,
+        acquisition_result=_acquisition_result(),
+        evidence_drafts=[
+            {
+                "schema_version": 1,
+                "evidence_id": "evidence-first",
+                "resource_handle": "gmail_thread:first",
+                "segment_id": "segment-first",
+                "kind": "excerpt",
+                "excerpt": "KAN-93 metadata",
+                "locator": {},
+                "reason_codes": ["SUPPORTS"],
+            }
+        ],
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["status"] == "NEEDS_MORE_DATA"
+    assert result["issues"][-1]["reason_codes"] == ["CANDIDATE_DETAIL_REQUIRED"]
+
+
 def test_assess_sufficiency__accepts_analysis_after_all_candidate_details() -> None:
     runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
     intent = _intent()

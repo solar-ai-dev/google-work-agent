@@ -46,6 +46,14 @@ def _context(
             InsufficientDataDisposition.BLOCKED,
         ),
         (
+            _context(
+                source=ResolutionSource.GOOGLE,
+                safety_critical=True,
+                read_only=True,
+            ),
+            InsufficientDataDisposition.RETRIEVE_MORE,
+        ),
+        (
             _context(source=ResolutionSource.USER),
             InsufficientDataDisposition.NEEDS_CONFIRMATION,
         ),
