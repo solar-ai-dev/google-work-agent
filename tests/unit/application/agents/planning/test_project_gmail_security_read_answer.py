@@ -11,7 +11,7 @@ def test_selected_security_alert__with_device_and_date__projects_exact_facts() -
             "requested_effect_hints": ["READ"],
             "requested_resource_hints": ["GMAIL_THREAD"],
             "constraints": [
-                {"kind": "RESOURCE", "field": "resource_id", "value": "thread-1"}
+                {"kind": "RESOURCE", "field": "GMAIL_THREAD_ID", "value": "thread-1"}
             ],
         },
         evidence=[

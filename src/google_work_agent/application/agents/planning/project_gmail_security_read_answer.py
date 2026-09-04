@@ -84,7 +84,7 @@ def _supports_request(user_request: str, request_intent: Mapping[str, object]) -
     selected = isinstance(constraints, list) and any(
         isinstance(item, Mapping)
         and item.get("kind") == "RESOURCE"
-        and item.get("field") in {"resource_id", "selected_resource_id"}
+        and _is_resource_id_field(item.get("field"))
         for item in constraints
     )
     return (
@@ -103,6 +103,13 @@ def _device(excerpt: str) -> str | None:
         if match is not None:
             return match.group(1).strip()
     return None
+
+
+def _is_resource_id_field(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    normalized = value.casefold()
+    return normalized in {"resource_id", "selected_resource_id"} or normalized.endswith("_id")
 
 
 def _message_date(excerpt: str) -> tuple[datetime, str] | None:
