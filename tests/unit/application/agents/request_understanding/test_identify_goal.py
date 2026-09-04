@@ -24,7 +24,9 @@ def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> Non
             {
                 "goal": "업무 메일 찾기",
                 "completion_conditions": ["관련 메일을 찾는다"],
-                "constraints": [],
+                "constraints": [
+                    {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": "관련"}
+                ],
                 "requested_effect_hints": ["READ"],
                 "requested_resource_hints": ["GMAIL_THREAD"],
                 "analysis_requirement": "REQUIRED",
@@ -44,6 +46,10 @@ def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> Non
     }
     prompt = cast(PromptReference, runtime.calls[0]["prompt_ref"])
     assert prompt.prompt_id == "request_understanding.identify_goal"
+    output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
+    assert cast(dict[str, Any], output_schema.json_schema["properties"])["constraints"][
+        "minItems"
+    ] == 1
 
 
 def test_identify_goal__selected_resource__preserves_trusted_read_identity() -> None:
@@ -166,7 +172,9 @@ def test_identify_goal__current_workspace_read__is_not_rewritten_as_advice() -> 
             {
                 "goal": "현재 Google Tasks 원칙 확인",
                 "completion_conditions": ["현재 태스크를 읽어 답한다"],
-                "constraints": [],
+                "constraints": [
+                    {"kind": "SCOPE", "field": "status", "value": "현재"}
+                ],
                 "requested_effect_hints": ["READ"],
                 "requested_resource_hints": ["TASK"],
                 "analysis_requirement": "NONE",
@@ -190,7 +198,9 @@ def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hint
             {
                 "goal": "현재 할 일 목록 제공",
                 "completion_conditions": ["할 일을 간단히 답한다"],
-                "constraints": [],
+                "constraints": [
+                    {"kind": "SCOPE", "field": "status", "value": "현재"}
+                ],
                 "requested_effect_hints": [],
                 "requested_resource_hints": ["TASK"],
                 "analysis_requirement": "NONE",
@@ -208,6 +218,44 @@ def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hint
     assert candidate["requested_resource_hints"] == ["TASK"]
     output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
     assert "allOf" not in output_schema.json_schema
+
+
+def test_identify_goal__vague_mail_read__requires_original_search_semantics() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "회의 관련 메일을 분석해 일정 정리",
+                "completion_conditions": ["회의 일정 근거를 정리한다"],
+                "constraints": [
+                    {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": "회의"},
+                    {
+                        "kind": "USER_REQUIREMENT",
+                        "field": "required_information",
+                        "value": ["일정", "후속 작업"],
+                    },
+                ],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["GMAIL_THREAD"],
+                "analysis_requirement": "REQUIRED",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("회의 관련 메일이 있는데 그거 분석해서 일정 정리해줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["constraints"][0] == {
+        "kind": "USER_REQUIREMENT",
+        "field": "search_terms",
+        "value": "회의",
+    }
+    output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
+    assert cast(dict[str, Any], output_schema.json_schema["properties"])["constraints"][
+        "minItems"
+    ] == 1
 
 
 def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import cast
 
@@ -191,6 +192,7 @@ def identify_goal(
 _EXPLICIT_READ_RESOURCE_PATTERNS = (
     (re.compile(r"(?i)(?<![a-z])google\s+tasks?(?![a-z])"), "TASK"),
     (re.compile(r"(?i)(?<![a-z])gmail(?![a-z])"), "GMAIL_THREAD"),
+    (re.compile(r"(?i)(?<![a-z])e-?mail(?![a-z])|메일"), "GMAIL_THREAD"),
     (re.compile(r"(?i)(?<![a-z])google\s+calendar(?![a-z])"), "CALENDAR_EVENT"),
 )
 _EXPLICIT_READ_MARKERS = (
@@ -339,18 +341,17 @@ def _date_value_appears_in_text(value: object, text: str) -> bool:
 def _output_schema_for_request(request: WorkflowStartRequest) -> OutputSchemaDefinition:
     """Let deterministic explicit-read authority complete paired hint fields."""
 
-    if not (
-        _has_explicit_read_authority(request.request_text)
-        or _selected_resource_hints(request)
-    ):
+    has_explicit_read = _has_explicit_read_authority(request.request_text)
+    if not (has_explicit_read or _selected_resource_hints(request)):
         return IDENTIFY_GOAL_OUTPUT_SCHEMA
+    schema = cast(dict[str, object], deepcopy(IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema))
+    schema.pop("allOf", None)
+    if request.entry_mode == "AGENT_SEARCH" and has_explicit_read:
+        constraints = cast(dict[str, object], schema["properties"])["constraints"]
+        cast(dict[str, object], constraints)["minItems"] = 1
     return OutputSchemaDefinition(
         schema_version=IDENTIFY_GOAL_OUTPUT_SCHEMA.schema_version,
-        json_schema={
-            key: value
-            for key, value in IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema.items()
-            if key != "allOf"
-        },
+        json_schema=schema,
     )
 
 
