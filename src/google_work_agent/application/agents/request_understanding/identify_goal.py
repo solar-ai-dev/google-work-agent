@@ -178,13 +178,11 @@ def identify_goal(
         prompt_input,
         output_schema,
     )
-    candidate = _apply_explicit_read_authority(
-        _validate_goal_candidate(
-            result.structured_output,
-            schema=output_schema,
-        ),
+    candidate = _apply_quoted_literal_authority(
+        _validate_goal_candidate(result.structured_output, schema=output_schema),
         request_text=request.request_text,
     )
+    candidate = _apply_explicit_read_authority(candidate, request_text=request.request_text)
     candidate = _apply_selected_resource_authority(candidate, request=request)
     return _validate_goal_candidate(candidate)
 
@@ -227,6 +225,69 @@ _EXPLICIT_WRITE_MARKERS = (
     "delete",
     "send",
 )
+_QUOTED_LITERAL_PATTERNS = (
+    re.compile(r"'[^']*'"),
+    re.compile(r'"[^"]*"'),
+    re.compile(r"‘[^’]*’"),
+    re.compile(r"“[^”]*”"),
+)
+_EXPLICIT_DATE_SIGNAL = re.compile(
+    r"(?i)(?:"
+    r"\d{1,4}\s*(?:년|[-./])\s*\d{1,2}"
+    r"|\d{1,2}\s*월\s*\d{1,2}\s*일"
+    r"|오늘|내일|모레|이번\s*주|다음\s*주|다음\s*달|주말"
+    r"|월요일|화요일|수요일|목요일|금요일|토요일|일요일"
+    r"|까지|마감|기한|날짜|due|deadline|today|tomorrow|next\s+(?:week|month)"
+    r")"
+)
+
+
+def _apply_quoted_literal_authority(
+    candidate: RequestGoalCandidateV1,
+    *,
+    request_text: str,
+) -> RequestGoalCandidateV1:
+    """Do not reinterpret a quoted resource literal as an unstated date."""
+
+    outside_literals = request_text
+    quoted_literals: list[str] = []
+    for pattern in _QUOTED_LITERAL_PATTERNS:
+        quoted_literals.extend(pattern.findall(request_text))
+        outside_literals = pattern.sub(" ", outside_literals)
+    if not quoted_literals:
+        return candidate
+    outside_has_date_signal = _EXPLICIT_DATE_SIGNAL.search(outside_literals) is not None
+    quoted_text = " ".join(quoted_literals)
+    constraints = [
+        constraint
+        for constraint in candidate["constraints"]
+        if constraint["kind"] != "DATE"
+        or (
+            outside_has_date_signal
+            and (
+                not _date_value_appears_in_text(constraint["value"], quoted_text)
+                or _date_value_appears_in_text(constraint["value"], outside_literals)
+            )
+        )
+    ]
+    return {**candidate, "constraints": constraints}
+
+
+def _date_value_appears_in_text(value: object, text: str) -> bool:
+    values = value if isinstance(value, list) else [value]
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        match = re.search(r"(?:\d{4}[-./])?(\d{1,2})[-./](\d{1,2})", item)
+        if match is None:
+            continue
+        month, day = (int(match.group(1)), int(match.group(2)))
+        token = re.compile(
+            rf"(?<!\d)0?{month}\s*(?:[-./]|월\s*)0?{day}(?:\s*일)?(?!\d)"
+        )
+        if token.search(text):
+            return True
+    return False
 
 
 def _output_schema_for_request(request: WorkflowStartRequest) -> OutputSchemaDefinition:

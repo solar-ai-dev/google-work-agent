@@ -186,6 +186,61 @@ def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> No
     assert "allOf" in output_schema.json_schema
 
 
+@pytest.mark.parametrize(
+    ("request_text", "expected_dates"),
+    [
+        (
+            "Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 만들어줘.",
+            [],
+        ),
+        (
+            "Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 2026-09-05까지 만들어줘.",
+            ["2026-09-05"],
+        ),
+    ],
+)
+def test_identify_goal__quoted_task_title__does_not_become_an_unstated_date(
+    request_text: str,
+    expected_dates: list[str],
+) -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "새 할 일 생성",
+                "completion_conditions": ["할 일을 생성한다"],
+                "constraints": [
+                    {"kind": "DATE", "field": "date", "value": "2026-02-08"},
+                    {
+                        "kind": "RESOURCE",
+                        "field": "title",
+                        "value": "2/8 Supervisor 승인 테스트",
+                    },
+                ]
+                + (
+                    [{"kind": "DATE", "field": "due", "value": "2026-09-05"}]
+                    if expected_dates
+                    else []
+                ),
+                "requested_effect_hints": ["CREATE"],
+                "requested_resource_hints": ["TASK"],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request(request_text),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert [
+        constraint["value"]
+        for constraint in candidate["constraints"]
+        if constraint["kind"] == "DATE"
+    ] == expected_dates
+
+
 def _request(text: str) -> WorkflowStartRequest:
     return WorkflowStartRequest(
         run_id="run-1",
