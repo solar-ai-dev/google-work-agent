@@ -778,14 +778,20 @@ class RetrievalSubgraph:
             retry_budget=retry_budget,
             evidence_supported_partial_possible=bool(state["evidence_drafts"]),
             can_acquire_new_information=has_retrieval_followup_path(
+                request_intent=_require_state_value(state["request_intent"], "request_intent"),
                 tool_route_plan=tool_route_plan,
                 route_policies=_runtime_route_constraint_policies(
                     tool_route_plan["input_plan"]["input_routes"]
+                ),
+                unresolved_sufficiency_issues=cast(
+                    list[Mapping[str, object]], sufficiency_result["issues"]
                 ),
                 read_result_summaries=self._bounded_read_result_summaries(state),
                 query_attempts=cast(
                     list[QueryAttemptV1], state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])
                 ),
+                detail_candidate_refs=self._detail_candidate_refs(state),
+                attempted_detail_candidate_refs=self._attempted_detail_candidate_refs(state),
             ),
         )
         updated_local = dict(local_state)

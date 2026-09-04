@@ -28,6 +28,9 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan_schema 
 from google_work_agent.application.agents.retrieval.plan_candidate_detail import (
     deterministic_candidate_detail_plan,
 )
+from google_work_agent.application.agents.retrieval.plan_query_expansion import (
+    deterministic_followup_query_plan,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
@@ -157,6 +160,12 @@ def deterministic_query_plan(
     )
     if candidate_detail is not None:
         return candidate_detail
+    followup = deterministic_followup_query_plan(
+        prompt_input=prompt_input,
+        frozen_routes=frozen_routes,
+    )
+    if followup is not None:
+        return followup
     return deterministic_initial_query_plan(
         prompt_input=prompt_input,
         frozen_routes=frozen_routes,
@@ -742,45 +751,40 @@ class RetrievalBudget:
 
 DEFAULT_RETRIEVAL_BUDGET = RetrievalBudget()
 
-_FOLLOWUP_SEARCH_TOOLS = frozenset(
-    {
-        "gmail_search_threads",
-        "tasks_list_tasks",
-        "calendar_list_events",
-        "calendar_query_freebusy",
-    }
-)
-_SEMANTIC_EXPANSION_KINDS = frozenset({"TEMPORAL_RANGE", "PARTICIPANT", "KEYWORD", "STATUS_SCOPE"})
-
 
 def has_retrieval_followup_path(
     *,
+    request_intent: RequestIntentV2,
     tool_route_plan: ToolRoutePlanV2,
     route_policies: Mapping[str, RouteConstraintPolicy],
+    unresolved_sufficiency_issues: Sequence[Mapping[str, object]],
     read_result_summaries: Sequence[Mapping[str, object]],
     query_attempts: Sequence[QueryAttemptV1],
+    detail_candidate_refs: Collection[str] = (),
+    attempted_detail_candidate_refs: Collection[str] = (),
 ) -> bool:
     """Return whether the frozen route can produce information not read yet."""
 
-    if any(
-        summary.get("has_next_page") is True and summary.get("exhausted") is not True
-        for summary in read_result_summaries
-    ):
-        return True
-    search_route_ids = {
-        route["route_id"]
-        for route in tool_route_plan["input_plan"]["input_routes"]
-        if _FOLLOWUP_SEARCH_TOOLS.intersection(route["allowed_read_tool_ids"])
-        and bool(
-            route_policies.get(
-                route["route_id"], RouteConstraintPolicy(frozenset())
-            ).supported_kinds.intersection(_SEMANTIC_EXPANSION_KINDS)
+    routes = tool_route_plan["input_plan"]["input_routes"]
+    return (
+        deterministic_query_plan(
+            prompt_input={
+                "request_intent": request_intent,
+                "current_round_no": max(
+                    (attempt.get("round_no", 0) for attempt in query_attempts), default=0
+                ),
+                "prior_query_attempts": list(query_attempts),
+                "unresolved_sufficiency_issues": list(unresolved_sufficiency_issues),
+                "read_result_summaries": list(read_result_summaries),
+            },
+            frozen_routes=routes,
+            route_policies=route_policies,
+            validated_resource_refs=None,
+            validated_container_refs=None,
+            detail_candidate_refs=detail_candidate_refs,
+            attempted_detail_candidate_refs=attempted_detail_candidate_refs,
         )
-    }
-    return any(
-        attempt["route_id"] in search_route_ids
-        and attempt["operation_kind"] in {"SEARCH", "FREEBUSY"}
-        for attempt in query_attempts
+        is not None
     )
 
 

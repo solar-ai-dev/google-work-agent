@@ -353,7 +353,12 @@ def _gmail_query(plan: SourceFetchPlanV1) -> str:
     for constraint in plan["effective_constraints"]:
         if constraint["kind"] == "KEYWORD":
             value = " ".join(constraint["terms"])
-            terms.append(f'"{value}"' if constraint["match_mode"] == "PHRASE" else value)
+            if constraint["match_mode"] == "PHRASE":
+                terms.append(f'"{value}"')
+            elif constraint["match_mode"] == "ANY" and len(constraint["terms"]) > 1:
+                terms.append("{" + value + "}")
+            else:
+                terms.append(value)
         elif constraint["kind"] == "PARTICIPANT":
             prefixes = {"SENDER": "from:", "RECIPIENT": "to:", "ATTENDEE": "", "ANY": ""}
             values = [

@@ -4,6 +4,9 @@ from typing import cast
 import pytest
 from tests.support.fakes.llm import FakeStructuredInferencePort
 
+from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
+    RequestIntentV2,
+)
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import (
     QueryAttemptV1,
@@ -57,8 +60,10 @@ def _tool_route_plan(*, allowed_read_tool_ids: list[str]) -> ToolRoutePlanV2:
 
 def test_retrieval_followup_path__rejects_exhausted_direct_selected_read() -> None:
     assert not has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": []}),
         tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
         route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        unresolved_sufficiency_issues=[],
         read_result_summaries=[],
         query_attempts=[],
     )
@@ -66,32 +71,49 @@ def test_retrieval_followup_path__rejects_exhausted_direct_selected_read() -> No
 
 def test_retrieval_followup_path__allows_search_or_unread_page() -> None:
     assert has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": []}),
         tool_route_plan=_tool_route_plan(
             allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
         ),
         route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
-        read_result_summaries=[],
+        unresolved_sufficiency_issues=[{"required": True, "resolution_source": "GOOGLE"}],
+        read_result_summaries=[{"route_id": "route-1", "has_next_page": False, "result_count": 0}],
         query_attempts=[
             cast(
                 QueryAttemptV1,
-                {"route_id": "route-1", "operation_kind": "SEARCH"},
+                {
+                    "route_id": "route-1",
+                    "operation_kind": "SEARCH",
+                    "round_no": 0,
+                    "normalized_intent_constraints": [
+                        {
+                            "kind": "KEYWORD",
+                            "terms": ["회의 관련 메일"],
+                            "match_mode": "PHRASE",
+                        }
+                    ],
+                },
             )
         ],
     )
     assert has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": []}),
         tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
         route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
-        read_result_summaries=[{"has_next_page": True, "exhausted": False}],
+        unresolved_sufficiency_issues=[{"required": True, "resolution_source": "GOOGLE"}],
+        read_result_summaries=[{"route_id": "route-1", "has_next_page": True, "exhausted": False}],
         query_attempts=[],
     )
 
 
 def test_retrieval_followup_path__does_not_expand_selected_detail_into_search() -> None:
     assert not has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": []}),
         tool_route_plan=_tool_route_plan(
             allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
         ),
         route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        unresolved_sufficiency_issues=[],
         read_result_summaries=[],
         query_attempts=[
             cast(
@@ -104,14 +126,57 @@ def test_retrieval_followup_path__does_not_expand_selected_detail_into_search() 
 
 def test_retrieval_followup_path__rejects_exhausted_identity_only_search() -> None:
     assert not has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": []}),
         tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["tasks_list_tasks"]),
         route_policies={
             "route-1": RouteConstraintPolicy(
                 frozenset({"CONTAINER_REF"}), frozenset({"CONTAINER_REF"})
             )
         },
+        unresolved_sufficiency_issues=[],
         read_result_summaries=[{"has_next_page": False, "exhausted": True}],
         query_attempts=[cast(QueryAttemptV1, {"route_id": "route-1", "operation_kind": "SEARCH"})],
+    )
+
+
+@pytest.mark.parametrize(
+    ("constraints", "search_attempt_count"),
+    [
+        ([{"kind": "RESOURCE", "field": "subject", "value": "정확한 제목"}], 1),
+        ([], 2),
+    ],
+)
+def test_retrieval_followup_path__does_not_broaden_exact_subject_or_repeat_expansion(
+    constraints: list[dict[str, str]], search_attempt_count: int
+) -> None:
+    attempts = [
+        cast(
+            QueryAttemptV1,
+            {
+                "route_id": "route-1",
+                "round_no": index,
+                "operation_kind": "SEARCH",
+                "normalized_intent_constraints": [
+                    {
+                        "kind": "KEYWORD",
+                        "terms": ["회의 관련 메일"],
+                        "match_mode": "PHRASE",
+                    }
+                ],
+            },
+        )
+        for index in range(search_attempt_count)
+    ]
+
+    assert not has_retrieval_followup_path(
+        request_intent=cast(RequestIntentV2, {"constraints": constraints}),
+        tool_route_plan=_tool_route_plan(
+            allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
+        ),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        unresolved_sufficiency_issues=[{"required": True, "resolution_source": "GOOGLE"}],
+        read_result_summaries=[{"route_id": "route-1", "result_count": 0, "exhausted": True}],
+        query_attempts=attempts,
     )
 
 
@@ -306,6 +371,88 @@ def test_followup_without_required_google_issue__keeps_query_planning_llm() -> N
 
     assert llm_invoked is True
     assert len(runtime.calls) == 1
+
+
+def test_no_result_vague_phrase__relaxes_once__without_llm() -> None:
+    runtime = FakeStructuredInferencePort(outputs=[])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+    prior_attempt = cast(
+        QueryAttemptV1,
+        {
+            "route_id": "route-1",
+            "round_no": 0,
+            "operation_kind": "SEARCH",
+            "normalized_intent_constraints": [
+                {
+                    "kind": "KEYWORD",
+                    "terms": ["회의 관련 메일"],
+                    "match_mode": "PHRASE",
+                }
+            ],
+        },
+    )
+
+    result, _, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={
+            "request_intent": {"constraints": []},
+            "current_round_no": 0,
+            "prior_query_attempts": [prior_attempt],
+            "unresolved_sufficiency_issues": [{"required": True, "resolution_source": "GOOGLE"}],
+            "read_result_summaries": [
+                {"route_id": "route-1", "result_count": 0, "exhausted": True}
+            ],
+        },
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert llm_invoked is False
+    assert runtime.calls == []
+    assert result["route_queries"] == [
+        {
+            "route_id": "route-1",
+            "operation": "SEARCH",
+            "reason_codes": ["QUERY_RELAXED_AFTER_NO_RESULTS"],
+            "search_spec": {
+                "mode": "CHANGED",
+                "constraint_delta": {
+                    "upsert_constraints": [
+                        {"kind": "KEYWORD", "terms": ["회의"], "match_mode": "ANY"}
+                    ],
+                    "remove_constraint_kinds": [],
+                },
+            },
+            "detail_candidate_ref": None,
+        }
+    ]
 
 
 def test_general_search__with_semantic_choice__keeps_query_planning_llm() -> None:
