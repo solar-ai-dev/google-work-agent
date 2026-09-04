@@ -114,7 +114,7 @@ from google_work_agent.application.agents.retrieval.finalize_retrieval import (
 )
 from google_work_agent.application.agents.retrieval.plan_query import (
     DEFAULT_RETRIEVAL_BUDGET,
-    deterministic_initial_query_plan,
+    deterministic_query_plan,
     followup_retrieval_planner_input,
     has_retrieval_followup_path,
     initial_retrieval_planner_input,
@@ -930,6 +930,8 @@ class RetrievalSubgraph:
         validated_resource_refs = self._validated_resource_refs(state, frozen_routes)
         validated_container_refs = self._validated_container_refs(frozen_routes)
         followup = state.get(CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY)
+        detail_candidate_refs = self._detail_candidate_refs(state)
+        attempted_detail_candidate_refs = self._attempted_detail_candidate_refs(state)
         prompt_input = (
             initial_retrieval_planner_input(
                 request_intent=_require_state_value(state["request_intent"], "request_intent"),
@@ -948,12 +950,14 @@ class RetrievalSubgraph:
                 validated_container_refs=validated_container_refs,
             )
         )
-        deterministic_plan = deterministic_initial_query_plan(
+        deterministic_plan = deterministic_query_plan(
             prompt_input=prompt_input,
             frozen_routes=frozen_routes,
             route_policies=route_policies,
             validated_resource_refs=validated_resource_refs,
             validated_container_refs=validated_container_refs,
+            detail_candidate_refs=detail_candidate_refs,
+            attempted_detail_candidate_refs=attempted_detail_candidate_refs,
         )
         if deterministic_plan is None:
             ensure_llm_call_budget(state)
@@ -974,7 +978,8 @@ class RetrievalSubgraph:
                             "retry_budget": cast(RunBudgetV2, state["retry_budget"]),
                             "validated_resource_refs": validated_resource_refs,
                             "validated_container_refs": validated_container_refs,
-                            "detail_candidate_refs": state.get(CONTEXT_SEGMENT_HANDLES_KEY, []),
+                            "detail_candidate_refs": detail_candidate_refs,
+                            "attempted_detail_candidate_refs": attempted_detail_candidate_refs,
                         }
                     }
                 },
@@ -992,6 +997,29 @@ class RetrievalSubgraph:
                 else revised_retry_budget
             ),
         }
+
+    @staticmethod
+    def _detail_candidate_refs(state: ContextRetrievalLocalState) -> list[str]:
+        drafts = state.get("evidence_drafts", [])
+        return list(
+            dict.fromkeys(
+                draft["resource_handle"]
+                for draft in drafts
+                if isinstance(draft, Mapping) and isinstance(draft.get("resource_handle"), str)
+            )
+        )
+
+    @staticmethod
+    def _attempted_detail_candidate_refs(state: ContextRetrievalLocalState) -> list[str]:
+        plans = cast(
+            Mapping[str, SourceFetchPlanV1],
+            state.get(CONTEXT_CANONICAL_PLANS_KEY, {}),
+        )
+        return [
+            candidate
+            for plan in plans.values()
+            if isinstance((candidate := plan.get("detail_candidate_ref")), str)
+        ]
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         round_no = (

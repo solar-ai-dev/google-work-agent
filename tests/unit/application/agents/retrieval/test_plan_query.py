@@ -111,9 +111,7 @@ def test_retrieval_followup_path__rejects_exhausted_identity_only_search() -> No
             )
         },
         read_result_summaries=[{"has_next_page": False, "exhausted": True}],
-        query_attempts=[
-            cast(QueryAttemptV1, {"route_id": "route-1", "operation_kind": "SEARCH"})
-        ],
+        query_attempts=[cast(QueryAttemptV1, {"route_id": "route-1", "operation_kind": "SEARCH"})],
     )
 
 
@@ -188,6 +186,128 @@ def test_selected_exact_resource__materializes_detail_fetch__without_llm() -> No
     ]
 
 
+def test_followup_with_ranked_candidate__materializes_detail_fetch__without_llm() -> None:
+    runtime = FakeStructuredInferencePort(outputs=[])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+
+    result, _, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={
+            "current_round_no": 0,
+            "unresolved_sufficiency_issues": [
+                {
+                    "required": True,
+                    "resolution_source": "GOOGLE",
+                    "reason_codes": ["INCOMPLETE"],
+                }
+            ],
+        },
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        retry_budget=build_default_run_budget(),
+        detail_candidate_refs=[
+            "gmail_thread:already-read",
+            "gmail_thread:next-candidate",
+        ],
+        attempted_detail_candidate_refs=["gmail_thread:already-read"],
+    )
+
+    assert llm_invoked is False
+    assert runtime.calls == []
+    assert result["route_queries"] == [
+        {
+            "route_id": "route-1",
+            "operation": "DETAIL_FETCH",
+            "reason_codes": ["CANDIDATE_DETAIL_REQUIRED"],
+            "search_spec": None,
+            "detail_candidate_ref": "gmail_thread:next-candidate",
+        }
+    ]
+
+
+def test_followup_without_required_google_issue__keeps_query_planning_llm() -> None:
+    output = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "NEXT_PAGE",
+                "reason_codes": ["MORE_RESULTS_AVAILABLE"],
+                "search_spec": None,
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["more candidates"],
+        "retrieval_order": ["route-1"],
+    }
+    runtime = FakeStructuredInferencePort(outputs=[output])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+
+    _, _, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={"current_round_no": 0, "unresolved_sufficiency_issues": []},
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        retry_budget=build_default_run_budget(),
+        detail_candidate_refs=["gmail_thread:candidate"],
+    )
+
+    assert llm_invoked is True
+    assert len(runtime.calls) == 1
+
+
 def test_general_search__with_semantic_choice__keeps_query_planning_llm() -> None:
     output = {
         "schema_version": 2,
@@ -198,9 +318,7 @@ def test_general_search__with_semantic_choice__keeps_query_planning_llm() -> Non
                 "reason_codes": ["USER_REQUEST"],
                 "search_spec": {
                     "mode": "INITIAL",
-                    "constraints": [
-                        {"kind": "KEYWORD", "terms": ["budget"], "match_mode": "ANY"}
-                    ],
+                    "constraints": [{"kind": "KEYWORD", "terms": ["budget"], "match_mode": "ANY"}],
                 },
                 "detail_candidate_ref": None,
             }
@@ -393,9 +511,7 @@ def test_calendar_route__projects_existing__route_constraint_policy() -> None:
         requested_mode="LOCAL_GPU",
         frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
         route_policies={
-            "calendar-read": RouteConstraintPolicy(
-                frozenset({"TEMPORAL_RANGE", "CONTAINER_REF"})
-            )
+            "calendar-read": RouteConstraintPolicy(frozenset({"TEMPORAL_RANGE", "CONTAINER_REF"}))
         },
         retry_budget=build_default_run_budget(),
         validated_container_refs={"calendar-read": ["primary"]},
@@ -456,9 +572,7 @@ def test_exact_calendar_create_precondition__materializes_all_policy_reads__with
     policies = {
         route["route_id"]: RouteConstraintPolicy(
             frozenset({"TEMPORAL_RANGE", "CONTAINER_REF"}),
-            frozenset({"CONTAINER_REF"})
-            if route["resource_type"] != "CALENDAR"
-            else frozenset(),
+            frozenset({"CONTAINER_REF"}) if route["resource_type"] != "CALENDAR" else frozenset(),
         )
         for route in frozen_routes
     }
@@ -552,9 +666,7 @@ def test_exact_task_create_precondition__materializes_duplicate_reads__without_l
     policies = {
         route["route_id"]: RouteConstraintPolicy(
             frozenset({"CONTAINER_REF"}),
-            frozenset({"CONTAINER_REF"})
-            if route["resource_type"] == "TASK"
-            else frozenset(),
+            frozenset({"CONTAINER_REF"}) if route["resource_type"] == "TASK" else frozenset(),
         )
         for route in frozen_routes
     }
@@ -569,9 +681,7 @@ def test_exact_task_create_precondition__materializes_duplicate_reads__without_l
             "request_intent": {
                 "requested_effect_hints": ["CREATE"],
                 "requested_resource_hints": ["TASK"],
-                "constraints": [
-                    {"kind": "RESOURCE", "field": "title", "value": "Submit report"}
-                ],
+                "constraints": [{"kind": "RESOURCE", "field": "title", "value": "Submit report"}],
             },
             "input_routes": frozen_routes,
         },
@@ -592,9 +702,7 @@ def test_exact_task_create_precondition__materializes_duplicate_reads__without_l
     for route_query in result["route_queries"]:
         assert route_query["search_spec"] == {
             "mode": "INITIAL",
-            "constraints": [
-                {"kind": "CONTAINER_REF", "container_refs": ["@default"]}
-            ],
+            "constraints": [{"kind": "CONTAINER_REF", "container_refs": ["@default"]}],
         }
 
 
@@ -661,9 +769,7 @@ def test_calendar_route__without_validated_container__does_not_offer_container_r
         requested_mode="LOCAL_GPU",
         frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
         route_policies={
-            "calendar-read": RouteConstraintPolicy(
-                frozenset({"TEMPORAL_RANGE", "CONTAINER_REF"})
-            )
+            "calendar-read": RouteConstraintPolicy(frozenset({"TEMPORAL_RANGE", "CONTAINER_REF"}))
         },
         retry_budget=build_default_run_budget(),
     )
@@ -744,9 +850,7 @@ def test_general_gmail_search__preserves_explicit__sender_subject_values() -> No
         prompt_input=prompt_input,
         requested_mode="LOCAL_GPU",
         frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
-        route_policies={
-            "route-1": RouteConstraintPolicy(frozenset({"PARTICIPANT", "KEYWORD"}))
-        },
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"PARTICIPANT", "KEYWORD"}))},
         retry_budget=build_default_run_budget(),
     )
 

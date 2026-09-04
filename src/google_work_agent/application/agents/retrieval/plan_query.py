@@ -25,6 +25,9 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan import 
 from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
     bind_retrieval_query_plan_output_schema,
 )
+from google_work_agent.application.agents.retrieval.plan_candidate_detail import (
+    deterministic_candidate_detail_plan,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
@@ -134,6 +137,35 @@ def deterministic_initial_query_plan(
     )
 
 
+def deterministic_query_plan(
+    *,
+    prompt_input: Mapping[str, object],
+    frozen_routes: Sequence[InputToolRouteV1],
+    route_policies: Mapping[str, RouteConstraintPolicy],
+    validated_resource_refs: Mapping[str, Collection[str]] | None,
+    validated_container_refs: Mapping[str, Collection[str]] | None,
+    detail_candidate_refs: Collection[str] = (),
+    attempted_detail_candidate_refs: Collection[str] = (),
+) -> RetrievalQueryPlanV2 | None:
+    """Project deterministic initial and candidate-detail continuations."""
+
+    candidate_detail = deterministic_candidate_detail_plan(
+        prompt_input=prompt_input,
+        frozen_routes=frozen_routes,
+        detail_candidate_refs=detail_candidate_refs,
+        attempted_detail_candidate_refs=attempted_detail_candidate_refs,
+    )
+    if candidate_detail is not None:
+        return candidate_detail
+    return deterministic_initial_query_plan(
+        prompt_input=prompt_input,
+        frozen_routes=frozen_routes,
+        route_policies=route_policies,
+        validated_resource_refs=validated_resource_refs,
+        validated_container_refs=validated_container_refs,
+    )
+
+
 def _exact_calendar_conflict_check_plan(
     *,
     prompt_input: Mapping[str, object],
@@ -152,8 +184,7 @@ def _exact_calendar_conflict_check_plan(
     }:
         return None
     if any(
-        not route["required"]
-        or "POLICY_CALENDAR_CONFLICT_CHECK" not in route["reason_codes"]
+        not route["required"] or "POLICY_CALENDAR_CONFLICT_CHECK" not in route["reason_codes"]
         for route in frozen_routes
     ):
         return None
@@ -163,9 +194,7 @@ def _exact_calendar_conflict_check_plan(
         return None
     if "CREATE" not in _string_collection(request_intent.get("requested_effect_hints")):
         return None
-    if "CALENDAR_EVENT" not in _string_collection(
-        request_intent.get("requested_resource_hints")
-    ):
+    if "CALENDAR_EVENT" not in _string_collection(request_intent.get("requested_resource_hints")):
         return None
     temporal = _exact_calendar_temporal_range(request_intent.get("constraints"))
     if temporal is None:
@@ -284,11 +313,7 @@ def _exact_task_duplicate_check_plan(
 
 
 def _exact_task_title(value: object) -> str | None:
-    if (
-        not isinstance(value, list)
-        or len(value) != 1
-        or not isinstance(value[0], Mapping)
-    ):
+    if not isinstance(value, list) or len(value) != 1 or not isinstance(value[0], Mapping):
         return None
     constraint = value[0]
     title = constraint.get("value")
@@ -317,9 +342,7 @@ def _exact_calendar_temporal_range(value: object) -> dict[str, str] | None:
             continue
         field = item.get("field")
         item_value = item.get("value")
-        if field in {"date", "start_time", "end_time", "timezone"} and isinstance(
-            item_value, str
-        ):
+        if field in {"date", "start_time", "end_time", "timezone"} and isinstance(item_value, str):
             if field in values:
                 return None
             values[field] = item_value
@@ -330,15 +353,9 @@ def _exact_calendar_temporal_range(value: object) -> dict[str, str] | None:
         start = _calendar_local_datetime(values["start_time"], values.get("date"))
         end = _calendar_local_datetime(values["end_time"], values.get("date"))
         start_local = (
-            start.replace(tzinfo=timezone)
-            if start.tzinfo is None
-            else start.astimezone(timezone)
+            start.replace(tzinfo=timezone) if start.tzinfo is None else start.astimezone(timezone)
         )
-        end_local = (
-            end.replace(tzinfo=timezone)
-            if end.tzinfo is None
-            else end.astimezone(timezone)
-        )
+        end_local = end.replace(tzinfo=timezone) if end.tzinfo is None else end.astimezone(timezone)
     except (ValueError, ZoneInfoNotFoundError):
         return None
     if end_local <= start_local:
@@ -373,6 +390,7 @@ def plan_query(
     validated_resource_refs: Mapping[str, Collection[str]] | None = None,
     validated_container_refs: Mapping[str, Collection[str]] | None = None,
     detail_candidate_refs: Collection[str] = (),
+    attempted_detail_candidate_refs: Collection[str] = (),
 ) -> tuple[RetrievalQueryPlanV2, RunBudgetV2, bool]:
     """Plan provider-neutral retrieval intent against already-frozen input routes."""
     supported_kinds = _applicable_constraint_kinds(
@@ -393,12 +411,14 @@ def plan_query(
         detail_candidate_refs=detail_candidate_refs,
         is_followup=is_followup,
     )
-    deterministic_plan = deterministic_initial_query_plan(
+    deterministic_plan = deterministic_query_plan(
         prompt_input=prompt_input,
         frozen_routes=frozen_routes,
         route_policies=route_policies,
         validated_resource_refs=validated_resource_refs,
         validated_container_refs=validated_container_refs,
+        detail_candidate_refs=detail_candidate_refs,
+        attempted_detail_candidate_refs=attempted_detail_candidate_refs,
     )
     if deterministic_plan is not None:
         return (
@@ -730,9 +750,7 @@ _FOLLOWUP_SEARCH_TOOLS = frozenset(
         "calendar_query_freebusy",
     }
 )
-_SEMANTIC_EXPANSION_KINDS = frozenset(
-    {"TEMPORAL_RANGE", "PARTICIPANT", "KEYWORD", "STATUS_SCOPE"}
-)
+_SEMANTIC_EXPANSION_KINDS = frozenset({"TEMPORAL_RANGE", "PARTICIPANT", "KEYWORD", "STATUS_SCOPE"})
 
 
 def has_retrieval_followup_path(
