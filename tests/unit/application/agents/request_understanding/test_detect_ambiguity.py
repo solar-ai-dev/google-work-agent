@@ -175,7 +175,7 @@ def test_general_advice__does_not_ask_for_model_invented_user_choice() -> None:
     assert runtime.calls == []
 
 
-def test_selected_gmail_analysis__detects_user_owned__ambiguity() -> None:
+def test_selected_gmail_analysis__does_not_invent_user_owned__ambiguity() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[
             {
@@ -225,12 +225,8 @@ def test_selected_gmail_analysis__detects_user_owned__ambiguity() -> None:
         ),
     )
 
-    assert result == {
-        "requires_confirmation": True,
-        "reason_codes": ["MISSING_ANALYSIS_FOCUS"],
-        "missing_fields": ["analysis_focus"],
-    }
-    assert len(runtime.calls) == 1
+    assert result == {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}
+    assert runtime.calls == []
 
 
 def test_selected_gmail_send__with_missing_recipient__preserves_confirmation() -> None:

@@ -178,7 +178,6 @@ def _is_bound_selected_read(
         request.entry_mode == "RESOURCE_SELECTED"
         and bool(request.selected_resources)
         and set(goal_candidate["requested_effect_hints"]) == {"READ"}
-        and goal_candidate["analysis_requirement"] == "NONE"
     )
 
 
