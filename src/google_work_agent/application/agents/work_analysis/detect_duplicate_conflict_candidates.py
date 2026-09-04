@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from typing import cast
 
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
@@ -78,11 +79,10 @@ def detect_duplicate_conflict_candidates(
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
     fact_ids = {fact["fact_id"] for fact in work_facts}
+    output_schema = _bound_output_schema(fact_ids, allowed_evidence_refs)
 
     def validate(value: object) -> object:
-        errors = validate_output_schema(
-            value, DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA.json_schema
-        )
+        errors = validate_output_schema(value, output_schema.json_schema)
         if errors:
             raise ValueError(f"invalid duplicate/conflict candidate schema: {'; '.join(errors)}")
         seen: set[str] = set()
@@ -108,7 +108,7 @@ def detect_duplicate_conflict_candidates(
         requested_mode,
         prompt_ref,
         prompt_input,
-        DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA,
+        output_schema,
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [
@@ -120,6 +120,30 @@ def detect_duplicate_conflict_candidates(
 def duplicate_conflict_candidate_llm_required(work_facts: Sequence[WorkFactV1]) -> bool:
     """A guarded relation cannot exist without two distinct fact operands."""
     return len({fact["fact_id"] for fact in work_facts}) >= 2
+
+
+def _bound_output_schema(
+    fact_ids: set[str], allowed_evidence_refs: set[str]
+) -> OutputSchemaDefinition:
+    """Bind guarded candidates to the current fact and Retrieval identities."""
+
+    json_schema = deepcopy(DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA.json_schema)
+    properties = cast(dict[str, object], json_schema["properties"])
+    candidates = cast(dict[str, object], properties["relation_candidates"])
+    item = cast(dict[str, object], candidates["items"])
+    item_properties = cast(dict[str, object], item["properties"])
+    fact_id_schema = {"type": "string", "enum": sorted(fact_ids)}
+    item_properties["source_fact_id"] = fact_id_schema
+    item_properties["target_fact_id"] = dict(fact_id_schema)
+    item_properties["evidence_refs"] = {
+        "type": "array",
+        "uniqueItems": True,
+        "items": {"type": "string", "enum": sorted(allowed_evidence_refs)},
+    }
+    return OutputSchemaDefinition(
+        schema_version=DUPLICATE_CONFLICT_CANDIDATES_OUTPUT_SCHEMA.schema_version,
+        json_schema=json_schema,
+    )
 
 
 __all__ = [
