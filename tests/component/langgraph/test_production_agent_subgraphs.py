@@ -233,7 +233,6 @@ class _ComponentInferencePort:
             return {
                 "fact_candidates": [
                     {
-                        "fact_id": f"fact-{index}",
                         "kind": "TASK",
                         "subject": f"task-{index}",
                         "value": f"task-{index}",

@@ -11,7 +11,6 @@ def test_extract_work_facts__uses_exact_contract__and_bounded_evidence() -> None
     output = {
         "fact_candidates": [
             {
-                "fact_id": "f1",
                 "kind": "TASK",
                 "subject": "report",
                 "value": "submit",
@@ -28,7 +27,11 @@ def test_extract_work_facts__uses_exact_contract__and_bounded_evidence() -> None
         allowed_evidence_refs={"ev-1"},
         requested_mode="AUTO",
     )
-    assert result == output["fact_candidates"]
+    assert len(result) == 1
+    assert result[0]["fact_id"].startswith("fact-")
+    assert {key: value for key, value in result[0].items() if key != "fact_id"} == output[
+        "fact_candidates"
+    ][0]
     assert (
         cast(PromptReference, runtime.calls[0]["prompt_ref"]).prompt_id
         == "work_analysis.extract_work_facts"
@@ -39,13 +42,37 @@ def test_extract_work_facts__uses_exact_contract__and_bounded_evidence() -> None
     ]
     assert refs_schema["uniqueItems"] is True
     assert refs_schema["items"] == {"type": "string", "enum": ["ev-1"]}
+    candidate_schema = schema.json_schema["properties"]["fact_candidates"]["items"]
+    assert "fact_id" not in candidate_schema["required"]
+    assert "fact_id" not in candidate_schema["properties"]
+
+
+def test_extract_work_facts__assigns_unique_ids_to_repeated_semantic_candidates() -> None:
+    candidate = {
+        "kind": "TEXT_CLAIM",
+        "subject": "latest decision",
+        "value": "use the revised schedule",
+        "derivation": "EXPLICIT",
+        "evidence_refs": ["ev-1"],
+    }
+    runtime = WorkAnalysisRuntimeFake({"fact_candidates": [candidate, candidate]})
+
+    result = extract_work_facts(
+        semantic_input={"user_request": "latest decision", "request_intent": {}, "evidence": []},
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref("work_analysis.extract_work_facts", "extract_work_facts"),
+        allowed_evidence_refs={"ev-1"},
+        requested_mode="AUTO",
+    )
+
+    assert len({fact["fact_id"] for fact in result}) == 2
 
 
 def test_extract_work__facts_rejects_old__or_stale_schema() -> None:
     runtime = WorkAnalysisRuntimeFake(
         {
             "fact_candidates": [
-                {"fact_id": "f1", "fact_type": "TASK", "value": "x", "evidence_refs": ["stale"]}
+                {"fact_type": "TASK", "value": "x", "evidence_refs": ["stale"]}
             ]
         }
     )

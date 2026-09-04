@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import cast
@@ -33,7 +35,7 @@ _FACT_KINDS = (
     "OTHER",
 )
 EXTRACT_WORK_FACTS_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="work-fact-candidates-v1",
+    schema_version="work-fact-candidates-v2",
     json_schema={
         "type": "object",
         "required": ["fact_candidates"],
@@ -44,7 +46,6 @@ EXTRACT_WORK_FACTS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "items": {
                     "type": "object",
                     "required": [
-                        "fact_id",
                         "kind",
                         "subject",
                         "value",
@@ -53,7 +54,6 @@ EXTRACT_WORK_FACTS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     ],
                     "additionalProperties": False,
                     "properties": {
-                        "fact_id": {"type": "string", "minLength": 1},
                         "kind": {"enum": list(_FACT_KINDS)},
                         "subject": {"type": "string", "minLength": 1},
                         "value": {"type": "string", "minLength": 1},
@@ -96,15 +96,10 @@ def extract_work_facts(
         if errors:
             raise ValueError(f"invalid WorkFactV1 candidate schema: {'; '.join(errors)}")
         root = cast(Mapping[str, object], value)
-        seen: set[str] = set()
         for item in cast(list[Mapping[str, object]], root["fact_candidates"]):
-            fact_id = cast(str, item["fact_id"])
             refs = cast(list[str], item["evidence_refs"])
-            if fact_id in seen:
-                raise ValueError("duplicate WorkFactV1.fact_id")
             if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_evidence_refs):
                 raise ValueError("work fact references evidence outside current RetrievalResultV1")
-            seen.add(fact_id)
         return value
 
     bounded_schema = _bind_allowed_evidence_refs(allowed_evidence_refs)
@@ -116,9 +111,36 @@ def extract_work_facts(
     )
     root = cast(dict[str, object], validate(result.structured_output))
     return [
-        cast(WorkFactV1, dict(item))
-        for item in cast(list[dict[str, object]], root["fact_candidates"])
+        _materialize_work_fact(item, ordinal=index)
+        for index, item in enumerate(
+            cast(list[Mapping[str, object]], root["fact_candidates"]), start=1
+        )
     ]
+
+
+def _materialize_work_fact(item: Mapping[str, object], *, ordinal: int) -> WorkFactV1:
+    """Assign internal fact identity after semantic extraction succeeds."""
+
+    semantic_fields = {
+        "kind": item["kind"],
+        "subject": item["subject"],
+        "value": item["value"],
+        "derivation": item["derivation"],
+        "evidence_refs": list(cast(list[str], item["evidence_refs"])),
+    }
+    identity_payload = json.dumps(
+        {"ordinal": ordinal, **semantic_fields},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return cast(
+        WorkFactV1,
+        {
+            "fact_id": f"fact-{hashlib.sha256(identity_payload).hexdigest()[:24]}",
+            **semantic_fields,
+        },
+    )
 
 
 def _bind_allowed_evidence_refs(allowed_evidence_refs: set[str]) -> OutputSchemaDefinition:
