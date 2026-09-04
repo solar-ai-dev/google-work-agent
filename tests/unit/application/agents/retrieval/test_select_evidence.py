@@ -138,9 +138,7 @@ def test_select_evidence__repairs_container_only_selection__for_task_read() -> N
         "selected_segment_ids": ["task-segment"],
         "excluded_segment_ids": ["task-list-segment"],
     }
-    runtime = FakeLLMRuntime(
-        deque([_llm_result(container_only), _llm_result(concrete_task)])
-    )
+    runtime = FakeLLMRuntime(deque([_llm_result(container_only), _llm_result(concrete_task)]))
     intent = _intent()
     intent["requested_resource_hints"] = ["TASK"]
     segments = [
@@ -193,3 +191,92 @@ def test_select_evidence__repairs_container_only_selection__for_task_read() -> N
     assert result["selected_segment_ids"] == ["task-segment"]
     assert len(runtime.calls) == 2
     assert budget["semantic_revisions_used_by_failure"]
+
+
+def test_select_evidence__promotes_meeting_record_over_notification_for_detail_read() -> None:
+    notification_only = {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": "notification",
+                "role": "SUPPORTS",
+                "relevance_reason": "mentions a meeting summary",
+            }
+        ],
+        "selected_segment_ids": ["notification"],
+        "excluded_segment_ids": ["minutes", "minutes-typo"],
+    }
+    runtime = FakeLLMRuntime(deque([_llm_result(notification_only)]))
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    intent["constraints"] = [
+        {
+            "kind": "USER_REQUIREMENT",
+            "field": "original_search_request",
+            "value": ["회의 관련 메일을 분석해서 일정 정리해줘"],
+        }
+    ]
+    segments = [
+        SourceSegment(
+            "notification",
+            "gmail_thread:notice",
+            "GMAIL",
+            "gmail_thread",
+            "notice",
+            None,
+            None,
+            {},
+            "새 공지: ‘팀별회의 요약’ 알림 설정",
+        ),
+        SourceSegment(
+            "minutes",
+            "gmail_thread:minutes",
+            "GMAIL",
+            "gmail_thread",
+            "minutes",
+            None,
+            None,
+            {},
+            "[Jira] (KAN-93) 0422 회의록",
+        ),
+        SourceSegment(
+            "minutes-typo",
+            "gmail_thread:minutes-typo",
+            "GMAIL",
+            "gmail_thread",
+            "minutes-typo",
+            None,
+            None,
+            {},
+            "[Jira] (KAN-93) 0422 회의혹",
+        ),
+    ]
+    candidates: list[RagCandidateV1] = [
+        {
+            "segment_id": segment.segment_id,
+            "resource_ref": segment.resource_handle,
+            "retrieval_score": 5.0,
+            "reason_codes": ["KEYWORD_MATCH"],
+        }
+        for segment in segments
+    ]
+
+    result, _ = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=candidates,
+        segments=segments,
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["selected_segment_ids"][:2] == ["minutes", "minutes-typo"]
+    assert result["evidence_drafts"][0] == {
+        "segment_id": "minutes",
+        "role": "SUPPORTS",
+        "relevance_reason": "CONTENT_BEARING_WORK_RECORD",
+    }

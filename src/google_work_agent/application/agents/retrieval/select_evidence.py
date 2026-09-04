@@ -19,6 +19,9 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
     SourceSegment,
     _truncate,
 )
+from google_work_agent.application.agents.retrieval.prioritize_material_gmail_evidence import (
+    prioritize_material_gmail_evidence,
+)
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     build_failure_record_v1,
@@ -101,8 +104,7 @@ def select_evidence(
     projection = _ranked_segments_projection(eligible_candidates, segments)
     candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
     candidate_resource_refs = {
-        candidate["segment_id"]: candidate["resource_ref"]
-        for candidate in eligible_candidates
+        candidate["segment_id"]: candidate["resource_ref"] for candidate in eligible_candidates
     }
     result = llm_runtime.infer(
         requested_mode,
@@ -113,12 +115,18 @@ def select_evidence(
     try:
         return (
             _apply_exclusions(
-                _validate_selection(
-                    result.structured_output,
-                    candidate_segment_ids=candidate_ids,
-                    candidate_resource_refs=candidate_resource_refs,
-                    requested_resource_hints=request_intent["requested_resource_hints"],
-                    context_budget=context_budget,
+                prioritize_material_gmail_evidence(
+                    _validate_selection(
+                        result.structured_output,
+                        candidate_segment_ids=candidate_ids,
+                        candidate_resource_refs=candidate_resource_refs,
+                        requested_resource_hints=request_intent["requested_resource_hints"],
+                        context_budget=context_budget,
+                    ),
+                    request_intent=request_intent,
+                    rag_candidates=eligible_candidates,
+                    segments=segments,
+                    max_evidence=context_budget.max_evidence,
                 ),
                 obligations,
             ),
@@ -160,12 +168,18 @@ def select_evidence(
         try:
             return (
                 _apply_exclusions(
-                    _validate_selection(
-                        revision.structured_output,
-                        candidate_segment_ids=candidate_ids,
-                        candidate_resource_refs=candidate_resource_refs,
-                        requested_resource_hints=request_intent["requested_resource_hints"],
-                        context_budget=context_budget,
+                    prioritize_material_gmail_evidence(
+                        _validate_selection(
+                            revision.structured_output,
+                            candidate_segment_ids=candidate_ids,
+                            candidate_resource_refs=candidate_resource_refs,
+                            requested_resource_hints=request_intent["requested_resource_hints"],
+                            context_budget=context_budget,
+                        ),
+                        request_intent=request_intent,
+                        rag_candidates=eligible_candidates,
+                        segments=segments,
+                        max_evidence=context_budget.max_evidence,
                     ),
                     obligations,
                 ),
