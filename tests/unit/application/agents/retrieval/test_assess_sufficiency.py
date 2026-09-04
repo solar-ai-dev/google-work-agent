@@ -96,6 +96,20 @@ def test_retrieval_followup__closes_selected_direct_read_without_new_path() -> N
     assert should_retrieve_more is False
 
 
+def test_retrieval_followup__closes_empty_read_without_user_confirmation() -> None:
+    result, budget, should_retrieve_more = authorize_retrieval_followup(
+        _sufficiency_output("NEEDS_MORE_DATA"),
+        request_intent=_intent(),
+        retry_budget=_run_budget(used=1),
+        evidence_supported_partial_possible=False,
+        can_acquire_new_information=False,
+    )
+
+    assert result["status"] == "PARTIAL"
+    assert budget["additional_retrieval_rounds_used"] == 1
+    assert should_retrieve_more is False
+
+
 def test_assess_sufficiency__complete_selected_gmail_read__skips_llm() -> None:
     runtime = FakeLLMRuntime()
     intent = _intent()
@@ -236,3 +250,25 @@ def test_assess_sufficiency__rejects_required_lookup__without_evidence() -> None
     assert result["issues"][-1]["reason_codes"] == [
         "REQUIRED_SOURCE_RETURNED_NO_RESOURCES"
     ]
+
+
+def test_assess_sufficiency__read_only_connector_gap__cannot_become_user_confirmation() -> None:
+    runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("NEEDS_CONFIRMATION"))]))
+    acquisition = _acquisition_result()
+    acquisition["resource_handles"] = []
+    acquisition["source_summaries"][0]["resource_count"] = 0
+    acquisition["source_summaries"][0]["resource_handles"] = []
+
+    result = assess_sufficiency(
+        llm_runtime=runtime,
+        prompt_ref=SUFFICIENCY_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=_intent(),
+        tool_route_plan=_tool_route_plan(),
+        acquisition_result=acquisition,
+        evidence_drafts=[],
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["status"] == "NEEDS_MORE_DATA"
+    assert {issue["resolution_source"] for issue in result["issues"]} == {"GOOGLE"}

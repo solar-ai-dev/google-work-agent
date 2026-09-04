@@ -96,6 +96,10 @@ def assess_sufficiency(
         SUFFICIENCY_OUTPUT_SCHEMA,
     )
     validated = validate_sufficiency_result_v2(result.structured_output)
+    validated = _remove_unowned_read_confirmations(
+        validated,
+        request_intent=request_intent,
+    )
     validated = _fail_closed_on_empty_required_acquisition(
         validated,
         tool_route_plan=tool_route_plan,
@@ -108,6 +112,24 @@ def assess_sufficiency(
         retry_budget=retry_budget,
         evidence_supported_partial_possible=bool(evidence_drafts),
     )
+
+
+def _remove_unowned_read_confirmations(
+    result: SufficiencyResultV2,
+    *,
+    request_intent: RequestIntentV2,
+) -> SufficiencyResultV2:
+    """Keep user-choice authority in Request Understanding for read-only runs."""
+
+    if (
+        set(request_intent["requested_effect_hints"]) != {"READ"}
+        or request_intent["ambiguity"]["requires_confirmation"]
+    ):
+        return result
+    issues = [
+        issue for issue in result["issues"] if issue["resolution_source"] != "USER"
+    ]
+    return {"schema_version": 2, "status": result["status"], "issues": issues}
 
 
 def _fail_closed_on_empty_required_acquisition(
@@ -288,11 +310,7 @@ def decide_insufficient_data(context: InsufficientDataContext) -> InsufficientDa
         and context.budget_remaining > 0
     ):
         return InsufficientDataDisposition.RETRIEVE_MORE
-    if (
-        context.budget_remaining <= 0
-        and context.read_only
-        and context.evidence_supported_partial_possible
-    ):
+    if context.budget_remaining <= 0 and context.read_only:
         return InsufficientDataDisposition.PARTIAL
     if context.write_required_data_missing:
         if context.user_can_resolve_write_gap:
@@ -610,9 +628,7 @@ def authorize_retrieval_followup(
             {
                 "schema_version": 2,
                 "status": (
-                    "PARTIAL"
-                    if read_only and evidence_supported_partial_possible
-                    else "BLOCKED"
+                    "PARTIAL" if read_only else "BLOCKED"
                 ),
                 "issues": sufficiency_result["issues"],
             },
