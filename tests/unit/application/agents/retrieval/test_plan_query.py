@@ -464,6 +464,75 @@ def test_no_result_vague_phrase__relaxes_once__without_llm() -> None:
     ]
 
 
+def test_no_result_project_schedule__drops_generic_schedule_term_when_relaxing() -> None:
+    runtime = FakeStructuredInferencePort(outputs=[])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+    prior_attempt = cast(
+        QueryAttemptV1,
+        {
+            "route_id": "route-1",
+            "round_no": 0,
+            "operation_kind": "SEARCH",
+            "normalized_intent_constraints": [
+                {
+                    "kind": "KEYWORD",
+                    "terms": ["프로젝트", "일정"],
+                    "match_mode": "ALL",
+                }
+            ],
+        },
+    )
+
+    result, _, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={
+            "request_intent": {"constraints": []},
+            "current_round_no": 0,
+            "prior_query_attempts": [prior_attempt],
+            "unresolved_sufficiency_issues": [{"required": True, "resolution_source": "GOOGLE"}],
+            "read_result_summaries": [
+                {"route_id": "route-1", "result_count": 0, "exhausted": True}
+            ],
+        },
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert llm_invoked is False
+    changed = result["route_queries"][0]["search_spec"]
+    assert changed is not None
+    assert changed["constraint_delta"]["upsert_constraints"] == [
+        {"kind": "KEYWORD", "terms": ["프로젝트"], "match_mode": "ANY"}
+    ]
+
+
 def test_general_search__with_semantic_choice__keeps_query_planning_llm() -> None:
     output = {
         "schema_version": 2,

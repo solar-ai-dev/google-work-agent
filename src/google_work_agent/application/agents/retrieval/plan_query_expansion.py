@@ -33,6 +33,9 @@ _GENERIC_SEARCH_TERMS = frozenset(
         "message",
         "messages",
         "regarding",
+        "schedule",
+        "schedules",
+        "일정",
     }
 )
 
