@@ -62,8 +62,9 @@ def normalize_segments(
     context_budget: ContextBudget = DEFAULT_CONTEXT_BUDGET,
 ) -> list[SourceSegment]:
     """Normalize, deduplicate, sanitize, chunk, and bound acquired resources."""
-    segments: list[SourceSegment] = []
+    segments_by_handle: dict[str, list[SourceSegment]] = {}
     seen: set[tuple[str, str]] = set()
+    source_position = 0
     for summary in acquisition_result["source_summaries"]:
         source = str(summary.get("source", "UNKNOWN"))
         resources = summary.get("resources", [])
@@ -81,7 +82,10 @@ def normalize_segments(
                 continue
             seen.add((handle, text))
             chunks = _chunk_text(text, context_budget)
+            resource_segments = segments_by_handle.setdefault(handle, [])
             for index, chunk in enumerate(chunks):
+                if len(resource_segments) >= context_budget.max_segments:
+                    break
                 normalized_chunk = _truncate(chunk, context_budget.max_segment_chars)
                 identity: SourceSegmentIdentityV1 = {
                     "schema_version": 1,
@@ -96,7 +100,7 @@ def normalize_segments(
                         normalized_chunk.encode("utf-8")
                     ).hexdigest(),
                 }
-                segments.append(
+                resource_segments.append(
                     SourceSegment(
                         segment_id=_segment_id(identity),
                         resource_handle=handle,
@@ -107,16 +111,40 @@ def normalize_segments(
                         version=_optional_string(raw.get("version")),
                         locator={
                             "kind": "resource_payload",
-                            "position": len(segments),
+                            "position": source_position,
                             "chunk_index": index,
                             "chunk_count": len(chunks),
                         },
                         text=normalized_chunk,
                     )
                 )
-                if len(segments) >= context_budget.max_segments:
-                    return segments
-    return segments
+                source_position += 1
+    return _round_robin_segments(
+        list(segments_by_handle.values()),
+        max_segments=context_budget.max_segments,
+    )
+
+
+def _round_robin_segments(
+    resource_segments: list[list[SourceSegment]], *, max_segments: int
+) -> list[SourceSegment]:
+    """Bound context without allowing one long resource to hide its peers."""
+
+    result: list[SourceSegment] = []
+    chunk_index = 0
+    while len(result) < max_segments:
+        added = False
+        for segments in resource_segments:
+            if chunk_index >= len(segments):
+                continue
+            result.append(segments[chunk_index])
+            added = True
+            if len(result) >= max_segments:
+                return result
+        if not added:
+            return result
+        chunk_index += 1
+    return result
 
 
 def _resource_text(resource: dict[str, object], *, resource_type: str) -> str:
