@@ -95,9 +95,7 @@ def detect_ambiguity(
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> AmbiguityV1:
     """Decide only current-Run, user-owned ambiguity."""
-    if _is_bound_selected_read(
-        request=request, goal_candidate=goal_candidate
-    ) or _is_general_answer_only(
+    if _is_retrieval_first_read(goal_candidate=goal_candidate) or _is_general_answer_only(
         request=request,
         goal_candidate=goal_candidate,
     ):
@@ -171,13 +169,16 @@ def _validate_ambiguity(value: object) -> AmbiguityV1:
     }
 
 
-def _is_bound_selected_read(
-    *, request: WorkflowStartRequest, goal_candidate: RequestGoalCandidateV1
-) -> bool:
+def _is_retrieval_first_read(*, goal_candidate: RequestGoalCandidateV1) -> bool:
+    """Defer missing source facts to Retrieval for every read-only request.
+
+    A READ can finish with partial or absent evidence; it does not need a
+    user-owned value before the frozen Connector route has been queried.
+    """
+
     return (
-        request.entry_mode == "RESOURCE_SELECTED"
-        and bool(request.selected_resources)
-        and set(goal_candidate["requested_effect_hints"]) == {"READ"}
+        set(goal_candidate["requested_effect_hints"]) == {"READ"}
+        and bool(goal_candidate["requested_resource_hints"])
     )
 
 

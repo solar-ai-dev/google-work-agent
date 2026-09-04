@@ -245,6 +245,62 @@ def test_selected_gmail_analysis__does_not_invent_user_owned__ambiguity() -> Non
     assert runtime.calls == []
 
 
+def test_general_tasks_analysis__retrieves_requested_result_fields__before_confirmation() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "requires_confirmation": True,
+                "missing_information_owner": "USER",
+                "reason_codes": ["BUDGET_FIELD_MISSING"],
+                "missing_fields": ["승인 예산"],
+            }
+        ]
+    )
+    request = WorkflowStartRequest(
+        run_id="run-tasks",
+        conversation_id="conversation-1",
+        workflow_key="thread-1",
+        entry_mode="AGENT_SEARCH",
+        requested_mode="LOCAL_GPU",
+        request_text=(
+            "Google Tasks에 있는 현재 할 일을 읽고 담당자와 승인 예산 정보가 있는지 "
+            "분석해줘."
+        ),
+        selected_resource_ids=(),
+        run_budget=cast(dict[str, Any], build_default_run_budget()),
+        correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
+    )
+
+    result = detect_ambiguity(
+        llm_runtime=runtime,
+        request=request,
+        goal_candidate={
+            "goal": "현재 Tasks의 담당자와 승인 예산 정보를 분석한다",
+            "completion_conditions": ["현재 Tasks를 읽는다", "담당자와 예산을 확인한다"],
+            "constraints": [],
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["TASK"],
+            "analysis_requirement": "REQUIRED",
+        },
+        prompt_ref=PromptReference(
+            prompt_bundle_version="test",
+            prompt_id="request_understanding.detect_ambiguity",
+            prompt_version="1",
+            content_hash="hash",
+            agent_role="request_understanding",
+            subgraph_name="request_understanding",
+            node_name="detect_ambiguity",
+            node_state="INITIAL",
+            purpose="detect_ambiguity",
+            input_schema_version="v1",
+            output_schema_version="v1",
+        ),
+    )
+
+    assert result == {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}
+    assert runtime.calls == []
+
+
 def test_selected_gmail_send__with_missing_recipient__preserves_confirmation() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[
