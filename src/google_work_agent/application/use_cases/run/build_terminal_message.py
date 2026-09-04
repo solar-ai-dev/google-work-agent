@@ -4,6 +4,10 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
+from google_work_agent.application.use_cases.run.format_blocked_terminal_message import (
+    format_blocked_terminal_message,
+)
+
 type TerminalMessageSourceKindV1 = Literal[
     "ANSWER_DRAFT",
     "READ_RESULT_SUMMARY",
@@ -168,6 +172,12 @@ def _format_terminal_content(query: BuildTerminalMessageQueryV1) -> str:
         }[query.result_kind]
         if action_lines:
             return f"{heading}\n\n" + "\n".join(action_lines)
+        if query.result_kind == "BLOCKED":
+            return format_blocked_terminal_message(
+                korean=True,
+                source_kind=query.source_kind,
+                reason_codes=query.reason_codes,
+            )
         ending = {
             "SUCCESS": "확인 가능한 결과를 반영했습니다.",
             "PARTIAL": "완료된 변경과 완료되지 않은 항목을 구분해 반영했습니다.",
@@ -197,6 +207,12 @@ def _format_terminal_content(query: BuildTerminalMessageQueryV1) -> str:
     }[query.result_kind]
     if action_lines:
         return f"{heading}\n\n" + "\n".join(action_lines)
+    if query.result_kind == "BLOCKED":
+        return format_blocked_terminal_message(
+            korean=False,
+            source_kind=query.source_kind,
+            reason_codes=query.reason_codes,
+        )
     ending = {
         "SUCCESS": "The response reflects the result that could be confirmed.",
         "PARTIAL": "The completed and unfinished work are kept separate in this result.",

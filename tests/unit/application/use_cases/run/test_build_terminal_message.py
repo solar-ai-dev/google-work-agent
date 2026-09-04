@@ -131,6 +131,26 @@ def test_blocked_result__does_not_expose__reason_code() -> None:
     assert "PLAN_REVIEW_BLOCK" not in result.content
 
 
+def test_context_block__explains_missing_source_and_next_action() -> None:
+    result = BuildTerminalMessageHandler()(
+        BuildTerminalMessageQueryV1(
+            1,
+            "run-1",
+            1,
+            "POLICY_BLOCK",
+            "BLOCKED",
+            None,
+            ["CONTEXT_BLOCKED"],
+            "Gmail에서 회의 관련 메일을 찾아줘",
+        )
+    )
+
+    assert "일치하는 Google 자료를 찾지 못해" in result.content
+    assert "검색 조건을 바꾸거나" in result.content
+    assert "Google 변경은 실행하지 않았습니다" in result.content
+    assert "CONTEXT_BLOCKED" not in result.content
+
+
 @pytest.mark.parametrize(
     ("source_kind", "result_kind", "reason_code", "expected"),
     (
