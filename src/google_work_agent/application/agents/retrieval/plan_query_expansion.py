@@ -36,6 +36,12 @@ _GENERIC_SEARCH_TERMS = frozenset(
         "schedule",
         "schedules",
         "일정",
+        "논의한",
+        "논의했던",
+        "얘기한",
+        "얘기했던",
+        "이야기한",
+        "이야기했던",
     }
 )
 

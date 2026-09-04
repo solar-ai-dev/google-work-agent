@@ -29,9 +29,7 @@ _PERIOD_PATTERN = re.compile(
     r"지난\s*주|이번\s*주|다음\s*주|지난\s*달|이번\s*달|최근|오늘|어제|그제"
 )
 _DIRECT_TOPIC_PATTERNS = (
-    re.compile(
-        r"(?P<topic>[0-9A-Za-z가-힣_+\-]{2,})\s*(?:관련|에\s*관한)\s*(?:메일|이메일)"
-    ),
+    re.compile(r"(?P<topic>[0-9A-Za-z가-힣_+\-]{2,})\s*(?:관련|에\s*관한)\s*(?:메일|이메일)"),
     re.compile(r"(?P<topic>[0-9A-Za-z가-힣_+\-]{2,})\s*(?:메일|이메일)"),
 )
 _DISCUSSED_TOPIC_PATTERN = re.compile(
@@ -40,6 +38,9 @@ _DISCUSSED_TOPIC_PATTERN = re.compile(
 )
 _TOPIC_STOPWORDS = frozenset(
     {
+        "관련",
+        "메일",
+        "이메일",
         "최근",
         "지난주",
         "지난주에",
@@ -51,6 +52,12 @@ _TOPIC_STOPWORDS = frozenset(
         "지난달에",
         "이번달",
         "이번달에",
+        "얘기한",
+        "얘기했던",
+        "이야기한",
+        "이야기했던",
+        "논의한",
+        "논의했던",
     }
 )
 _FALLBACK_BUSINESS_TOPICS = (
@@ -157,7 +164,7 @@ def _search_topics(request_text: str) -> list[str]:
         )
     if not topics:
         topics.extend(topic for topic in _FALLBACK_BUSINESS_TOPICS if topic in request_text)
-    return list(dict.fromkeys(topic for topic in topics if topic not in {"관련", "메일", "이메일"}))
+    return list(dict.fromkeys(topic for topic in topics if topic not in _TOPIC_STOPWORDS))
 
 
 def _required_information(request_text: str) -> list[str]:

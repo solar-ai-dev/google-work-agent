@@ -50,6 +50,18 @@ def test_vague_read_semantics__preserves_people_periods_and_business_topics() ->
     assert by_field["search_terms"] == ["일정"]
 
 
+def test_vague_read_semantics__does_not_use_discussion_verbs_as_search_terms() -> None:
+    result = operation.preserve_vague_read_semantics(
+        _candidate(),
+        request_text="지난주에 프로젝트 일정 얘기한 메일 찾아서 해야 할 일 정리해줘.",
+        entry_mode="AGENT_SEARCH",
+    )
+
+    by_field = {constraint["field"]: constraint["value"] for constraint in result["constraints"]}
+    assert by_field["period"] == ["지난주"]
+    assert by_field["search_terms"] == ["프로젝트", "일정"]
+
+
 def test_vague_read_semantics__preserves_answer_information_without_making_it_query_text() -> None:
     result = operation.preserve_vague_read_semantics(
         _candidate(),

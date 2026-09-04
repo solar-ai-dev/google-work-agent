@@ -101,16 +101,17 @@ def _criteria(request_intent: Mapping[str, object]) -> str:
     if not isinstance(constraints, list):
         return ""
     values: list[str] = []
-    for item in constraints:
-        if not isinstance(item, Mapping) or item.get("field") not in {
-            "period",
-            "person",
-            "search_terms",
-            "subject",
-            "search_criteria_subject",
-        }:
-            continue
-        values.extend(_strings_or_scalar(item.get("value")))
+    owned_fields = (
+        ("DATE", "period"),
+        ("PERSON", "person"),
+        ("USER_REQUIREMENT", "search_terms"),
+    )
+    for kind, field in owned_fields:
+        for item in constraints:
+            if not isinstance(item, Mapping):
+                continue
+            if item.get("kind") == kind and item.get("field") == field:
+                values.extend(_strings_or_scalar(item.get("value")))
     return " · ".join(dict.fromkeys(values))
 
 
