@@ -183,6 +183,7 @@ def identify_goal(
         request_text=request.request_text,
     )
     candidate = _apply_explicit_read_authority(candidate, request_text=request.request_text)
+    candidate = _apply_general_answer_only_authority(candidate, request=request)
     candidate = _apply_selected_resource_authority(candidate, request=request)
     return _validate_goal_candidate(candidate)
 
@@ -224,6 +225,51 @@ _EXPLICIT_WRITE_MARKERS = (
     "modify",
     "delete",
     "send",
+)
+_GENERAL_ANSWER_ONLY_CONTENT_MARKERS = (
+    "원칙",
+    "방법",
+    "팁",
+    "조언",
+    "개념",
+    "기준",
+    "principle",
+    "guideline",
+    "best practice",
+    "advice",
+    "tip",
+    "concept",
+)
+_GENERAL_ANSWER_ONLY_RESPONSE_MARKERS = (
+    "알려",
+    "설명",
+    "말해",
+    "답해",
+    "explain",
+    "tell",
+    "answer",
+)
+_CURRENT_WORKSPACE_FACT_MARKERS = (
+    "내 ",
+    "나의",
+    "현재",
+    "최근",
+    "선택한",
+    "찾아",
+    "읽어",
+    "목록",
+    "요약",
+    "분석",
+    "my ",
+    "current",
+    "recent",
+    "selected",
+    "find",
+    "read",
+    "list",
+    "summarize",
+    "analyse",
+    "analyze",
 )
 _QUOTED_LITERAL_PATTERNS = (
     re.compile(r"'[^']*'"),
@@ -315,6 +361,39 @@ def _has_explicit_read_authority(request_text: str) -> bool:
         and any(marker in normalized for marker in _EXPLICIT_READ_MARKERS)
         and not any(marker in normalized for marker in _EXPLICIT_WRITE_MARKERS)
     )
+
+
+def is_general_answer_only_request(request_text: str) -> bool:
+    """Recognize explicit advice/explanation requests that need no Workspace fact."""
+
+    normalized = request_text.casefold()
+    return (
+        any(marker in normalized for marker in _GENERAL_ANSWER_ONLY_CONTENT_MARKERS)
+        and any(marker in normalized for marker in _GENERAL_ANSWER_ONLY_RESPONSE_MARKERS)
+        and not any(marker in normalized for marker in _CURRENT_WORKSPACE_FACT_MARKERS)
+        and not any(marker in normalized for marker in _EXPLICIT_WRITE_MARKERS)
+    )
+
+
+def _apply_general_answer_only_authority(
+    candidate: RequestGoalCandidateV1,
+    *,
+    request: WorkflowStartRequest,
+) -> RequestGoalCandidateV1:
+    """Remove model-invented Workspace reads from explicit advice requests."""
+
+    if (
+        request.selected_resources
+        or not is_general_answer_only_request(request.request_text)
+        or any(effect != "READ" for effect in candidate["requested_effect_hints"])
+    ):
+        return candidate
+    return {
+        **candidate,
+        "requested_effect_hints": [],
+        "requested_resource_hints": [],
+        "analysis_requirement": "NONE",
+    }
 
 
 def _apply_explicit_read_authority(

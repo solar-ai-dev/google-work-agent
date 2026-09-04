@@ -135,6 +135,55 @@ def test_identify_goal__answer_only__allows_empty_workspace_hints() -> None:
     assert candidate["requested_resource_hints"] == []
 
 
+def test_identify_goal__general_advice__removes_model_invented_workspace_reads() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "프로젝트 회의 준비 원칙 제공",
+                "completion_conditions": ["한 문장으로 원칙을 답한다"],
+                "constraints": [],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["GMAIL_THREAD", "TASK", "CALENDAR_EVENT"],
+                "analysis_requirement": "REQUIRED",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("프로젝트 회의 준비 원칙을 한 문장으로 알려줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["requested_effect_hints"] == []
+    assert candidate["requested_resource_hints"] == []
+    assert candidate["analysis_requirement"] == "NONE"
+
+
+def test_identify_goal__current_workspace_read__is_not_rewritten_as_advice() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "현재 Google Tasks 원칙 확인",
+                "completion_conditions": ["현재 태스크를 읽어 답한다"],
+                "constraints": [],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["TASK"],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("내 Google Tasks의 현재 우선순위 원칙을 알려줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["requested_effect_hints"] == ["READ"]
+    assert candidate["requested_resource_hints"] == ["TASK"]
+
+
 def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hints() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[

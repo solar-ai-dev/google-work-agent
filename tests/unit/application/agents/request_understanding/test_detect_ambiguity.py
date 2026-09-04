@@ -140,6 +140,41 @@ def test_selected_gmail_read__with_retrievable_content_gap__does_not_confirm() -
     assert runtime.calls == []
 
 
+def test_general_advice__does_not_ask_for_model_invented_user_choice() -> None:
+    runtime = FakeStructuredInferencePort(outputs=[])
+    request = _answer_only_request("프로젝트 회의 준비 원칙을 한 문장으로 알려줘.")
+    candidate: RequestGoalCandidateV1 = {
+        "goal": "프로젝트 회의 준비 원칙 제공",
+        "completion_conditions": ["한 문장으로 원칙을 답한다"],
+        "constraints": [],
+        "requested_effect_hints": [],
+        "requested_resource_hints": [],
+        "analysis_requirement": "NONE",
+    }
+
+    result = detect_ambiguity(
+        llm_runtime=runtime,
+        request=request,
+        goal_candidate=candidate,
+        prompt_ref=PromptReference(
+            prompt_bundle_version="test",
+            prompt_id="request_understanding.detect_ambiguity",
+            prompt_version="1",
+            content_hash="hash",
+            agent_role="request_understanding",
+            subgraph_name="request_understanding",
+            node_name="detect_ambiguity",
+            node_state="INITIAL",
+            purpose="detect_ambiguity",
+            input_schema_version="v1",
+            output_schema_version="v1",
+        ),
+    )
+
+    assert result == {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}
+    assert runtime.calls == []
+
+
 def test_selected_gmail_analysis__detects_user_owned__ambiguity() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[
@@ -251,3 +286,17 @@ def test_selected_gmail_send__with_missing_recipient__preserves_confirmation() -
 
     assert result["requires_confirmation"] is True
     assert result["missing_fields"] == ["recipient"]
+
+
+def _answer_only_request(text: str) -> WorkflowStartRequest:
+    return WorkflowStartRequest(
+        run_id="run-answer",
+        conversation_id="conversation-1",
+        workflow_key="thread-1",
+        entry_mode="AGENT_SEARCH",
+        requested_mode="LOCAL_GPU",
+        request_text=text,
+        selected_resource_ids=(),
+        run_budget=cast(dict[str, Any], build_default_run_budget()),
+        correlation=WorkflowCorrelationContext("request-1", "command-1", "v1"),
+    )

@@ -6,6 +6,9 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     AmbiguityV1,
     RequestGoalCandidateV1,
 )
+from google_work_agent.application.agents.request_understanding.identify_goal import (
+    is_general_answer_only_request,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     default_prompt_manifest_path,
     load_prompt_reference,
@@ -92,7 +95,12 @@ def detect_ambiguity(
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
 ) -> AmbiguityV1:
     """Decide only current-Run, user-owned ambiguity."""
-    if _is_bound_selected_read(request=request, goal_candidate=goal_candidate):
+    if _is_bound_selected_read(
+        request=request, goal_candidate=goal_candidate
+    ) or _is_general_answer_only(
+        request=request,
+        goal_candidate=goal_candidate,
+    ):
         return {"requires_confirmation": False, "reason_codes": [], "missing_fields": []}
     resolved_prompt_ref = prompt_ref or load_prompt_reference(
         "request_understanding.detect_ambiguity",
@@ -171,4 +179,15 @@ def _is_bound_selected_read(
         and bool(request.selected_resources)
         and set(goal_candidate["requested_effect_hints"]) == {"READ"}
         and goal_candidate["analysis_requirement"] == "NONE"
+    )
+
+
+def _is_general_answer_only(
+    *, request: WorkflowStartRequest, goal_candidate: RequestGoalCandidateV1
+) -> bool:
+    return (
+        not request.selected_resources
+        and not goal_candidate["requested_effect_hints"]
+        and not goal_candidate["requested_resource_hints"]
+        and is_general_answer_only_request(request.request_text)
     )
