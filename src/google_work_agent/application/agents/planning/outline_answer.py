@@ -17,6 +17,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
 from google_work_agent.application.agents.planning.project_empty_read_answer import (
     project_empty_read_answer,
 )
+from google_work_agent.application.agents.planning.project_gmail_read_planning import (
+    project_gmail_read_planning,
+)
 from google_work_agent.application.agents.planning.project_task_read_answer import (
     project_task_read_answer,
 )
@@ -130,6 +133,13 @@ def outline_answer(
     )
     if empty_projection is not None:
         return empty_projection.outline
+    gmail_projection = project_gmail_read_planning(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if gmail_projection is not None:
+        return gmail_projection.outline
     candidate = invoke(PROMPT_ID, prompt_input)
     if candidate.get("disposition") == "NEEDS_CONFIRMATION":
         ambiguity = request_intent.get("ambiguity")

@@ -15,6 +15,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
 from google_work_agent.application.agents.planning.project_empty_read_answer import (
     project_empty_read_answer,
 )
+from google_work_agent.application.agents.planning.project_gmail_read_planning import (
+    project_gmail_read_planning,
+)
 from google_work_agent.application.agents.planning.project_task_read_answer import (
     project_task_read_answer,
 )
@@ -84,7 +87,12 @@ def compose_answer(
         "answer_outline": dict(answer_outline),
         "evidence": [dict(item) for item in evidence],
     }
-    if work_analysis is not None:
+    gmail_projection = project_gmail_read_planning(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if work_analysis is not None and gmail_projection is None:
         prompt_input["work_analysis"] = dict(work_analysis)
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)

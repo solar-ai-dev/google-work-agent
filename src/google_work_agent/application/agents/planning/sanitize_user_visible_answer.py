@@ -5,11 +5,16 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
-_EVIDENCE_TOKEN = re.compile(
-    r"(?<![A-Za-z0-9_])evidence[-_:][A-Za-z0-9_.:-]+(?![A-Za-z0-9_.:-])",
+_INTERNAL_REFERENCE_TOKEN = re.compile(
+    r"(?<![A-Za-z0-9_])(?:evidence|fact|artifact|segment)[-_:][A-Za-z0-9_.:-]+"
+    r"(?![A-Za-z0-9_.:-])",
     re.IGNORECASE,
 )
 _REASON_CODE = re.compile(r"(?<![A-Z0-9_])(?:[A-Z][A-Z0-9]*_){1,}[A-Z0-9]+(?![A-Z0-9_])")
+_INTERNAL_FIELD_LABELS = re.compile(
+    r"`?(?:work_facts|evidence_refs|reason_codes|risks|thought_process)`?",
+    re.IGNORECASE,
+)
 
 
 def sanitize_user_visible_answer(
@@ -27,7 +32,8 @@ def sanitize_user_visible_answer(
     for ref in sorted(set(internal_refs), key=len, reverse=True):
         if ref:
             result = result.replace(ref, reference_label)
-    result = _EVIDENCE_TOKEN.sub(reference_label, result)
+    result = _INTERNAL_REFERENCE_TOKEN.sub(reference_label, result)
+    result = _INTERNAL_FIELD_LABELS.sub(reference_label, result)
     result = _REASON_CODE.sub(state_label, result)
     return result.strip()
 

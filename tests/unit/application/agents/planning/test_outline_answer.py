@@ -219,3 +219,44 @@ def test_outline_analysis_read__keeps_all_current_work_facts_for_composition() -
         ],
         "evidence_refs": ["e-time", "e-action"],
     }
+
+
+def test_gmail_read__with_required_information__uses_evidence_without_llm() -> None:
+    invoked = False
+
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
+
+    result = outline_answer(
+        user_request="KAN-93 관련 메일 중 최신 결정을 알려줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["GMAIL_THREAD"],
+            "constraints": [
+                {
+                    "kind": "USER_REQUIREMENT",
+                    "field": "required_information",
+                    "value": ["최신 결정"],
+                }
+            ],
+            "analysis_requirement": "REQUIRED",
+        },
+        work_analysis={"work_facts": [{"fact_id": "fact-internal"}]},
+        evidence=[
+            {"evidence_id": "e-status", "excerpt": "상태: 해야 할 일 → 진행"},
+            {"evidence_id": "e-decision", "excerpt": "네비게이션바로 확정"},
+        ],
+        invoke=invoke,
+    )
+
+    assert invoked is False
+    assert result == {
+        "sections": [
+            "요청한 Gmail 자료에 근거한 직접 답변",
+            "확인할 내용: 최신 결정",
+            "관련 메일 간 시간 순서, 결정 사항과 남은 불확실성",
+        ],
+        "evidence_refs": ["e-status", "e-decision"],
+    }

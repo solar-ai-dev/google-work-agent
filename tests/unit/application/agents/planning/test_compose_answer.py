@@ -109,6 +109,57 @@ def test_compose_internal_reference_labels__preserve_english_request_language() 
     assert result["answer"] == "the reviewed material has an internal status."
 
 
+def test_gmail_read__with_intermediate_analysis__omits_it_from_final_prompt() -> None:
+    captured: dict[str, object] = {}
+
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        captured.update({"prompt_id": prompt_id, "prompt_input": dict(prompt_input)})
+        return {
+            "schema_version": 2,
+            "answer": "네비게이션바 사용이 최신 결정입니다.",
+            "evidence_refs": ["e-decision"],
+        }
+
+    result = compose_answer(
+        user_request="KAN-93 관련 메일 중 최신 결정을 알려줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["GMAIL_THREAD"],
+            "analysis_requirement": "REQUIRED",
+        },
+        answer_outline={"sections": ["최신 결정"], "evidence_refs": ["e-decision"]},
+        work_analysis={
+            "work_facts": [
+                {"fact_id": "fact-internal", "value": "근거 없는 마감일"}
+            ]
+        },
+        evidence=[{"evidence_id": "e-decision", "excerpt": "네비게이션바로 확정"}],
+        invoke=invoke,
+    )
+
+    assert "work_analysis" not in captured["prompt_input"]
+    assert result["answer"] == "네비게이션바 사용이 최신 결정입니다."
+
+
+def test_compose_answer__with_internal_fact_terms__removes_them_from_prose() -> None:
+    result = compose_answer(
+        user_request="메일을 요약해줘.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["핵심"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "e1"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": "`fact-deadbeef`와 `work_facts`, `risks`를 확인했습니다.",
+            "evidence_refs": ["e1"],
+        },
+    )
+
+    assert "fact-deadbeef" not in result["answer"]
+    assert "work_facts" not in result["answer"]
+    assert "risks" not in result["answer"]
+
+
 def test_compose_empty_gmail_read__explains_search_result_without_llm() -> None:
     invoked = False
 
