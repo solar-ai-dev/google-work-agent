@@ -6,6 +6,7 @@ from google_work_agent.adapters.langgraph.main.state import WorkflowPhase
 from google_work_agent.adapters.langgraph.main.supervisor_control_adapter import (
     lifecycle_control_decision,
     lifecycle_state_update,
+    project_lifecycle_control,
 )
 from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 
@@ -55,6 +56,29 @@ def test_lifecycle_control__uses_changed_physical_target_over_stale_logical_stat
     )
 
     assert decision["target"] == SupervisorTarget.SUSPEND.value
+
+
+def test_lifecycle_projection__preserves_unchanged_reason_for_new_terminal_target() -> None:
+    prior = {
+        "__target__": "cancel_resolution",
+        "__logical_target__": "cancel_resolution",
+        "__workflow_control__": {"reason": "READY_TO_FINALIZE"},
+    }
+    result = {
+        **prior,
+        "__target__": "response_synthesis",
+        "__logical_target__": "response_synthesis",
+    }
+
+    update, decision = project_lifecycle_control(
+        source_phase=WorkflowPhase.RECOVERY,
+        prior_state=prior,
+        control_result=result,
+    )
+
+    assert decision["target"] == SupervisorTarget.RESPONSE_SYNTHESIS.value
+    assert decision["reason_code"] == "READY_TO_FINALIZE"
+    assert "__workflow_control__" not in update
 
 
 def test_lifecycle_control__rejects_unregistered_main_target() -> None:

@@ -62,6 +62,26 @@ def lifecycle_state_update(control_result: Mapping[str, object]) -> dict[str, ob
     }
 
 
+def project_lifecycle_control(
+    *,
+    source_phase: WorkflowPhase,
+    prior_state: Mapping[str, object],
+    control_result: Mapping[str, object],
+) -> tuple[dict[str, object], SupervisorDecisionV1]:
+    """Keep owner disposition complete while checkpointing changed facts only."""
+
+    changed = {
+        key: value for key, value in control_result.items() if prior_state.get(key) != value
+    }
+    return (
+        lifecycle_state_update(changed),
+        lifecycle_control_decision(
+            source_phase=source_phase,
+            control_result=control_result,
+        ),
+    )
+
+
 def _control_reason(control_result: Mapping[str, object]) -> str:
     control = control_result.get("__workflow_control__")
     if isinstance(control, Mapping):
@@ -82,4 +102,8 @@ def _next_phase(control_result: Mapping[str, object]) -> WorkflowPhase | None:
         return None
 
 
-__all__ = ["lifecycle_control_decision", "lifecycle_state_update"]
+__all__ = [
+    "lifecycle_control_decision",
+    "lifecycle_state_update",
+    "project_lifecycle_control",
+]

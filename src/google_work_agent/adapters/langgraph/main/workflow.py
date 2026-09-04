@@ -87,8 +87,8 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.main.supervisor import route_supervisor
 from google_work_agent.adapters.langgraph.main.supervisor_control_adapter import (
-    lifecycle_control_decision,
     lifecycle_state_update,
+    project_lifecycle_control,
 )
 from google_work_agent.adapters.langgraph.main.supervisor_decision import (
     SupervisorDecisionV1,
@@ -1729,14 +1729,14 @@ class _WorkflowRuntimeComposition:
         result: Mapping[str, object],
         source_phase: WorkflowPhase,
     ) -> GraphState:
-        lifecycle_patch = {key: value for key, value in result.items() if state.get(key) != value}
-        candidate = lifecycle_control_decision(
+        lifecycle_update, candidate = project_lifecycle_control(
             source_phase=source_phase,
-            control_result=lifecycle_patch,
+            prior_state=state,
+            control_result=result,
         )
         return self._merge_decision(
             state,
-            cast(GraphStateUpdateV1, lifecycle_state_update(lifecycle_patch)),
+            cast(GraphStateUpdateV1, lifecycle_update),
             candidate,
         )
 
