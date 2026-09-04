@@ -9,6 +9,8 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     AnswerOutlineV1,
 )
 
+_DECISION_MARKERS = ("결정", "확정", "다음 할 일", "decision", "action item")
+
 
 class GmailReadPlanningProjection(NamedTuple):
     outline: AnswerOutlineV1
@@ -29,22 +31,35 @@ def project_gmail_read_planning(
     ):
         return None
 
+    requested_information = _requested_information(request_intent)
+    answer_evidence = (
+        _decision_evidence(evidence)
+        if _decision_requested(user_request, requested_information)
+        else list(evidence)
+    )
     evidence_refs = [
-        ref for item in evidence if (ref := _evidence_ref(item)) is not None
+        ref for item in answer_evidence if (ref := _evidence_ref(item)) is not None
     ]
     if not evidence_refs:
         return None
 
     korean = any("\uac00" <= character <= "\ud7a3" for character in user_request)
-    requested_information = _requested_information(request_intent)
     if korean:
         sections = ["요청한 Gmail 자료에 근거한 직접 답변"]
         sections.extend(f"확인할 내용: {item}" for item in requested_information)
-        sections.append("관련 메일 간 시간 순서, 결정 사항과 남은 불확실성")
+        sections.append(
+            "명시적으로 결정 또는 확정된 내용과 남은 불확실성"
+            if _decision_requested(user_request, requested_information)
+            else "관련 메일 간 시간 순서, 결정 사항과 남은 불확실성"
+        )
     else:
         sections = ["Direct answer grounded in the retrieved Gmail messages"]
         sections.extend(f"Requested information: {item}" for item in requested_information)
-        sections.append("Timeline, decisions, and remaining uncertainty across related messages")
+        sections.append(
+            "Explicit decisions and remaining uncertainty"
+            if _decision_requested(user_request, requested_information)
+            else "Timeline, decisions, and remaining uncertainty across related messages"
+        )
 
     return GmailReadPlanningProjection(
         outline={
@@ -84,6 +99,23 @@ def _strings(value: object) -> list[str]:
 def _evidence_ref(item: Mapping[str, object]) -> str | None:
     value = item.get("evidence_ref") or item.get("evidence_id") or item.get("id")
     return value if isinstance(value, str) and value else None
+
+
+def _decision_requested(user_request: str, requested_information: Sequence[str]) -> bool:
+    combined = " ".join([user_request, *requested_information]).casefold()
+    return any(marker in combined for marker in _DECISION_MARKERS)
+
+
+def _decision_evidence(
+    evidence: Sequence[Mapping[str, object]],
+) -> list[Mapping[str, object]]:
+    selected = [
+        item
+        for item in evidence
+        if isinstance(item.get("excerpt"), str)
+        and any(marker in str(item["excerpt"]).casefold() for marker in _DECISION_MARKERS)
+    ]
+    return selected or list(evidence)
 
 
 __all__ = ["GmailReadPlanningProjection", "project_gmail_read_planning"]

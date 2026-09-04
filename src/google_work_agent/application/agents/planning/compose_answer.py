@@ -81,11 +81,15 @@ def compose_answer(
 ) -> AnswerDraftCandidateV2:
     if not user_request.strip():
         raise ValueError("user_request is required")
+    approved_refs = set(answer_outline["evidence_refs"])
+    approved_evidence = [
+        dict(item) for item in evidence if _evidence_ref(item) in approved_refs
+    ]
     prompt_input: dict[str, object] = {
         "user_request": user_request,
         "request_intent": dict(request_intent),
         "answer_outline": dict(answer_outline),
-        "evidence": [dict(item) for item in evidence],
+        "evidence": approved_evidence,
     }
     gmail_projection = project_gmail_read_planning(
         user_request=user_request,
@@ -102,7 +106,6 @@ def compose_answer(
         evidence=evidence,
     )
     if task_projection is not None:
-        approved_refs = set(answer_outline["evidence_refs"])
         if not set(task_projection.draft["evidence_refs"]).issubset(approved_refs):
             raise ValueError("task read answer references evidence outside its approved outline")
         return task_projection.draft
@@ -151,6 +154,11 @@ def _is_serialized_container(answer: str) -> bool:
     except json.JSONDecodeError:
         return False
     return isinstance(parsed, (dict, list))
+
+
+def _evidence_ref(item: Mapping[str, object]) -> str | None:
+    value = item.get("evidence_ref") or item.get("evidence_id") or item.get("id")
+    return value if isinstance(value, str) and value else None
 
 
 __all__ = [

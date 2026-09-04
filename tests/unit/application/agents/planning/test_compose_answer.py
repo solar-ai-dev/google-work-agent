@@ -56,6 +56,34 @@ def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:
     }
 
 
+def test_compose_answer__with_unapproved_evidence__projects_only_outline_refs() -> None:
+    captured: dict[str, object] = {}
+
+    def invoke(_prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        captured.update(prompt_input)
+        return {
+            "schema_version": 2,
+            "answer": "네비게이션바로 확정되었습니다.",
+            "evidence_refs": ["e-decision"],
+        }
+
+    compose_answer(
+        user_request="최신 결정을 알려줘.",
+        request_intent={"goal": "latest decision"},
+        answer_outline={"sections": ["최신 결정"], "evidence_refs": ["e-decision"]},
+        work_analysis=None,
+        evidence=[
+            {"evidence_id": "e-metadata", "excerpt": "오후 1:51 업무 항목 생성"},
+            {"evidence_id": "e-decision", "excerpt": "네비게이션바로 확정"},
+        ],
+        invoke=invoke,
+    )
+
+    assert captured["evidence"] == [
+        {"evidence_id": "e-decision", "excerpt": "네비게이션바로 확정"}
+    ]
+
+
 def test_compose_normalizes__harmless_surrounding_whitespace() -> None:
     result = compose_answer(
         user_request="요약해줘.",
