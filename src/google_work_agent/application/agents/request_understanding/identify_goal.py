@@ -238,12 +238,16 @@ _EXPLICIT_WRITE_MARKERS = (
 _EXPLICIT_ANALYSIS_MARKERS = (
     "분석",
     "비교",
+    "결정",
+    "결론",
     "영향",
     "원인",
     "리스크",
     "관계",
     "analy",
     "compare",
+    "decision",
+    "conclusion",
     "impact",
     "risk",
 )

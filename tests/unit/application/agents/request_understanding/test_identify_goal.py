@@ -292,6 +292,31 @@ def test_identify_goal__restores_vague_search_semantics_omitted_by_inference() -
     assert candidate["analysis_requirement"] == "REQUIRED"
 
 
+def test_identify_goal__latest_decision_read__requires_analysis() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "KAN-93 관련 메일 찾기",
+                "completion_conditions": ["관련 메일을 찾는다"],
+                "constraints": [
+                    {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": "KAN-93"}
+                ],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["GMAIL_THREAD"],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("KAN-93 관련 메일이 여러 개일 때 최신 결정이 무엇인지 알려줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["analysis_requirement"] == "REQUIRED"
+
+
 def test_identify_goal__vague_mail_schedule_summary__rejects_invented_calendar_create() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[
