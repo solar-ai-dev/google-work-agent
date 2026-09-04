@@ -24,6 +24,7 @@ from google_work_agent.application.agents.planning.sanitize_user_visible_answer 
 from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.compose_answer"
+MAX_USER_VISIBLE_ANSWER_CHARS = 2_400
 
 ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="planning-answer-draft-v2",
@@ -36,6 +37,7 @@ ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "answer": {
                 "type": "string",
                 "minLength": 1,
+                "maxLength": MAX_USER_VISIBLE_ANSWER_CHARS,
             },
             "evidence_refs": {
                 "type": "array",
@@ -54,6 +56,7 @@ def answer_draft_output_schema(allowed_evidence_refs: Sequence[str]) -> OutputSc
     properties["evidence_refs"] = {
         "type": "array",
         "uniqueItems": True,
+        "maxItems": len(set(allowed_evidence_refs)),
         "items": {"type": "string", "enum": sorted(set(allowed_evidence_refs))},
     }
     return OutputSchemaDefinition(
@@ -112,6 +115,8 @@ def compose_answer(
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("compose_answer output requires answer")
     normalized_answer = answer.strip()
+    if len(normalized_answer) > MAX_USER_VISIBLE_ANSWER_CHARS:
+        raise ValueError("compose_answer output exceeds the user-visible answer limit")
     if _is_serialized_container(normalized_answer):
         raise ValueError("compose_answer answer must be user-visible prose")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
@@ -142,6 +147,7 @@ def _is_serialized_container(answer: str) -> bool:
 
 __all__ = [
     "ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA",
+    "MAX_USER_VISIBLE_ANSWER_CHARS",
     "answer_draft_output_schema",
     "compose_answer",
 ]

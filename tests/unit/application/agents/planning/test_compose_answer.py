@@ -5,6 +5,7 @@ from collections.abc import Mapping
 import pytest
 
 from google_work_agent.application.agents.planning.compose_answer import (
+    MAX_USER_VISIBLE_ANSWER_CHARS,
     answer_draft_output_schema,
     compose_answer,
 )
@@ -17,9 +18,14 @@ def test_answer_draft_schema__binds_citations__to_approved_outline() -> None:
     assert properties["evidence_refs"] == {
         "type": "array",
         "uniqueItems": True,
+        "maxItems": 2,
         "items": {"type": "string", "enum": ["e1", "e2"]},
     }
-    assert properties["answer"] == {"type": "string", "minLength": 1}
+    assert properties["answer"] == {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": MAX_USER_VISIBLE_ANSWER_CHARS,
+    }
 
 
 def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:
@@ -170,6 +176,22 @@ def test_compose_rejects__serialized_internal_object__as_user_answer() -> None:
             invoke=lambda _prompt_id, _prompt_input: {
                 "schema_version": 2,
                 "answer": '  {"sections":[],"evidence_refs":["e1"]}',
+                "evidence_refs": ["e1"],
+            },
+        )
+
+
+def test_compose_rejects__answer_over_user_visible_limit() -> None:
+    with pytest.raises(ValueError, match="user-visible answer limit"):
+        compose_answer(
+            user_request="요약해줘.",
+            request_intent={"goal": "summary"},
+            answer_outline={"sections": ["핵심"], "evidence_refs": ["e1"]},
+            work_analysis=None,
+            evidence=[{"evidence_id": "e1"}],
+            invoke=lambda _prompt_id, _prompt_input: {
+                "schema_version": 2,
+                "answer": "가" * (MAX_USER_VISIBLE_ANSWER_CHARS + 1),
                 "evidence_refs": ["e1"],
             },
         )
