@@ -19,7 +19,7 @@ def test_answer_draft_schema__binds_citations__to_approved_outline() -> None:
         "uniqueItems": True,
         "items": {"type": "string", "enum": ["e1", "e2"]},
     }
-    assert properties["answer"]["pattern"] == r"^[^\s\[{]"
+    assert properties["answer"] == {"type": "string", "minLength": 1}
 
 
 def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:
@@ -50,6 +50,23 @@ def test_compose_uses__approved_outline_and__emits_v2_candidate() -> None:
     }
 
 
+def test_compose_normalizes__harmless_surrounding_whitespace() -> None:
+    result = compose_answer(
+        user_request="요약해줘.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["핵심"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "e1"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": "\n  확인한 메일을 요약했습니다.  \n",
+            "evidence_refs": ["e1"],
+        },
+    )
+
+    assert result["answer"] == "확인한 메일을 요약했습니다."
+
+
 def test_compose_rejects__evidence_not__approved_by_outline() -> None:
     with pytest.raises(ValueError, match="outside"):
         compose_answer(
@@ -76,7 +93,7 @@ def test_compose_rejects__serialized_internal_object__as_user_answer() -> None:
             evidence=[{"evidence_id": "e1"}],
             invoke=lambda _prompt_id, _prompt_input: {
                 "schema_version": 2,
-                "answer": '{"sections":[],"evidence_refs":["e1"]}',
+                "answer": '  {"sections":[],"evidence_refs":["e1"]}',
                 "evidence_refs": ["e1"],
             },
         )

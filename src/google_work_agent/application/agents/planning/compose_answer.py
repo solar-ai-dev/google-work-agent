@@ -30,7 +30,6 @@ ANSWER_DRAFT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
             "answer": {
                 "type": "string",
                 "minLength": 1,
-                "pattern": r"^[^\s\[{]",
             },
             "evidence_refs": {
                 "type": "array",
@@ -97,7 +96,8 @@ def compose_answer(
         raise ValueError("compose_answer output requires schema_version 2")
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("compose_answer output requires answer")
-    if _is_serialized_container(answer):
+    normalized_answer = answer.strip()
+    if _is_serialized_container(normalized_answer):
         raise ValueError("compose_answer answer must be user-visible prose")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
         raise ValueError("compose_answer output requires evidence_refs")
@@ -106,7 +106,7 @@ def compose_answer(
         raise ValueError("compose_answer referenced evidence outside its projection")
     if len(refs) != len(set(refs)):
         raise ValueError("compose_answer output contains duplicate evidence_refs")
-    return {"schema_version": 2, "answer": answer, "evidence_refs": list(refs)}
+    return {"schema_version": 2, "answer": normalized_answer, "evidence_refs": list(refs)}
 
 
 def _is_serialized_container(answer: str) -> bool:
