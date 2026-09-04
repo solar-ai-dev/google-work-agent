@@ -192,7 +192,10 @@ class WorkAnalysisSubgraph:
         graph.add_conditional_edges(
             "resolve_entity_relations",
             route_after_resolve_entity_relations,
-            {"resolve_temporal_dependencies": "resolve_temporal_dependencies"},
+            {
+                "resolve_temporal_dependencies": "resolve_temporal_dependencies",
+                "detect_duplicate_conflict_candidates": "detect_duplicate_conflict_candidates",
+            },
         )
         graph.add_conditional_edges(
             "resolve_temporal_dependencies",

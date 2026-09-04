@@ -112,6 +112,13 @@ def resolve_entity_relations(
     ]
 
 
+def entity_relation_candidate_llm_required(work_facts: Sequence[WorkFactV1]) -> bool:
+    """An entity relation requires an entity/resource fact and a distinct operand."""
+
+    kinds = {fact.get("kind") for fact in work_facts}
+    return len(work_facts) >= 2 and bool(kinds.intersection({"PERSON", "RESOURCE"}))
+
+
 def _bound_output_schema(
     fact_ids: set[str], allowed_evidence_refs: set[str]
 ) -> OutputSchemaDefinition:
@@ -136,4 +143,8 @@ def _bound_output_schema(
     )
 
 
-__all__ = ["ENTITY_RELATIONS_OUTPUT_SCHEMA", "resolve_entity_relations"]
+__all__ = [
+    "ENTITY_RELATIONS_OUTPUT_SCHEMA",
+    "entity_relation_candidate_llm_required",
+    "resolve_entity_relations",
+]

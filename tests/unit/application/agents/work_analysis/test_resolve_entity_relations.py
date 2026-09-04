@@ -1,6 +1,7 @@
 import pytest
 
 from google_work_agent.application.agents.work_analysis.resolve_entity_relations import (
+    entity_relation_candidate_llm_required,
     resolve_entity_relations,
 )
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
@@ -72,3 +73,12 @@ def test_entity_relation__rejects_guarded__kind() -> None:
             allowed_evidence_refs={"ev-1"},
             requested_mode="AUTO",
         )
+
+
+def test_entity_relation__without_entity_fact__does_not_require_llm() -> None:
+    assert entity_relation_candidate_llm_required(
+        [fact("f1", "TASK"), fact("f2", "STATUS")]
+    ) is False
+    assert entity_relation_candidate_llm_required(
+        [fact("f1", "TASK"), fact("f2", "PERSON")]
+    ) is True

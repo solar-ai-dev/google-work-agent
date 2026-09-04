@@ -113,6 +113,13 @@ def resolve_temporal_dependencies(
     ]
 
 
+def temporal_dependency_candidate_llm_required(work_facts: Sequence[WorkFactV1]) -> bool:
+    """A temporal relation requires a temporal fact and a distinct operand."""
+
+    kinds = {fact.get("kind") for fact in work_facts}
+    return len(work_facts) >= 2 and bool(kinds.intersection({"DATE", "TIME", "DEADLINE"}))
+
+
 def _bound_output_schema(
     fact_ids: set[str], allowed_evidence_refs: set[str]
 ) -> OutputSchemaDefinition:
@@ -138,4 +145,8 @@ def _bound_output_schema(
     )
 
 
-__all__ = ["TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA", "resolve_temporal_dependencies"]
+__all__ = [
+    "TEMPORAL_DEPENDENCIES_OUTPUT_SCHEMA",
+    "resolve_temporal_dependencies",
+    "temporal_dependency_candidate_llm_required",
+]

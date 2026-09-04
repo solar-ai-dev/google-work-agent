@@ -2,6 +2,7 @@ import pytest
 
 from google_work_agent.application.agents.work_analysis.resolve_temporal_dependencies import (
     resolve_temporal_dependencies,
+    temporal_dependency_candidate_llm_required,
 )
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, prompt_ref
 
@@ -110,3 +111,12 @@ def test_temporal_dependency__rejects_same_fact__relation() -> None:
             allowed_evidence_refs={"ev-1"},
             requested_mode="LOCAL_GPU",
         )
+
+
+def test_temporal_dependency__without_temporal_fact__does_not_require_llm() -> None:
+    assert temporal_dependency_candidate_llm_required(
+        [fact("f1", "TASK"), fact("f2", "STATUS")]
+    ) is False
+    assert temporal_dependency_candidate_llm_required(
+        [fact("f1", "TASK"), fact("f2", "DEADLINE")]
+    ) is True
