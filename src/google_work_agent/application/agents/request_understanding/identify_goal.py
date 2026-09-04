@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import cast
 
@@ -101,7 +102,9 @@ IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
                     "or analyzing an existing resource is READ; producing an assistant "
                     "answer or summary is never CREATE. CREATE, UPDATE, SEND, and DELETE "
                     "apply only when the user requests that external effect, and an "
-                    "explicitly forbidden effect must not appear."
+                    "explicitly forbidden effect must not appear. Identifying or analyzing "
+                    "follow-up actions from existing material is READ unless the user also "
+                    "explicitly asks to apply a write in Google Workspace."
                 ),
             },
             "requested_resource_hints": {
@@ -132,8 +135,9 @@ IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
                 "description": (
                     "REQUIRED only for downstream business analysis such as relationships, "
                     "dependencies, conflicts, duplicates, follow-up actions, or operational "
-                    "risk. Reading or summarizing one selected resource is NONE, but an "
-                    "explicit request to analyze its implications or next actions is REQUIRED."
+                    "risk. A simple list, lookup, direct fact extraction, read, or summary is "
+                    "NONE whether the resource is selected or retrieved. REQUIRED needs an "
+                    "explicit request to analyze implications, comparisons, or next actions."
                 ),
             },
         },
@@ -173,10 +177,55 @@ def identify_goal(
         prompt_input,
         IDENTIFY_GOAL_OUTPUT_SCHEMA,
     )
-    return _apply_selected_resource_authority(
-        _validate_goal_candidate(result.structured_output),
-        request=request,
+    candidate = _apply_explicit_read_authority(
+        _validate_goal_candidate(result.structured_output), request_text=request.request_text
     )
+    return _apply_selected_resource_authority(candidate, request=request)
+
+
+_EXPLICIT_READ_RESOURCE_PATTERNS = (
+    (re.compile(r"(?i)(?<![a-z])google\s+tasks?(?![a-z])"), "TASK"),
+    (re.compile(r"(?i)(?<![a-z])gmail(?![a-z])"), "GMAIL_THREAD"),
+    (re.compile(r"(?i)(?<![a-z])google\s+calendar(?![a-z])"), "CALENDAR_EVENT"),
+)
+_EXPLICIT_READ_MARKERS = (
+    "알려",
+    "보여",
+    "목록",
+    "찾아",
+    "읽어",
+    "요약",
+    "분석",
+    "list",
+    "find",
+    "read",
+    "show",
+    "summarize",
+    "analyse",
+    "analyze",
+)
+
+
+def _apply_explicit_read_authority(
+    candidate: RequestGoalCandidateV1,
+    *,
+    request_text: str,
+) -> RequestGoalCandidateV1:
+    """Preserve explicitly named Workspace reads when model hints are empty."""
+    normalized = request_text.casefold()
+    resources = list(candidate["requested_resource_hints"])
+    for pattern, resource_type in _EXPLICIT_READ_RESOURCE_PATTERNS:
+        if pattern.search(request_text) and resource_type not in resources:
+            resources.append(resource_type)
+    if not resources or candidate["requested_effect_hints"]:
+        return {**candidate, "requested_resource_hints": resources}
+    if not any(marker in normalized for marker in _EXPLICIT_READ_MARKERS):
+        return {**candidate, "requested_resource_hints": resources}
+    return {
+        **candidate,
+        "requested_effect_hints": ["READ"],
+        "requested_resource_hints": resources,
+    }
 
 
 def _apply_selected_resource_authority(

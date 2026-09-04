@@ -131,6 +131,30 @@ def test_identify_goal__answer_only__allows_empty_workspace_hints() -> None:
     assert candidate["requested_resource_hints"] == []
 
 
+def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hints() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "현재 할 일 목록 제공",
+                "completion_conditions": ["할 일을 간단히 답한다"],
+                "constraints": [],
+                "requested_effect_hints": [],
+                "requested_resource_hints": [],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("Google Tasks에 있는 현재 할 일을 목록으로 간단히 알려줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["requested_effect_hints"] == ["READ"]
+    assert candidate["requested_resource_hints"] == ["TASK"]
+
+
 def _request(text: str) -> WorkflowStartRequest:
     return WorkflowStartRequest(
         run_id="run-1",
