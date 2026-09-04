@@ -115,7 +115,7 @@ type Props = {
   text: string;
   error: string | null;
   busy: boolean;
-  activeRun: boolean;
+  workflowExecuting: boolean;
   cancelAllowed: boolean;
   cancelling: boolean;
   prompt: string;
@@ -126,7 +126,7 @@ type Props = {
   onCancel: () => Promise<void>;
 };
 
-export function RequestComposer({ text, error, busy, activeRun, cancelAllowed, cancelling, prompt, selectedResourceLabels, setText, setError, onSubmit, onCancel }: Props): JSX.Element {
+export function RequestComposer({ text, error, busy, workflowExecuting, cancelAllowed, cancelling, prompt, selectedResourceLabels, setText, setError, onSubmit, onCancel }: Props): JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     const node = textareaRef.current;
@@ -140,8 +140,8 @@ export function RequestComposer({ text, error, busy, activeRun, cancelAllowed, c
       <div className="composer-surface">
         {selectedResourceLabels.length > 0 ? <div className="composer-context" aria-live="polite"><strong>요청에 사용할 자료 {selectedResourceLabels.length}개</strong><span>{selectedResourceLabels.join(" · ")}</span></div> : null}
         <div className="composer-input-row">
-          <textarea ref={textareaRef} className="composer composer--main" aria-label={prompt} placeholder={prompt} rows={1} value={text} onChange={(event) => { setText(event.target.value); setError(null); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (!activeRun) void onSubmit(); } }} />
-          {activeRun ? (
+          <textarea ref={textareaRef} className="composer composer--main" aria-label={prompt} placeholder={prompt} rows={1} value={text} onChange={(event) => { setText(event.target.value); setError(null); }} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (!workflowExecuting) void onSubmit(); } }} />
+          {workflowExecuting ? (
             <button className="icon-button composer-send composer-stop" type="button" aria-label="중지" title="중지" disabled={!cancelAllowed || cancelling} onClick={() => void onCancel()}><svg className="composer-stop-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="7" y="7" width="10" height="10" rx="1" /></svg></button>
           ) : (
             <button className="icon-button composer-send" type="button" aria-label="보내기" title="보내기" disabled={busy} onClick={() => void onSubmit()}><svg className="composer-send-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 4v16l16-8z" /></svg></button>

@@ -5,6 +5,7 @@ import { ActionPlanCard } from "../approval";
 import { RecoveryCard } from "../recovery";
 import { ConfirmationCard, ContextPreviewCard, ExecutionStatusCard, ExternalLlmDisclosureCard, RequestComposer, RunProgress } from "../run";
 import type { RunSseEvent } from "../run/api/run_sse_event";
+import { isWorkflowExecutionActive } from "../run/run_execution_state";
 import { AssistantMessageBubble, DateSeparator, UserMessageBubble } from "./MessageBubble";
 
 type RecoveryKind = NonNullable<RunSnapshot["recovery"]>["allowed_resolution_kinds"][number];
@@ -82,7 +83,7 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
         </div>
         {runSnapshot?.external_llm_transfer_scope ? <ExternalLlmDisclosureCard scope={runSnapshot.external_llm_transfer_scope} /> : null}
         {runSnapshot?.context_preview ? <ContextPreviewCard preview={runSnapshot.context_preview} busy={busyCommand?.startsWith("adjust-context:") ?? false} onAdjust={handleAdjustContext} /> : null}
-        <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} activeRun={Boolean(runSnapshot && !isTerminal)} cancelAllowed={runSnapshot?.run.next_allowed_commands.includes("REQUEST_CANCEL") ?? false} cancelling={busyCommand === "cancel-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} onCancel={handleCancelRun} />
+        <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} workflowExecuting={isWorkflowExecutionActive(runSnapshot)} cancelAllowed={runSnapshot?.run.next_allowed_commands.includes("REQUEST_CANCEL") ?? false} cancelling={busyCommand === "cancel-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} onCancel={handleCancelRun} />
       </div>
     </>
   );

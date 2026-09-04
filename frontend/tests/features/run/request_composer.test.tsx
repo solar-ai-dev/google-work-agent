@@ -29,7 +29,7 @@ test("submitNewRun creates a conversation and sends only normalized opaque selec
 
 test("RequestComposer owns typed submission interaction", () => {
   const submit = vi.fn().mockResolvedValue(undefined);
-  render(<RequestComposer text="request" error={null} busy={false} activeRun={false} cancelAllowed={false} cancelling={false} prompt="요청" selectedResourceLabels={[]} setText={vi.fn()} setError={vi.fn()} onSubmit={submit} onCancel={vi.fn()} />);
+  render(<RequestComposer text="request" error={null} busy={false} workflowExecuting={false} cancelAllowed={false} cancelling={false} prompt="요청" selectedResourceLabels={[]} setText={vi.fn()} setError={vi.fn()} onSubmit={submit} onCancel={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "보내기" }));
   expect(submit).toHaveBeenCalledOnce();
 });
@@ -37,7 +37,7 @@ test("RequestComposer owns typed submission interaction", () => {
 test("RequestComposer replaces send with the current Run stop command", () => {
   const submit = vi.fn().mockResolvedValue(undefined);
   const cancel = vi.fn().mockResolvedValue(undefined);
-  render(<RequestComposer text="next request" error={null} busy={false} activeRun cancelAllowed cancelling={false} prompt="요청" selectedResourceLabels={[]} setText={vi.fn()} setError={vi.fn()} onSubmit={submit} onCancel={cancel} />);
+  render(<RequestComposer text="next request" error={null} busy={false} workflowExecuting cancelAllowed cancelling={false} prompt="요청" selectedResourceLabels={[]} setText={vi.fn()} setError={vi.fn()} onSubmit={submit} onCancel={cancel} />);
 
   expect(screen.queryByRole("button", { name: "보내기" })).not.toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("textbox", { name: "요청" }), { key: "Enter" });
