@@ -16,6 +16,9 @@ _INTERNAL_FIELD_LABELS = re.compile(
     re.IGNORECASE,
 )
 _FOREIGN_SCRIPT_FRAGMENT = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\u0400-\u04ff]+")
+_INTERNAL_RESOURCE_LABEL = re.compile(
+    r"\s*\((?:THREAD|RESOURCE|MESSAGE)\s+ID\s*:\s*[^)]+\)", re.IGNORECASE
+)
 
 
 def sanitize_user_visible_answer(
@@ -36,6 +39,7 @@ def sanitize_user_visible_answer(
             result = result.replace(ref, reference_label)
     result = _INTERNAL_REFERENCE_TOKEN.sub(reference_label, result)
     result = _INTERNAL_FIELD_LABELS.sub(reference_label, result)
+    result = _INTERNAL_RESOURCE_LABEL.sub("", result)
     result = _REASON_CODE.sub(state_label, result)
     if korean:
         source_text = "\n".join(source_texts)

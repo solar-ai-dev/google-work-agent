@@ -20,6 +20,9 @@ from google_work_agent.application.agents.planning.project_empty_read_answer imp
 from google_work_agent.application.agents.planning.project_gmail_read_planning import (
     project_gmail_read_planning,
 )
+from google_work_agent.application.agents.planning.project_gmail_security_read_answer import (
+    project_gmail_security_read_answer,
+)
 from google_work_agent.application.agents.planning.project_task_read_answer import (
     project_task_read_answer,
 )
@@ -111,6 +114,15 @@ def compose_answer(
         if not set(task_projection.draft["evidence_refs"]).issubset(approved_refs):
             raise ValueError("task read answer references evidence outside its approved outline")
         return task_projection.draft
+    security_projection = project_gmail_security_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if security_projection is not None:
+        if not set(security_projection.draft["evidence_refs"]).issubset(approved_refs):
+            raise ValueError("Gmail security answer references evidence outside its outline")
+        return security_projection.draft
     empty_projection = project_empty_read_answer(
         user_request=user_request,
         request_intent=request_intent,

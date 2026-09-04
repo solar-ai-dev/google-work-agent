@@ -205,6 +205,23 @@ def test_korean_answer__with_ungrounded_foreign_script__removes_only_generated_t
     assert result["answer"] == "담당자는 王敏이며 완료 시 명시되지 않았습니다."
 
 
+def test_compose_answer__with_internal_thread_id__removes_resource_identity() -> None:
+    result = compose_answer(
+        user_request="메일을 요약해줘.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["핵심"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "e1"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": "선택한 Gmail 스레드 (THREAD ID: abc123) 내용을 요약했습니다.",
+            "evidence_refs": ["e1"],
+        },
+    )
+
+    assert result["answer"] == "선택한 Gmail 스레드 내용을 요약했습니다."
+
+
 def test_compose_empty_gmail_read__explains_search_result_without_llm() -> None:
     invoked = False
 
