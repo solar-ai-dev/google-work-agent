@@ -141,3 +141,45 @@ def test_outline_task_read__selects_concrete_task_without_llm() -> None:
         "sections": ["현재 Google Tasks 할 일"],
         "evidence_refs": ["e-task"],
     }
+
+
+def test_outline_analysis_read__keeps_all_current_work_facts_for_composition() -> None:
+    result = outline_answer(
+        user_request="회의 메일을 분석해 일정과 후속 작업을 정리해줘.",
+        request_intent={"goal": "회의 분석", "analysis_requirement": "REQUIRED"},
+        work_analysis={
+            "work_facts": [
+                {
+                    "fact_id": "f-time",
+                    "kind": "TIME",
+                    "subject": "1차 회의 시작",
+                    "value": "오전 11시 14분",
+                    "derivation": "EXPLICIT",
+                    "evidence_refs": ["e-time"],
+                },
+                {
+                    "fact_id": "f-action",
+                    "kind": "TASK",
+                    "subject": "후속 작업",
+                    "value": "박희정이 와이어프레임을 삽입하고 검토한다",
+                    "derivation": "EXPLICIT",
+                    "evidence_refs": ["e-action"],
+                },
+            ],
+            "ambiguities": [],
+        },
+        evidence=[{"evidence_id": "e-time"}, {"evidence_id": "e-action"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "sections": ["결론"],
+            "evidence_refs": ["e-time"],
+        },
+    )
+
+    assert result == {
+        "sections": [
+            "결론",
+            "확인된 업무 사실 — 1차 회의 시작: 오전 11시 14분",
+            "확인된 업무 사실 — 후속 작업: 박희정이 와이어프레임을 삽입하고 검토한다",
+        ],
+        "evidence_refs": ["e-time", "e-action"],
+    }

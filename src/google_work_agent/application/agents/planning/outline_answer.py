@@ -6,6 +6,9 @@ from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import cast
 
+from google_work_agent.application.agents.planning.complete_analysis_answer_outline import (
+    complete_analysis_answer_outline,
+)
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     AnswerOutlineV1,
     PlanningAnswerConfirmationV1,
@@ -151,7 +154,14 @@ def outline_answer(
         raise ValueError("outline_answer output requires evidence_refs")
     if len(refs) != len(set(refs)) or not set(refs).issubset(allowed_refs):
         raise ValueError("outline_answer referenced evidence outside its projection")
-    return {"sections": list(sections), "evidence_refs": list(refs)}
+    return complete_analysis_answer_outline(
+        user_request=user_request,
+        request_intent=request_intent,
+        work_analysis=work_analysis,
+        sections=sections,
+        evidence_refs=refs,
+        allowed_evidence_refs=allowed_refs,
+    )
 
 
 __all__ = [
