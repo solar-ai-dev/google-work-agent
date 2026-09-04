@@ -95,9 +95,11 @@ class _ComponentInferencePort:
         *,
         request_confirmation: bool = False,
         work_fact_count: int = 0,
+        retrieval_needs_more: bool = False,
     ) -> None:
         self.request_confirmation = request_confirmation
         self.work_fact_count = work_fact_count
+        self.retrieval_needs_more = retrieval_needs_more
         self.calls: list[str] = []
 
     def infer(
@@ -153,6 +155,33 @@ class _ComponentInferencePort:
                 "disposition": "NO_TOOL_NEEDED",
             }
         if prompt_id == "retrieval.plan_query":
+            current_round_no = projection.get("current_round_no")
+            search_spec: dict[str, object] = (
+                {
+                    "mode": "CHANGED",
+                    "constraint_delta": {
+                        "upsert_constraints": [
+                            {
+                                "kind": "KEYWORD",
+                                "terms": [f"status-{current_round_no}"],
+                                "match_mode": "ANY",
+                            }
+                        ],
+                        "remove_constraint_kinds": [],
+                    },
+                }
+                if current_round_no is not None
+                else {
+                    "mode": "INITIAL",
+                    "constraints": [
+                        {
+                            "kind": "KEYWORD",
+                            "terms": ["status"],
+                            "match_mode": "ANY",
+                        }
+                    ],
+                }
+            )
             return {
                 "schema_version": 2,
                 "route_queries": [
@@ -160,16 +189,7 @@ class _ComponentInferencePort:
                         "route_id": "route-1",
                         "operation": "SEARCH",
                         "reason_codes": ["USER_REQUEST"],
-                        "search_spec": {
-                            "mode": "INITIAL",
-                            "constraints": [
-                                {
-                                    "kind": "KEYWORD",
-                                    "terms": ["status"],
-                                    "match_mode": "ANY",
-                                }
-                            ],
-                        },
+                        "search_spec": search_spec,
                         "detail_candidate_ref": None,
                     }
                 ],
@@ -193,6 +213,21 @@ class _ComponentInferencePort:
                 "excluded_segment_ids": [],
             }
         if prompt_id == "retrieval.assess_sufficiency":
+            if self.retrieval_needs_more:
+                return {
+                    "schema_version": 2,
+                    "status": "NEEDS_MORE_DATA",
+                    "issues": [
+                        {
+                            "slot": "approved_budget",
+                            "issue_type": "MISSING",
+                            "required": True,
+                            "resolution_source": "GOOGLE",
+                            "safety_critical": False,
+                            "reason_codes": ["APPROVED_BUDGET_NOT_FOUND"],
+                        }
+                    ],
+                }
             return {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
         if prompt_id == "work_analysis.extract_work_facts":
             return {
@@ -486,6 +521,38 @@ def test_retrieval__compiled_normal_path__materializes_evidence() -> None:
     assert connector.call_count == 1
     assert ("assess_sufficiency", "plan_query") in _edge_set(graph)
     assert ("finalize", "finalize") in _edge_set(graph)
+
+
+def test_retrieval__exhausted_local_followups__return_partial_instead_of_leaking() -> None:
+    state = _state(initial_target="context_retriever")
+    state["request_intent"] = cast(Any, _intent())
+    state["tool_route_plan"] = cast(Any, _answer_route_plan(with_input_route=True))
+    llm = _ComponentInferencePort(retrieval_needs_more=True)
+    connector = _ComponentConnectorReadPort()
+    graph = RetrievalSubgraph(
+        llm_runtime=llm,
+        prompt_manifest_path=None,
+        prompt_execution_scope=DEVELOPMENT_SMOKE,
+        id_factory=_IdFactory(),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        transition_run=lambda _run_id, _transition: None,
+        merge_decision=cast(Any, _merge_decision),
+        evidence_store=RunScopedEvidenceStore(),
+        connector_reader=connector,
+        tool_catalog=load_development_tool_registry(),
+        read_result_cache=InMemoryRunRetrievalCache(),
+        confirm_inline=cast(Any, _confirm_early),
+    ).build()
+
+    with provider_dispatch_execution_scope():
+        result = graph.invoke(state)
+
+    assert result["retrieval_result"]["coverage"] == "PARTIAL"
+    assert result["retrieval_result"]["retrieval_rounds"] == 3
+    assert result["retry_budget"]["additional_retrieval_rounds_used"] == 2
+    assert result["__target__"] == "SOLUTION_PLANNING"
+    assert connector.call_count == 3
+    assert llm.calls.count("retrieval.assess_sufficiency") == 3
 
 
 def test_work_analysis__compiled_normal_path__produces_analysis() -> None:

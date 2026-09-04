@@ -56,6 +56,74 @@ def test_v2_output__schema_accepts__v2_root_shape() -> None:
     assert errors == []
 
 
+def test_v2_output__schema_rejects_empty_initial_constraints() -> None:
+    candidate = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "SEARCH",
+                "reason_codes": ["MISSING"],
+                "search_spec": {"mode": "INITIAL", "constraints": []},
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["invoice"],
+        "retrieval_order": ["route-1"],
+    }
+
+    assert validate_output_schema(
+        candidate, RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA.json_schema
+    )
+
+
+def test_followup_runtime_schema__requires_a_non_empty_changed_search() -> None:
+    schema = bind_retrieval_query_plan_output_schema(
+        route_ids=["route-1"],
+        supported_constraint_kinds={"route-1": ["KEYWORD"]},
+        is_followup=True,
+    )
+    candidate = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "SEARCH",
+                "reason_codes": ["MISSING"],
+                "search_spec": {
+                    "mode": "CHANGED",
+                    "constraint_delta": {
+                        "upsert_constraints": [
+                            {"kind": "KEYWORD", "terms": ["invoice"], "match_mode": "ANY"}
+                        ],
+                        "remove_constraint_kinds": [],
+                    },
+                },
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["invoice"],
+        "retrieval_order": ["route-1"],
+    }
+
+    assert validate_output_schema(candidate, schema.json_schema) == []
+    candidate["route_queries"][0]["search_spec"] = {
+        "mode": "INITIAL",
+        "constraints": [
+            {"kind": "KEYWORD", "terms": ["invoice"], "match_mode": "ANY"}
+        ],
+    }
+    assert validate_output_schema(candidate, schema.json_schema)
+    candidate["route_queries"][0]["search_spec"] = {
+        "mode": "CHANGED",
+        "constraint_delta": {
+            "upsert_constraints": [],
+            "remove_constraint_kinds": [],
+        },
+    }
+    assert validate_output_schema(candidate, schema.json_schema)
+
+
 def test_constraint_union__rejects_extra_fields__for_declared_kind() -> None:
     errors = validate_output_schema(
         {

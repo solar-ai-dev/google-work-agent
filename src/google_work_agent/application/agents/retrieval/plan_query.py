@@ -13,6 +13,9 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2,
 )
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import (
+    QueryAttemptV1,
+)
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     RetrievalConstraintKindV1,
     RetrievalQueryPlanV2,
@@ -27,6 +30,7 @@ from google_work_agent.application.agents.tool_routing.bind_registry_candidates 
 )
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
     build_failure_record_v1,
@@ -379,6 +383,7 @@ def plan_query(
     planner_input = _project_route_constraint_policies(
         prompt_input, route_policies, supported_kinds=supported_kinds
     )
+    is_followup = "current_round_no" in prompt_input
     bounded_output_schema = bind_retrieval_query_plan_output_schema(
         base_schema=output_schema,
         route_ids=supported_kinds,
@@ -386,6 +391,7 @@ def plan_query(
         validated_resource_refs=validated_resource_refs,
         validated_container_refs=validated_container_refs,
         detail_candidate_refs=detail_candidate_refs,
+        is_followup=is_followup,
     )
     deterministic_plan = deterministic_initial_query_plan(
         prompt_input=prompt_input,
@@ -430,7 +436,7 @@ def plan_query(
         return (
             _validate_query_plan_round(
                 validated,
-                is_followup="current_round_no" in prompt_input,
+                is_followup=is_followup,
             ),
             retry_budget,
             True,
@@ -452,7 +458,7 @@ def plan_query(
             affected_field_paths=error.affected_field_paths,
             failure_detail=str(error),
             retry_budget=retry_budget,
-            is_followup="current_round_no" in prompt_input,
+            is_followup=is_followup,
         )
     return revised_plan, revised_budget, True
 
@@ -471,6 +477,17 @@ def _validate_query_plan_round(
             reason_code="QUERY_OPERATION_FIELD_MISMATCH",
             affected_field_paths=("$.route_queries[].operation",),
         )
+    expected_mode = "CHANGED" if is_followup else "INITIAL"
+    for query in plan["route_queries"]:
+        if query["operation"] not in {"SEARCH", "FREEBUSY"}:
+            continue
+        search_spec = query["search_spec"]
+        if search_spec is None or search_spec["mode"] != expected_mode:
+            raise RetrievalV2ValidationError(
+                f"{'follow-up' if is_followup else 'initial'} search must use {expected_mode}",
+                reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+                affected_field_paths=("$.route_queries[].search_spec.mode",),
+            )
     return plan
 
 
@@ -704,6 +721,40 @@ class RetrievalBudget:
 
 
 DEFAULT_RETRIEVAL_BUDGET = RetrievalBudget()
+
+_FOLLOWUP_SEARCH_TOOLS = frozenset(
+    {
+        "gmail_search_threads",
+        "tasks_list_tasks",
+        "calendar_list_events",
+        "calendar_query_freebusy",
+    }
+)
+
+
+def has_retrieval_followup_path(
+    *,
+    tool_route_plan: ToolRoutePlanV2,
+    read_result_summaries: Sequence[Mapping[str, object]],
+    query_attempts: Sequence[QueryAttemptV1],
+) -> bool:
+    """Return whether the frozen route can produce information not read yet."""
+
+    if any(
+        summary.get("has_next_page") is True and summary.get("exhausted") is not True
+        for summary in read_result_summaries
+    ):
+        return True
+    search_route_ids = {
+        route["route_id"]
+        for route in tool_route_plan["input_plan"]["input_routes"]
+        if _FOLLOWUP_SEARCH_TOOLS.intersection(route["allowed_read_tool_ids"])
+    }
+    return any(
+        attempt["route_id"] in search_route_ids
+        and attempt["operation_kind"] in {"SEARCH", "FREEBUSY"}
+        for attempt in query_attempts
+    )
 
 
 def initial_retrieval_planner_input(

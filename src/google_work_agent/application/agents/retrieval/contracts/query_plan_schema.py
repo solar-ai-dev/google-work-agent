@@ -133,7 +133,7 @@ _INITIAL_SEARCH_SPEC = {
     "required": ["mode", "constraints"],
     "properties": {
         "mode": {"const": "INITIAL"},
-        "constraints": {"type": "array", "items": _CONSTRAINT_SCHEMA},
+        "constraints": {"type": "array", "minItems": 1, "items": _CONSTRAINT_SCHEMA},
     },
 }
 _CHANGED_SEARCH_SPEC = {
@@ -146,6 +146,23 @@ _CHANGED_SEARCH_SPEC = {
             "type": "object",
             "additionalProperties": False,
             "required": ["upsert_constraints", "remove_constraint_kinds"],
+            "oneOf": [
+                {
+                    "type": "object",
+                    "required": ["upsert_constraints"],
+                    "properties": {
+                        "upsert_constraints": {"type": "array", "minItems": 1}
+                    },
+                },
+                {
+                    "type": "object",
+                    "required": ["upsert_constraints", "remove_constraint_kinds"],
+                    "properties": {
+                        "upsert_constraints": {"type": "array", "maxItems": 0},
+                        "remove_constraint_kinds": {"type": "array", "minItems": 1},
+                    }
+                },
+            ],
             "properties": {
                 "upsert_constraints": {"type": "array", "items": _CONSTRAINT_SCHEMA},
                 "remove_constraint_kinds": {
@@ -242,6 +259,7 @@ def bind_retrieval_query_plan_output_schema(
     validated_resource_refs: Mapping[str, Collection[str]] | None = None,
     validated_container_refs: Mapping[str, Collection[str]] | None = None,
     detail_candidate_refs: Collection[str] = (),
+    is_followup: bool = False,
 ) -> OutputSchemaDefinition:
     """Bind planner-generated identities to values validated in the current state."""
 
@@ -265,7 +283,10 @@ def bind_retrieval_query_plan_output_schema(
             "type": "string",
             "enum": allowed_route_ids,
         }
-        if cast(dict[str, object], operation_properties["operation"])["const"] == "DETAIL_FETCH":
+        operation = cast(dict[str, object], operation_properties["operation"])["const"]
+        if is_followup and operation in {"SEARCH", "FREEBUSY"}:
+            operation_properties["search_spec"] = deepcopy(_CHANGED_SEARCH_SPEC)
+        if operation == "DETAIL_FETCH":
             candidates = sorted(set(detail_candidate_refs))
             if candidates:
                 operation_properties["detail_candidate_ref"] = {

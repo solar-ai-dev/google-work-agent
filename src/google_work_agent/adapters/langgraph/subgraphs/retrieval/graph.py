@@ -84,6 +84,9 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestIntentV2,
     StateArtifactRefV1,
 )
+from google_work_agent.application.agents.retrieval.assess_sufficiency import (
+    authorize_retrieval_followup,
+)
 from google_work_agent.application.agents.retrieval.build_query import (
     RouteConstraintPolicy,
     build_query_attempt,
@@ -111,6 +114,7 @@ from google_work_agent.application.agents.retrieval.plan_query import (
     DEFAULT_RETRIEVAL_BUDGET,
     deterministic_initial_query_plan,
     followup_retrieval_planner_input,
+    has_retrieval_followup_path,
     initial_retrieval_planner_input,
 )
 from google_work_agent.application.agents.retrieval.resolve_availability import (
@@ -756,6 +760,22 @@ class RetrievalSubgraph:
         sufficiency_result, llm_provider_result, retry_budget = self._run_sufficiency_attempt(
             state, confirmation_response=None
         )
+        tool_route_plan = _require_state_value(
+            state["tool_route_plan"], "tool_route_plan"
+        )
+        sufficiency_result, retry_budget, should_plan_followup = authorize_retrieval_followup(
+            sufficiency_result,
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            retry_budget=retry_budget,
+            evidence_supported_partial_possible=bool(state["evidence_drafts"]),
+            can_acquire_new_information=has_retrieval_followup_path(
+                tool_route_plan=tool_route_plan,
+                read_result_summaries=self._bounded_read_result_summaries(state),
+                query_attempts=cast(
+                    list[QueryAttemptV1], state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])
+                ),
+            ),
+        )
         updated_local = dict(local_state)
         updated_local["node_state"] = "SUFFICIENCY_COMPLETE"
         updated_local["typed_result"] = cast(dict[str, object], sufficiency_result)
@@ -779,7 +799,7 @@ class RetrievalSubgraph:
                 llm_call_increment=1,
             ),
         }
-        if sufficiency_result["status"] == "NEEDS_MORE_DATA":
+        if should_plan_followup:
             next_state[CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY] = followup_planner_projection(
                 current_round_no=state[CONTEXT_CURRENT_ROUND_NO_KEY],
                 prior_query_attempts=list(state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])),

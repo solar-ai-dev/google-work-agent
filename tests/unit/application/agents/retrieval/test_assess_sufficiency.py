@@ -15,6 +15,7 @@ from tests.support.context_retrieval import (
 
 from google_work_agent.application.agents.retrieval.assess_sufficiency import (
     assess_sufficiency,
+    authorize_retrieval_followup,
 )
 
 
@@ -51,6 +52,48 @@ def test_assess_sufficiency__emits_a__typed_bounded_disposition() -> None:
         "source_statuses",
         "budget_state",
     }
+
+
+def test_retrieval_followup__charges_one_additional_round_before_reentry() -> None:
+    result, budget, should_retrieve_more = authorize_retrieval_followup(
+        _sufficiency_output("NEEDS_MORE_DATA"),
+        request_intent=_intent(),
+        retry_budget=_run_budget(used=0),
+        evidence_supported_partial_possible=True,
+        can_acquire_new_information=True,
+    )
+
+    assert result["status"] == "NEEDS_MORE_DATA"
+    assert budget["additional_retrieval_rounds_used"] == 1
+    assert should_retrieve_more is True
+
+
+def test_retrieval_followup__normalizes_exhausted_read_with_evidence_to_partial() -> None:
+    result, budget, should_retrieve_more = authorize_retrieval_followup(
+        _sufficiency_output("NEEDS_MORE_DATA"),
+        request_intent=_intent(),
+        retry_budget=_run_budget(used=2),
+        evidence_supported_partial_possible=True,
+        can_acquire_new_information=True,
+    )
+
+    assert result["status"] == "PARTIAL"
+    assert budget["additional_retrieval_rounds_used"] == 2
+    assert should_retrieve_more is False
+
+
+def test_retrieval_followup__closes_selected_direct_read_without_new_path() -> None:
+    result, budget, should_retrieve_more = authorize_retrieval_followup(
+        _sufficiency_output("NEEDS_MORE_DATA"),
+        request_intent=_intent(),
+        retry_budget=_run_budget(used=0),
+        evidence_supported_partial_possible=True,
+        can_acquire_new_information=False,
+    )
+
+    assert result["status"] == "PARTIAL"
+    assert budget["additional_retrieval_rounds_used"] == 0
+    assert should_retrieve_more is False
 
 
 def test_assess_sufficiency__complete_selected_gmail_read__skips_llm() -> None:

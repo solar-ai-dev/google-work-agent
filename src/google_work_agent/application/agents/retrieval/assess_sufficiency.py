@@ -35,7 +35,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     MAX_ADDITIONAL_ACQUISITIONS,
+    BudgetDecision,
     RunBudgetV2,
+    approve_additional_acquisition,
 )
 from google_work_agent.ports.llm.structured_inference_contracts import (
     OutputSchemaDefinition,
@@ -579,6 +581,54 @@ def enforce_sufficiency_guard(
         "status": authoritative_status,
         "issues": sufficiency_result["issues"],
     }
+
+
+def authorize_retrieval_followup(
+    sufficiency_result: SufficiencyResultV2,
+    *,
+    request_intent: RequestIntentV2,
+    retry_budget: RunBudgetV2,
+    evidence_supported_partial_possible: bool,
+    can_acquire_new_information: bool,
+) -> tuple[SufficiencyResultV2, RunBudgetV2, bool]:
+    """Charge one owner-local follow-up or normalize an exhausted result.
+
+    ``NEEDS_MORE_DATA`` is not a Parent-facing disposition.  The Retrieval
+    owner consumes the same durable Run budget used by cross-owner back-edges
+    before it schedules another read.  If no slot remains, the existing
+    sufficiency guard deterministically closes the result as PARTIAL/BLOCKED
+    (or another non-loop disposition) instead of leaking it to Main.
+    """
+
+    if sufficiency_result["status"] != "NEEDS_MORE_DATA":
+        return sufficiency_result, retry_budget, False
+    if not can_acquire_new_information:
+        read_only = all(
+            effect == "READ" for effect in request_intent["requested_effect_hints"]
+        )
+        return (
+            {
+                "schema_version": 2,
+                "status": (
+                    "PARTIAL"
+                    if read_only and evidence_supported_partial_possible
+                    else "BLOCKED"
+                ),
+                "issues": sufficiency_result["issues"],
+            },
+            retry_budget,
+            False,
+        )
+    authorization = approve_additional_acquisition(retry_budget)
+    if authorization["decision"] == BudgetDecision.ALLOW.value:
+        return sufficiency_result, authorization["run_budget"], True
+    normalized = enforce_sufficiency_guard(
+        sufficiency_result,
+        request_intent=request_intent,
+        retry_budget=authorization["run_budget"],
+        evidence_supported_partial_possible=evidence_supported_partial_possible,
+    )
+    return normalized, authorization["run_budget"], False
 
 
 def _issue_description(issue: SufficiencyIssueV2) -> str:

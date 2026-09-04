@@ -5,18 +5,97 @@ import pytest
 from tests.support.fakes.llm import FakeStructuredInferencePort
 
 from google_work_agent.application.agents.retrieval.build_query import RouteConstraintPolicy
+from google_work_agent.application.agents.retrieval.contracts.query_attempt import (
+    QueryAttemptV1,
+)
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     RetrievalV2ValidationError,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
     RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
 )
-from google_work_agent.application.agents.retrieval.plan_query import plan_query
+from google_work_agent.application.agents.retrieval.plan_query import (
+    has_retrieval_followup_path,
+    plan_query,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
+    ToolRoutePlanV2,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
+
+
+def _tool_route_plan(*, allowed_read_tool_ids: list[str]) -> ToolRoutePlanV2:
+    return cast(
+        ToolRoutePlanV2,
+        {
+            "schema_version": 2,
+            "input_plan": {
+                "schema_version": 1,
+                "meta": {},
+                "input_routes": [
+                    {
+                        "route_id": "route-1",
+                        "resource_type": "GMAIL_THREAD",
+                        "connector_id": "google_workspace",
+                        "allowed_read_tool_ids": allowed_read_tool_ids,
+                        "required": True,
+                        "reason_codes": ["USER_REQUEST"],
+                    }
+                ],
+            },
+            "output_plan": {
+                "schema_version": 1,
+                "meta": {},
+                "output_mode": "ANSWER",
+            },
+            "tool_registry_version": "test",
+        },
+    )
+
+
+def test_retrieval_followup_path__rejects_exhausted_direct_selected_read() -> None:
+    assert not has_retrieval_followup_path(
+        tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
+        read_result_summaries=[],
+        query_attempts=[],
+    )
+
+
+def test_retrieval_followup_path__allows_search_or_unread_page() -> None:
+    assert has_retrieval_followup_path(
+        tool_route_plan=_tool_route_plan(
+            allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
+        ),
+        read_result_summaries=[],
+        query_attempts=[
+            cast(
+                QueryAttemptV1,
+                {"route_id": "route-1", "operation_kind": "SEARCH"},
+            )
+        ],
+    )
+    assert has_retrieval_followup_path(
+        tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
+        read_result_summaries=[{"has_next_page": True, "exhausted": False}],
+        query_attempts=[],
+    )
+
+
+def test_retrieval_followup_path__does_not_expand_selected_detail_into_search() -> None:
+    assert not has_retrieval_followup_path(
+        tool_route_plan=_tool_route_plan(
+            allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
+        ),
+        read_result_summaries=[],
+        query_attempts=[
+            cast(
+                QueryAttemptV1,
+                {"route_id": "route-1", "operation_kind": "DETAIL_FETCH"},
+            )
+        ],
+    )
 
 
 def test_plan_query_is__the_only_product_prompt__owner_in_retrieval_core() -> None:

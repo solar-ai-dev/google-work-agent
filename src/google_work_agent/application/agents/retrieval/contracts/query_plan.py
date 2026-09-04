@@ -343,6 +343,8 @@ def validate_search_spec_v1(
             raise RetrievalV2ValidationError("constraint_delta removes an unsupported kind")
         if {constraint["kind"] for constraint in upserts}.intersection(removals):
             raise RetrievalV2ValidationError("constraint_delta upserts and removes the same kind")
+        if not upserts and not removals:
+            raise RetrievalV2ValidationError("constraint_delta must change at least one constraint")
         return {
             "mode": "CHANGED",
             "constraint_delta": {
