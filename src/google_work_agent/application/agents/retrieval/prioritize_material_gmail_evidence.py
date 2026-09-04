@@ -36,17 +36,21 @@ _SYSTEM_NOTIFICATION_MARKERS = (
     "new feature",
 )
 _MESSAGE_DETAIL_MARKERS = ("from:", "to:", "date:", "subject:")
-_DECISION_DETAIL_MARKERS = (
+_EXPLICIT_DECISION_MARKERS = (
     "결정",
     "확정",
     "다음 할 일",
     "action item",
     "decision",
+)
+_STATUS_UPDATE_MARKERS = (
     "status:",
     "상태:",
     "상태 :",
 )
+_DECISION_DETAIL_MARKERS = (*_EXPLICIT_DECISION_MARKERS, *_STATUS_UPDATE_MARKERS)
 _STRUCTURED_WORK_DETAIL_MARKERS = ("담당자", "기한:", "우선 순위", "참석자:", "일시:")
+_MAX_PROMOTED_SEGMENTS_PER_RESOURCE = 3
 _LINEAGE_PATTERN = re.compile(r"(?<![A-Z0-9])[A-Z][A-Z0-9]+-\d+(?![A-Z0-9])", re.IGNORECASE)
 
 
@@ -150,7 +154,7 @@ def _representative_segment_ids_by_resource(
     by_id: dict[str, SourceSegment],
     required_lineage_keys: frozenset[str],
 ) -> list[str]:
-    """Keep one strong segment per matching thread so one long body cannot hide its peers."""
+    """Keep each matching thread plus its bounded explicit decision excerpts."""
 
     resource_lineage_keys: dict[str, set[str]] = {}
     for _, _, candidate in ranked:
@@ -160,15 +164,35 @@ def _representative_segment_ids_by_resource(
 
     result: list[str] = []
     seen_resources: set[str] = set()
+    matching_resources = {
+        resource_ref
+        for resource_ref, lineage_keys in resource_lineage_keys.items()
+        if required_lineage_keys.intersection(lineage_keys)
+    }
     for score, _, candidate in ranked:
         if score <= 0 or candidate["resource_ref"] in seen_resources:
             continue
-        if not required_lineage_keys.intersection(
-            resource_lineage_keys.get(candidate["resource_ref"], set())
-        ):
+        if candidate["resource_ref"] not in matching_resources:
             continue
         seen_resources.add(candidate["resource_ref"])
         result.append(candidate["segment_id"])
+
+    promoted_per_resource = {resource_ref: 1 for resource_ref in seen_resources}
+    selected_ids = set(result)
+    for score, _, candidate in ranked:
+        resource_ref = candidate["resource_ref"]
+        if (
+            score <= 0
+            or resource_ref not in matching_resources
+            or candidate["segment_id"] in selected_ids
+            or promoted_per_resource.get(resource_ref, 0)
+            >= _MAX_PROMOTED_SEGMENTS_PER_RESOURCE
+            or not _contains_explicit_decision(by_id[candidate["segment_id"]].text)
+        ):
+            continue
+        result.append(candidate["segment_id"])
+        selected_ids.add(candidate["segment_id"])
+        promoted_per_resource[resource_ref] = promoted_per_resource.get(resource_ref, 0) + 1
     return result
 
 
@@ -207,6 +231,11 @@ def _materiality_score(text: str, *, requested_lineage_keys: Collection[str] = (
 
 def _lineage_keys(text: str) -> frozenset[str]:
     return frozenset(match.group(0).upper() for match in _LINEAGE_PATTERN.finditer(text))
+
+
+def _contains_explicit_decision(text: str) -> bool:
+    normalized = text.casefold()
+    return any(marker in normalized for marker in _EXPLICIT_DECISION_MARKERS)
 
 
 def _stable_unique(values: Collection[str]) -> list[str]:
