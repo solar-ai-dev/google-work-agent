@@ -51,9 +51,17 @@ def prioritize_material_gmail_evidence(
     if not _requires_vague_gmail_analysis(request_intent):
         return selection
     by_id = {segment.segment_id: segment for segment in segments}
+    requested_lineage_keys = _requested_lineage_keys(request_intent)
     ranked = sorted(
         (
-            (_materiality_score(by_id[candidate["segment_id"]].text), index, candidate)
+            (
+                _materiality_score(
+                    by_id[candidate["segment_id"]].text,
+                    requested_lineage_keys=requested_lineage_keys,
+                ),
+                index,
+                candidate,
+            )
             for index, candidate in enumerate(rag_candidates)
             if candidate["segment_id"] in by_id
             and candidate["resource_ref"].startswith("gmail_thread:")
@@ -63,17 +71,26 @@ def prioritize_material_gmail_evidence(
     if not ranked or ranked[0][0] <= 0:
         return selection
 
-    primary = ranked[0][2]
-    primary_segment = by_id[primary["segment_id"]]
-    lineage_keys = _lineage_keys(primary_segment.text)
-    promoted_ids = [primary["segment_id"]]
-    if lineage_keys:
-        promoted_ids.extend(
-            candidate["segment_id"]
-            for score, _, candidate in ranked[1:]
-            if score > 0
-            and lineage_keys.intersection(_lineage_keys(by_id[candidate["segment_id"]].text))
+    if requested_lineage_keys:
+        promoted_ids = _representative_segment_ids_by_resource(
+            ranked,
+            by_id=by_id,
+            required_lineage_keys=requested_lineage_keys,
         )
+    else:
+        primary = ranked[0][2]
+        primary_segment = by_id[primary["segment_id"]]
+        lineage_keys = _lineage_keys(primary_segment.text)
+        promoted_ids = [primary["segment_id"]]
+        if lineage_keys:
+            promoted_ids.extend(
+                candidate["segment_id"]
+                for score, _, candidate in ranked[1:]
+                if score > 0
+                and lineage_keys.intersection(_lineage_keys(by_id[candidate["segment_id"]].text))
+            )
+    if not promoted_ids:
+        return selection
     promoted_ids = _stable_unique(promoted_ids)[:max_evidence]
 
     selected = _stable_unique([*promoted_ids, *selection["selected_segment_ids"]])[:max_evidence]
@@ -115,9 +132,45 @@ def _requires_vague_gmail_analysis(request_intent: RequestIntentV2) -> bool:
     )
 
 
-def _materiality_score(text: str) -> int:
+def _representative_segment_ids_by_resource(
+    ranked: list[tuple[int, int, RagCandidateV1]],
+    *,
+    by_id: dict[str, SourceSegment],
+    required_lineage_keys: frozenset[str],
+) -> list[str]:
+    """Keep one strong segment per matching thread so one long body cannot hide its peers."""
+
+    result: list[str] = []
+    seen_resources: set[str] = set()
+    for score, _, candidate in ranked:
+        if score <= 0 or candidate["resource_ref"] in seen_resources:
+            continue
+        segment = by_id[candidate["segment_id"]]
+        if not required_lineage_keys.intersection(_lineage_keys(segment.text)):
+            continue
+        seen_resources.add(candidate["resource_ref"])
+        result.append(candidate["segment_id"])
+    return result
+
+
+def _requested_lineage_keys(request_intent: RequestIntentV2) -> frozenset[str]:
+    values: list[str] = []
+    for constraint in request_intent["constraints"]:
+        if (
+            constraint["kind"] != "USER_REQUIREMENT"
+            or constraint["field"] not in {"original_search_request", "search_terms"}
+        ):
+            continue
+        value = constraint["value"]
+        values.extend(value if isinstance(value, list) else [value])
+    return _lineage_keys(" ".join(str(value) for value in values))
+
+
+def _materiality_score(text: str, *, requested_lineage_keys: Collection[str] = ()) -> int:
     normalized = text.casefold()
     score = 0
+    if set(requested_lineage_keys).intersection(_lineage_keys(text)):
+        score += 10
     if any(marker in normalized for marker in _CONTENT_RECORD_MARKERS):
         score += 5
     if any(marker in normalized for marker in _WORK_TRACKING_MARKERS):

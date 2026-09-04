@@ -139,7 +139,16 @@ def select_evidence(
         )
         decision = approve_semantic_revision(retry_budget, signature=signature)
         if decision["decision"] == BudgetDecision.DENY.value:
-            return _empty_selection(obligations), decision["run_budget"]
+            return (
+                _material_fallback_selection(
+                    request_intent=request_intent,
+                    eligible_candidates=eligible_candidates,
+                    segments=segments,
+                    obligations=obligations,
+                    context_budget=context_budget,
+                ),
+                decision["run_budget"],
+            )
         revision = llm_runtime.infer(
             requested_mode,
             revision_prompt_ref,
@@ -186,7 +195,36 @@ def select_evidence(
                 decision["run_budget"],
             )
         except ValueError:
-            return _empty_selection(obligations), decision["run_budget"]
+            return (
+                _material_fallback_selection(
+                    request_intent=request_intent,
+                    eligible_candidates=eligible_candidates,
+                    segments=segments,
+                    obligations=obligations,
+                    context_budget=context_budget,
+                ),
+                decision["run_budget"],
+            )
+
+
+def _material_fallback_selection(
+    *,
+    request_intent: RequestIntentV2,
+    eligible_candidates: list[RagCandidateV1],
+    segments: list[SourceSegment],
+    obligations: Collection[str],
+    context_budget: ContextBudget,
+) -> EvidenceSelectionResultV2:
+    return _apply_exclusions(
+        prioritize_material_gmail_evidence(
+            _empty_selection(),
+            request_intent=request_intent,
+            rag_candidates=eligible_candidates,
+            segments=segments,
+            max_evidence=context_budget.max_evidence,
+        ),
+        obligations,
+    )
 
 
 def _exact_selected_read_selection(

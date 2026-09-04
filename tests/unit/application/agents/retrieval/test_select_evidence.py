@@ -280,3 +280,94 @@ def test_select_evidence__promotes_meeting_record_over_notification_for_detail_r
         "role": "SUPPORTS",
         "relevance_reason": "CONTENT_BEARING_WORK_RECORD",
     }
+
+
+def test_select_evidence__preserves_one_candidate_per_explicit_work_lineage() -> None:
+    empty_selection = {
+        "schema_version": 2,
+        "evidence_drafts": [],
+        "selected_segment_ids": [],
+        "excluded_segment_ids": [],
+    }
+    runtime = FakeLLMRuntime(
+        deque([_llm_result(empty_selection), _llm_result(empty_selection)])
+    )
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    intent["constraints"] = [
+        {
+            "kind": "USER_REQUIREMENT",
+            "field": "original_search_request",
+            "value": ["KAN-93 관련 메일이 여러 개일 때 최신 결정이 무엇인지 알려줘."],
+        },
+        {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": ["KAN-93"]},
+    ]
+    segments = [
+        SourceSegment(
+            "first-body-1",
+            "gmail_thread:first",
+            "GMAIL",
+            "gmail_thread",
+            "first",
+            None,
+            None,
+            {},
+            "KAN-93 첫 번째 스레드의 상세 본문 1",
+        ),
+        SourceSegment(
+            "first-body-2",
+            "gmail_thread:first",
+            "GMAIL",
+            "gmail_thread",
+            "first",
+            None,
+            None,
+            {},
+            "KAN-93 첫 번째 스레드의 상세 본문 2",
+        ),
+        SourceSegment(
+            "second-metadata",
+            "gmail_thread:second",
+            "GMAIL",
+            "gmail_thread",
+            "second",
+            None,
+            None,
+            {},
+            "[Jira] (KAN-93) 후속 회의록",
+        ),
+    ]
+    candidates: list[RagCandidateV1] = [
+        {
+            "segment_id": segment.segment_id,
+            "resource_ref": segment.resource_handle,
+            "retrieval_score": 10.0 - index,
+            "reason_codes": ["KEYWORD_MATCH"],
+        }
+        for index, segment in enumerate(segments)
+    ]
+
+    result, _ = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=candidates,
+        segments=segments,
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["selected_segment_ids"] == ["second-metadata", "first-body-1"]
+    assert len(
+        {
+            next(
+                segment.resource_handle
+                for segment in segments
+                if segment.segment_id == segment_id
+            )
+            for segment_id in result["selected_segment_ids"]
+        }
+    ) == 2
