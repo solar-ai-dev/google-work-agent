@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from google_work_agent.adapters.langgraph.corrective_plan_reachability import (
@@ -14,7 +14,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
     SupervisorDecisionV1,
     SupervisorTarget,
 )
@@ -93,10 +93,7 @@ class ArtifactFreshnessMixin:
         update: GraphStateUpdateV1,
         decision: SupervisorDecisionV1,
     ) -> GraphState:
-        merged = cast(_ArtifactFreshnessSuper, super())._merge_decision(state, update, decision)
-        if _is_route_reconsideration_to_tool_route(merged):
-            merged["retrieval_result"] = None
-        return merged
+        return cast(_ArtifactFreshnessSuper, super())._merge_decision(state, update, decision)
 
     def resume(self, request: WorkflowResumeRequest) -> WorkflowInvocationResult:
         """Resume registered application continuations or ordinary workflow pauses."""
@@ -360,13 +357,6 @@ class ArtifactFreshnessMixin:
         self._evidence_store.discard_run(run_id=run_id)
         self._read_result_cache.discard_run(run_id=run_id)
         self._llm_runtime.discard_run(run_id=run_id)
-
-
-def _is_route_reconsideration_to_tool_route(state: GraphState) -> bool:
-    if state.get("__logical_target__") != SupervisorTarget.TOOL_ROUTE.value:
-        return False
-    signal = state.get("workflow_signal")
-    return isinstance(signal, Mapping) and signal.get("kind") == "ROUTE_RECONSIDERATION_REQUIRED"
 
 
 __all__ = ["ArtifactFreshnessMixin"]

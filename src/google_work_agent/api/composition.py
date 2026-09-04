@@ -370,6 +370,9 @@ from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetExecutionContextQuery,
     GetRunSnapshotHandler,
 )
+from google_work_agent.application.use_cases.run.get_supervisor_observation import (
+    GetSupervisorObservationHandler,
+)
 from google_work_agent.application.use_cases.run.project_context_preview import (
     ProjectContextPreviewHandler,
 )
@@ -586,6 +589,7 @@ def _build_workflow_application_services(
     *,
     unit_of_work_factory: Callable[[], UnitOfWork],
     get_run_snapshot: GetRunSnapshotHandler,
+    get_supervisor_observation: GetSupervisorObservationHandler,
     connector_reader: ConnectorReadProjection,
     tool_catalog: SignedToolRegistry,
     now_ms: Callable[[], int],
@@ -737,6 +741,7 @@ def _build_workflow_application_services(
     return WorkflowApplicationServices(
         start_analysis=start_analysis,
         get_run_snapshot=get_run_snapshot,
+        get_supervisor_observation=get_supervisor_observation,
         build_terminal_message=build_terminal_message,
         emit_terminal_trace=emit_terminal_trace,
         project_terminal_event=project_terminal_event,
@@ -2415,6 +2420,9 @@ def build_production_runtime(
         ),
         tool_registry=connector_bundle.tool_registry,
     )
+    get_supervisor_observation_handler = GetSupervisorObservationHandler(
+        read_unit_of_work_factory
+    )
 
     def work_hours_provider() -> CalendarWorkHours:
         settings = settings_service.get_settings()
@@ -2429,6 +2437,7 @@ def build_production_runtime(
     workflow_application_services = _build_workflow_application_services(
         unit_of_work_factory=unit_of_work_factory,
         get_run_snapshot=get_run_snapshot_handler,
+        get_supervisor_observation=get_supervisor_observation_handler,
         connector_reader=read_projection,
         tool_catalog=connector_bundle.tool_registry,
         now_ms=clock.now_ms,

@@ -56,7 +56,13 @@ def test_initialize_node__calls_application_handler__and_persists_run_transition
     result = initialize_node(
         {"run_id": "run-1"},
         start_analysis=start_analysis,
-        request_node="request_understanding",
+        project_decision=lambda state, update, decision: {
+            **state,
+            **update,
+            **decision["state_update"],
+            "__logical_target__": "request_understanding",
+            "__target__": "request_understanding",
+        },
     )
 
     assert result == {

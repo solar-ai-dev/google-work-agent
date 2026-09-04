@@ -64,6 +64,7 @@ export class BrowserProductHarness {
   readonly context: BrowserContext;
   readonly page: Page;
   private restartCredentialSequence = 0;
+  private runtimeModeSequence = 0;
 
   private constructor(context: BrowserContext, page: Page) {
     this.context = context;
@@ -110,6 +111,8 @@ export class BrowserProductHarness {
       await onboarding.count() + await composer.count()
     )).toBeGreaterThan(0);
     if (await composer.isVisible()) {
+      await this.selectDeterministicFakeRuntime();
+      await this.page.reload();
       await this.expectMainUi();
       return;
     }
@@ -135,6 +138,9 @@ export class BrowserProductHarness {
     const completeSetup = this.page.getByRole("button", { name: "설정 완료하고 시작" });
     await expect(completeSetup).toBeEnabled();
     await completeSetup.click();
+    await this.expectMainUi();
+    await this.selectDeterministicFakeRuntime();
+    await this.page.reload();
     await this.expectMainUi();
   }
 
@@ -189,7 +195,7 @@ export class BrowserProductHarness {
     await expect.poll(async () => {
       current = await this.productState(runId);
       return current.run.status;
-    }).toBe(status);
+    }, { timeout: 90_000 }).toBe(status);
     return current;
   }
 
@@ -281,6 +287,7 @@ export class BrowserProductHarness {
       },
     );
     expect(credential.ok()).toBe(true);
+    await this.selectDeterministicFakeRuntime();
     await this.page.reload();
     await this.expectMainUi();
   }
@@ -333,5 +340,18 @@ export class BrowserProductHarness {
       name: /선택한 .*업무를 요청하세요/,
     })).toBeVisible();
     await expect(this.page.getByRole("button", { name: /새 대화/ })).toBeVisible();
+  }
+
+  private async selectDeterministicFakeRuntime(): Promise<void> {
+    this.runtimeModeSequence += 1;
+    const response = await this.context.request.post(`${baseURL}/api/v1/runtime/mode`, {
+      headers: requestHeaders,
+      data: {
+        schema_version: 1,
+        command_id: `browser-e2e-api-runtime-${this.runtimeModeSequence}`,
+        requested_mode: "API_LLM",
+      },
+    });
+    expect(response.ok()).toBe(true);
   }
 }

@@ -4,11 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 
 RESUME_CONTRACT_VERSION = "resume-contract-v1"
-RESPONSE_SYNTHESIS_TARGET = "RESPONSE_SYNTHESIS"
 
 
 class UnroutableSupervisorTargetError(ValueError):
@@ -34,6 +33,9 @@ class RouteTranslation:
 
 
 _COMMON_ROUTES = {
+    SupervisorTarget.DOMAIN_RECONCILE.value: RouteTranslation(
+        "domain_reconcile", "domain_reconcile"
+    ),
     SupervisorTarget.DOMAIN_VALIDATION.value: RouteTranslation(
         "domain_validation", "domain_validation"
     ),
@@ -44,7 +46,15 @@ _COMMON_ROUTES = {
     SupervisorTarget.ACTION_EXECUTION.value: RouteTranslation(
         "action_execution", "action_execution"
     ),
-    RESPONSE_SYNTHESIS_TARGET: RouteTranslation("response_synthesis", "response_synthesis"),
+    SupervisorTarget.VERIFICATION.value: RouteTranslation("verification", "verification"),
+    SupervisorTarget.CANCEL_RESOLUTION.value: RouteTranslation(
+        "cancel_resolution", "cancel_resolution"
+    ),
+    SupervisorTarget.RESPONSE_SYNTHESIS.value: RouteTranslation(
+        "response_synthesis", "response_synthesis"
+    ),
+    SupervisorTarget.WAITING_CONFIRMATION.value: RouteTranslation("end", "end"),
+    SupervisorTarget.SUSPEND.value: RouteTranslation("end", "end"),
     SupervisorTarget.REAUTH.value: RouteTranslation("end", "end"),
     SupervisorTarget.RECOVERY.value: RouteTranslation("recovery", "recovery"),
     SupervisorTarget.FINALIZE.value: RouteTranslation("response_synthesis", "response_synthesis"),
@@ -67,6 +77,9 @@ _PROFILE_TOPOLOGIES = {
 _PROFILE_ROUTES = {
     GraphProfile.SINGLE_BASELINE: {
         **_COMMON_ROUTES,
+        SupervisorTarget.REQUEST_UNDERSTANDING.value: RouteTranslation(
+            "request_understanding", "single_workflow"
+        ),
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "single_workflow"),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
@@ -90,6 +103,9 @@ _PROFILE_ROUTES = {
     },
     GraphProfile.THREE_STAGE: {
         **_COMMON_ROUTES,
+        SupervisorTarget.REQUEST_UNDERSTANDING.value: RouteTranslation(
+            "request_understanding", "stage_one"
+        ),
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "stage_one"),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"
@@ -113,6 +129,9 @@ _PROFILE_ROUTES = {
     },
     GraphProfile.SIX_ROLE_BASELINE: {
         **_COMMON_ROUTES,
+        SupervisorTarget.REQUEST_UNDERSTANDING.value: RouteTranslation(
+            "request_understanding", "request_understanding"
+        ),
         SupervisorTarget.TOOL_ROUTE.value: RouteTranslation("tool_route", "tool_route"),
         SupervisorTarget.CONTEXT_RETRIEVAL.value: RouteTranslation(
             "retrieval_entry", "retrieval_entry"

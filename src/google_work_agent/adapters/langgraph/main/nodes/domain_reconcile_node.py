@@ -3,52 +3,64 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
-from typing import Protocol
+from typing import cast
 
-
-class DurableRunFacts(Protocol):
-    status: str
-
-    @property
-    def next_allowed_commands(self) -> tuple[str, ...]: ...
-
-
-_TERMINAL_STATUSES = frozenset({"COMPLETED", "BLOCKED", "FAILED", "CANCELLED"})
+from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+    make_supervisor_decision,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_lifecycle_rules import (
+    route_durable_supervisor,
+)
+from google_work_agent.application.use_cases.run.get_supervisor_observation import (
+    SupervisorObservationV1,
+)
 
 
 def domain_reconcile_node(
     state: Mapping[str, object],
     *,
-    read_durable_run: Callable[[str], DurableRunFacts | None],
+    read_durable_facts: Callable[[str], SupervisorObservationV1],
+    project_decision: Callable[
+        [Mapping[str, object], Mapping[str, object], SupervisorDecisionV1],
+        Mapping[str, object],
+    ],
 ) -> dict[str, object]:
     """Route only from current durable status and its allowed commands."""
 
     run_id = state.get("run_id")
     if not isinstance(run_id, str) or not run_id:
         raise ValueError("run_id is required")
-    facts = read_durable_run(run_id)
-    if facts is None:
+    try:
+        facts = read_durable_facts(run_id)
+    except LookupError:
         return _suspend_patch("DOMAIN_FACTS_MISSING")
-    commands = frozenset(facts.next_allowed_commands)
-    if facts.status == "WAITING_APPROVAL":
-        return _route_patch("waiting_approval", "PREFLIGHT")
-    if facts.status == "EXECUTING":
-        return _route_patch("action_execution", "READ_EXECUTION")
-    if facts.status == "RECOVERY_REQUIRED" or "RESOLVE_RECOVERY" in commands:
-        return _route_patch("recovery", "RECOVERY")
-    if facts.status in _TERMINAL_STATUSES:
-        return _route_patch("response_synthesis", "RESPONSE_SYNTHESIS")
-    if facts.status in {"REAUTH_REQUIRED", "CANCEL_REQUESTED"}:
-        return _suspend_patch(facts.status)
-    return _suspend_patch("IN_FLIGHT")
-
-
-def _route_patch(target: str, phase: str) -> dict[str, object]:
-    return {
-        "workflow_phase": phase,
-        "__logical_target__": target,
-        "__target__": target,
-    }
+    decision = route_durable_supervisor(
+        state=cast(GraphState, state),
+        facts=facts,
+    )
+    if decision is None:
+        decision = make_supervisor_decision(
+            target=SupervisorTarget.SUSPEND,
+            next_phase=None,
+            state_update={},
+            reason_code="IN_FLIGHT",
+        )
+    projected = project_decision(
+        state,
+        {
+            "__workflow_control__": {
+                "schema_version": 1,
+                "stage": "DOMAIN_RECONCILE",
+                "reason": decision["reason_code"],
+                "run_status": facts.run_status,
+            }
+        },
+        decision,
+    )
+    return {key: value for key, value in projected.items() if state.get(key) != value}
 
 
 def _suspend_patch(reason: str) -> dict[str, object]:

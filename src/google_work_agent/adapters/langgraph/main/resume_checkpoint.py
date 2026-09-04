@@ -9,7 +9,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     WorkflowPhase,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 from google_work_agent.domain.run.model import RunStatusV1
 from google_work_agent.ports.system.contracts.workflow_binding import GraphProfileIdV1
 from google_work_agent.ports.system.contracts.workflow_execution import (

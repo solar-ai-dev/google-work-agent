@@ -28,13 +28,18 @@ def test_production_has__no_second__planning_answer_authority() -> None:
         ROOT / "src/google_work_agent/application/orchestration/planning_plan_assembler.py"
     )
     provider_path = ROOT / "src/google_work_agent/adapters/langgraph/workflow_providers.py"
-    response_source = _source("src/google_work_agent/adapters/langgraph/main/response_synthesis.py")
+    legacy_routing_path = (
+        ROOT / "src/google_work_agent/adapters/langgraph/main/response_synthesis.py"
+    )
+    supervisor_source = _source("src/google_work_agent/adapters/langgraph/main/supervisor.py")
     assert not optional_path.exists()
     assert not broad_assembler_path.exists()
     assert not provider_path.exists()
-    assert "build_production_planning_runtime" not in response_source
-    assert "CanonicalOptionalPlanningSubgraph" not in response_source
-    assert "_rebuild_six_role_graph_with_optional_subgraphs" not in response_source
+    assert not legacy_routing_path.exists()
+    assert "def route_supervisor(" in supervisor_source
+    assert "build_production_planning_runtime" not in supervisor_source
+    assert "CanonicalOptionalPlanningSubgraph" not in supervisor_source
+    assert "_rebuild_six_role_graph_with_optional_subgraphs" not in supervisor_source
 
 
 def test_review_graph__has_no_generic__semantic_binding_authority() -> None:

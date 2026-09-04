@@ -46,8 +46,13 @@ def project_assemble_work_analysis_input(
         raise ValueError("missing typed input projection for analysis.finalize")
     assessment = cast(Mapping[str, object], state["__analysis_operational_risk_assessment__"])
     based_on: list[StateArtifactRefV1] = []
-    for key in ("request_intent", "tool_route_plan", "retrieval_result"):
-        artifact = state.get(key)
+    route_plan = state.get("tool_route_plan")
+    route_artifacts = (
+        [route_plan.get("input_plan"), route_plan.get("output_plan")]
+        if isinstance(route_plan, Mapping)
+        else []
+    )
+    for artifact in [state.get("request_intent"), *route_artifacts, state.get("retrieval_result")]:
         if not isinstance(artifact, Mapping):
             continue
         meta = artifact.get("meta")

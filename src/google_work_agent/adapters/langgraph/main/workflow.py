@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Hashable, Mapping
 from copy import deepcopy
 from functools import partial
@@ -66,9 +67,6 @@ from google_work_agent.adapters.langgraph.main.plan_persistence import (
     PlanPersistenceMixin,
     _connector_id_for_evidence_handle,
 )
-from google_work_agent.adapters.langgraph.main.response_synthesis import (
-    ResponseSynthesisMixin,
-)
 from google_work_agent.adapters.langgraph.main.resume_checkpoint import (
     ResumeCheckpointMixin,
 )
@@ -87,10 +85,17 @@ from google_work_agent.adapters.langgraph.main.state import (
     initial_graph_state,
     request_from_state,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import route_supervisor
+from google_work_agent.adapters.langgraph.main.supervisor_control_adapter import (
+    lifecycle_control_decision,
+    lifecycle_state_update,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
     SupervisorDecisionV1,
     SupervisorTarget,
-    route_supervisor,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_state_projection import (
+    project_supervisor_state,
 )
 from google_work_agent.adapters.langgraph.main.validate_planning_output import (
     CurrentRunResourceIdentityV1,
@@ -230,6 +235,10 @@ from google_work_agent.application.use_cases.run.finalize_cancel import (
 from google_work_agent.application.use_cases.run.get_run_snapshot import (
     GetRunSnapshotQuery,
 )
+from google_work_agent.application.use_cases.run.get_supervisor_observation import (
+    GetSupervisorObservationQuery,
+    SupervisorObservationV1,
+)
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
     approve_planning_revision,
@@ -288,6 +297,8 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
     WorkflowStartRequest,
 )
 from google_work_agent.ports.system.sse_event_buffer_port import SseEventBufferPort
+
+LOGGER = logging.getLogger(__name__)
 
 JsonObject = dict[str, object]
 
@@ -405,6 +416,7 @@ class _WorkflowRuntimeComposition:
         services = application_services
         self._start_analysis_handler = services.start_analysis
         self._get_run_snapshot_handler = services.get_run_snapshot
+        self._get_supervisor_observation_handler = services.get_supervisor_observation
         self._build_terminal_message = services.build_terminal_message
         self._emit_terminal_trace = services.emit_terminal_trace
         self._project_terminal_event = services.project_terminal_event
@@ -629,10 +641,18 @@ class _WorkflowRuntimeComposition:
             latest_unknown_action=self._latest_unknown_action,
             recovery_node=partial(
                 recovery_node,
-                recover_from_durable_facts=self._write_recovery.recover_unknown,
+                recover_from_durable_facts=lambda state: self._supervise_lifecycle_result(
+                    state,
+                    self._write_recovery.recover_unknown(state),
+                    WorkflowPhase.RECOVERY,
+                ),
             ),
             has_executed_action=self._has_executed_action,
-            recover_executed_actions=self._write_recovery.recover_executed,
+            recover_executed_actions=lambda state, run_id: self._supervise_lifecycle_result(
+                state,
+                self._write_recovery.recover_executed(state, run_id),
+                WorkflowPhase.VERIFICATION,
+            ),
             mark_stalled_claims_as_unknown=self._mark_stalled_claims_as_unknown,
             cancel_signal_lock=self._cancel_signal_lock,
             cancel_signals=self._cancel_signals,
@@ -763,7 +783,6 @@ class _WorkflowRuntimeComposition:
         cast(_CloseableCheckpoint, self._checkpoint_port).close()
 
     def _main_control_bindings(self) -> MainControlNodeBindings:
-        request_node = self._physical_agent_node("request_understanding")
         retrieval_node = self._physical_agent_node("context_retriever")
         planning_node = self._physical_agent_node("planning")
         review_node = self._physical_agent_node("review")
@@ -771,8 +790,9 @@ class _WorkflowRuntimeComposition:
             initialize=partial(
                 initialize_node,
                 start_analysis=self._start_analysis_for_main,
-                request_node=request_node,
-                request_logical_node="request_understanding",
+                project_decision=lambda state, update, decision: self._merge_decision(
+                    cast(GraphState, state), cast(GraphStateUpdateV1, update), decision
+                ),
             ),
             retrieval_entry=partial(
                 retrieval_entry_node,
@@ -801,29 +821,49 @@ class _WorkflowRuntimeComposition:
             ),
             preflight=partial(
                 preflight_node,
-                check_freshness_and_claim=self._write_execution_node.preflight,
+                check_freshness_and_claim=lambda state: self._supervise_preflight_result(
+                    cast(GraphState, state), self._write_execution_node.preflight(state)
+                ),
             ),
             domain_reconcile=partial(
                 domain_reconcile_node,
-                read_durable_run=self._read_durable_run,
+                read_durable_facts=self._read_durable_supervisor_facts,
+                project_decision=lambda state, update, decision: self._merge_decision(
+                    cast(GraphState, state), cast(GraphStateUpdateV1, update), decision
+                ),
             ),
             action_execution=partial(
                 action_execution_node,
-                execute_claimed_action=self._write_execution_node,
+                execute_claimed_action=lambda state: self._supervise_lifecycle_result(
+                    state,
+                    self._write_execution_node(state),
+                    WorkflowPhase.ACTION_EXECUTION,
+                ),
             ),
             verification=partial(
                 verification_node,
-                verify_durable_effects=lambda state: self._write_recovery.recover_executed(
-                    cast(GraphState, state), cast(str, state["run_id"])
+                verify_durable_effects=lambda state: self._supervise_lifecycle_result(
+                    cast(GraphState, state),
+                    self._write_recovery.recover_executed(
+                        cast(GraphState, state), cast(str, state["run_id"])
+                    ),
+                    WorkflowPhase.VERIFICATION,
                 ),
             ),
             recovery=partial(
                 recovery_node,
-                recover_from_durable_facts=self._write_recovery.recover_unknown,
+                recover_from_durable_facts=lambda state: self._supervise_lifecycle_result(
+                    state,
+                    self._write_recovery.recover_unknown(state),
+                    WorkflowPhase.RECOVERY,
+                ),
             ),
             cancel_resolution=partial(
                 cancel_resolution_node,
                 continue_cancel_resolution=self._continue_cancel_resolution_for_main,
+                supervise_result=lambda state, result: self._supervise_lifecycle_result(
+                    cast(GraphState, state), result, WorkflowPhase.RECOVERY
+                ),
             ),
             response_synthesis=partial(
                 response_synthesis_node,
@@ -1320,7 +1360,6 @@ class _WorkflowRuntimeComposition:
                     "__workflow_control__": _workflow_control("STALE_MODIFY_REVIEW"),
                 }
             if review_status is PlanReviewStatus.PASSED:
-                decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
                 decision["state_update"] = {
                     **decision["state_update"],
                     "approved_plan_id": typed_state["__modify_review_plan_id__"],
@@ -1331,7 +1370,6 @@ class _WorkflowRuntimeComposition:
                 cast(ActionPlanDraftV2, planning_result),
                 resource_identity_reader,
             )
-            decision["target"] = SupervisorTarget.WAITING_APPROVAL.value
             decision["state_update"] = {
                 **decision["state_update"],
                 "approved_plan_id": plan_id,
@@ -1358,10 +1396,14 @@ class _WorkflowRuntimeComposition:
             isinstance(resume_payload, dict)
             and resume_payload.get("resume_kind") == "MODIFY_REVIEW"
         ):
-            return self._prepare_modify_review_state(
+            return self._supervise_lifecycle_result(
                 state,
-                plan_id=self._required_string(resume_payload.get("plan_id"), "plan_id"),
-                review_version=int(resume_payload.get("review_version", -1)),
+                self._prepare_modify_review_state(
+                    state,
+                    plan_id=self._required_string(resume_payload.get("plan_id"), "plan_id"),
+                    review_version=int(resume_payload.get("review_version", -1)),
+                ),
+                WorkflowPhase.WAITING_APPROVAL,
             )
         if self._current_run_status(cast(str, state["run_id"])) in {
             RunStatusV1.COMPLETED.value,
@@ -1369,16 +1411,24 @@ class _WorkflowRuntimeComposition:
             RunStatusV1.FAILED.value,
             RunStatusV1.CANCELLED.value,
         }:
-            return {
+            return self._supervise_lifecycle_result(
+                state,
+                {
+                    **state,
+                    "__target__": "response_synthesis",
+                    "__logical_target__": "response_synthesis",
+                },
+                WorkflowPhase.WAITING_APPROVAL,
+            )
+        return self._supervise_lifecycle_result(
+            state,
+            {
                 **state,
-                "__target__": "response_synthesis",
-                "__logical_target__": "response_synthesis",
-            }
-        return {
-            **state,
-            "__target__": "preflight",
-            "workflow_phase": WorkflowPhase.PREFLIGHT.value,
-        }
+                "__target__": "preflight",
+                "workflow_phase": WorkflowPhase.PREFLIGHT.value,
+            },
+            WorkflowPhase.WAITING_APPROVAL,
+        )
 
     def _prepare_modify_review_state(
         self,
@@ -1633,18 +1683,25 @@ class _WorkflowRuntimeComposition:
         update: GraphStateUpdateV1,
         decision: SupervisorDecisionV1,
     ) -> GraphState:
-        decision_state = decision["state_update"]
-        merged: GraphState = {**state, **update, **decision_state}
-        merged["prompt_context"] = {
-            **state.get("prompt_context", {}),
-            **update.get("prompt_context", {}),
-            **decision_state.get("prompt_context", {}),
-        }
-        merged["trace_context"] = {
-            **state.get("trace_context", {}),
-            **update.get("trace_context", {}),
-            **decision_state.get("trace_context", {}),
-        }
+        durable_facts = self._read_durable_supervisor_facts(cast(str, state["run_id"]))
+        projection = project_supervisor_state(
+            state=state,
+            stage_update=update,
+            candidate=decision,
+            durable_facts=durable_facts,
+        )
+        merged = projection.state
+        decision = projection.decision
+        LOGGER.info(
+            "supervisor_decision run_id=%s source_phase=%s target=%s "
+            "transition_kind=%s reason_code=%s invalidated_fields=%s",
+            state.get("run_id"),
+            projection.source_phase,
+            decision["target"],
+            projection.transition_kind,
+            decision["reason_code"],
+            ",".join(projection.invalidated_fields),
+        )
         try:
             translation = self._route_translator.translate(cast(str, decision["target"]))
         except UnroutableSupervisorTargetError:
@@ -1662,6 +1719,49 @@ class _WorkflowRuntimeComposition:
         merged["__logical_target__"] = translation.logical_target
         merged["__target__"] = translation.node
         return merged
+
+    def _supervise_lifecycle_result(
+        self,
+        state: GraphState,
+        result: Mapping[str, object],
+        source_phase: WorkflowPhase,
+    ) -> GraphState:
+        lifecycle_patch = {
+            key: value for key, value in result.items() if state.get(key) != value
+        }
+        candidate = lifecycle_control_decision(
+            source_phase=source_phase,
+            control_result=lifecycle_patch,
+        )
+        return self._merge_decision(
+            state,
+            cast(GraphStateUpdateV1, lifecycle_state_update(lifecycle_patch)),
+            candidate,
+        )
+
+    def _supervise_preflight_result(
+        self,
+        state: GraphState,
+        result: Mapping[str, object],
+    ) -> GraphState:
+        decision = route_supervisor(
+            phase=WorkflowPhase.PREFLIGHT,
+            state=state,
+            result=result,
+        )
+        return self._merge_decision(
+            state,
+            cast(GraphStateUpdateV1, lifecycle_state_update(result)),
+            decision,
+        )
+
+    def _read_durable_supervisor_facts(self, run_id: str) -> SupervisorObservationV1:
+        observation = self._get_supervisor_observation_handler(
+            GetSupervisorObservationQuery(run_id)
+        )
+        if observation is None:
+            raise LookupError(f"run not found: {run_id}")
+        return cast(SupervisorObservationV1, observation)
 
     def _request_from_state(self, state: GraphState) -> WorkflowStartRequest:
         return request_from_state(state)
@@ -2302,7 +2402,6 @@ def _workflow_control(reason: str, **details: object) -> dict[str, object]:
 class LangGraphWorkflowRuntime(
     ResumeCheckpointMixin,
     ArtifactFreshnessMixin,
-    ResponseSynthesisMixin,
     PlanPersistenceMixin,
     ConfirmationControllerMixin,
     _WorkflowRuntimeComposition,

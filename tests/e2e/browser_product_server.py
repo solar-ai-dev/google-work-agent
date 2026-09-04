@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from collections.abc import Mapping
 from dataclasses import replace
 from pathlib import Path
@@ -31,9 +32,7 @@ _RUNTIME_ROOT = Path(os.environ["GWA_BROWSER_E2E_RUNTIME_ROOT"]).resolve()
 _DATABASE_PATH = _RUNTIME_ROOT / "data" / "google_work_agent.db"
 _MCP_EVENTS_PATH = _RUNTIME_ROOT / "cache" / "langgraph-e2e-mcp-events.jsonl"
 _MCP_STATE_PATH = _RUNTIME_ROOT / "cache" / "langgraph-e2e-mcp-state.json"
-_MCP_RUNTIME_EVENTS_PATH = (
-    _RUNTIME_ROOT / "cache" / "langgraph-e2e-mcp-runtime-events.jsonl"
-)
+_MCP_RUNTIME_EVENTS_PATH = _RUNTIME_ROOT / "cache" / "langgraph-e2e-mcp-runtime-events.jsonl"
 _TRANSPORT = LangGraphE2EGeminiTransport(
     crash_prompt_id=os.environ.get("GWA_BROWSER_E2E_CRASH_PROMPT_ID"),
     crash_scenario=os.environ.get("GWA_BROWSER_E2E_CRASH_SCENARIO"),
@@ -278,11 +277,59 @@ def _checkpoint_state(run_id: str) -> dict[str, object]:
     )
     if checkpoint is None:
         return {}
+    item = _CHECKPOINT_PORT.get_tuple(
+        {
+            "configurable": {
+                "thread_id": checkpoint.langgraph_thread_id,
+                "checkpoint_ns": "",
+                "checkpoint_id": checkpoint.checkpoint_id,
+            }
+        }
+    )
+    channels = (
+        item.checkpoint.get("channel_values", {})
+        if item is not None and isinstance(item.checkpoint, Mapping)
+        else {}
+    )
+    trace_context = channels.get("trace_context", {}) if isinstance(channels, Mapping) else {}
+    supervisor_decisions = (
+        trace_context.get("supervisor_decisions", []) if isinstance(trace_context, Mapping) else []
+    )
     return {
         "checkpoint_id": checkpoint.checkpoint_id,
         "checkpoint_generation": checkpoint.checkpoint_generation,
         "langgraph_thread_id": checkpoint.langgraph_thread_id,
+        "workflow_phase": channels.get("workflow_phase") if isinstance(channels, Mapping) else None,
+        "supervisor_decisions": supervisor_decisions,
+        "artifact_revisions": _artifact_revisions(channels),
     }
+
+
+def _artifact_revisions(channels: object) -> dict[str, int]:
+    if not isinstance(channels, Mapping):
+        return {}
+    revisions: dict[str, int] = {}
+    for field in (
+        "request_intent",
+        "retrieval_result",
+        "work_analysis_result",
+        "planning_result",
+        "plan_review",
+    ):
+        artifact = channels.get(field)
+        meta = artifact.get("meta") if isinstance(artifact, Mapping) else None
+        revision = meta.get("revision") if isinstance(meta, Mapping) else None
+        if isinstance(revision, int) and not isinstance(revision, bool):
+            revisions[field] = revision
+    plan = channels.get("tool_route_plan")
+    if isinstance(plan, Mapping):
+        for field in ("input_plan", "output_plan"):
+            artifact = plan.get(field)
+            meta = artifact.get("meta") if isinstance(artifact, Mapping) else None
+            revision = meta.get("revision") if isinstance(meta, Mapping) else None
+            if isinstance(revision, int) and not isinstance(revision, bool):
+                revisions[f"tool_route_{field}"] = revision
+    return revisions
 
 
 def _has_confirmation_response(invocation: Mapping[str, object]) -> bool:
@@ -297,9 +344,7 @@ def _one(connection: Any, query: str, parameters: tuple[object, ...]) -> dict[st
     return dict(row)
 
 
-def _all(
-    connection: Any, query: str, parameters: tuple[object, ...]
-) -> list[dict[str, object]]:
+def _all(connection: Any, query: str, parameters: tuple[object, ...]) -> list[dict[str, object]]:
     return [dict(row) for row in connection.execute(query, parameters).fetchall()]
 
 
@@ -310,20 +355,34 @@ def _mcp_events() -> list[dict[str, object]]:
 def _mcp_state() -> dict[str, object]:
     if not _MCP_STATE_PATH.is_file():
         return {}
-    return cast(
-        dict[str, object],
-        json.loads(_MCP_STATE_PATH.read_text(encoding="utf-8")),
-    )
+    for attempt in range(20):
+        try:
+            return cast(
+                dict[str, object],
+                json.loads(_MCP_STATE_PATH.read_text(encoding="utf-8")),
+            )
+        except (PermissionError, json.JSONDecodeError):
+            if attempt == 19:
+                raise
+            time.sleep(0.005)
+    raise AssertionError("unreachable")
 
 
 def _json_lines(path: Path) -> list[dict[str, object]]:
     if not path.is_file():
         return []
-    return [
-        cast(dict[str, object], json.loads(line))
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line
-    ]
+    for attempt in range(20):
+        try:
+            return [
+                cast(dict[str, object], json.loads(line))
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line
+            ]
+        except (PermissionError, json.JSONDecodeError):
+            if attempt == 19:
+                raise
+            time.sleep(0.005)
+    raise AssertionError("unreachable")
 
 
 app = _build_app()

@@ -102,7 +102,7 @@ def _respond(
             "constraints": [],
             "requested_effect_hints": [] if scenario == "ANSWER_ONLY" else [_effect_for(scenario)],
             "requested_resource_hints": _resource_hints(scenario),
-            "analysis_requirement": "NONE",
+            "analysis_requirement": "REQUIRED" if scenario == "ANALYTICAL_READ" else "NONE",
         }
     if prompt_id == "request_understanding.detect_ambiguity":
         needs_confirmation = scenario == "RESTART_RESUME" and not isinstance(
@@ -218,21 +218,26 @@ def _respond(
     if prompt_id.startswith("review.inspect_"):
         findings: list[dict[str, object]] = []
         if (
-            scenario == "REVIEW_BACK_EDGE"
+            scenario in {"REVIEW_BACK_EDGE", "EVIDENCE_BACK_EDGE"}
             and prompt_id == "review.inspect_action_scope_and_route"
             and call_no == 1
         ):
             action_ids, route_ids = _action_and_route_ids(base)
+            finding_kind = "EVIDENCE_GAP" if scenario == "EVIDENCE_BACK_EDGE" else "ISSUE"
             findings.append(
                 {
                     "dimension": prompt_id,
                     "code": "E2E_ACTION_REVISION",
-                    "finding_kind": "ISSUE",
+                    "finding_kind": finding_kind,
                     "description": "Exercise the real bounded Review back-edge",
                     "evidence_refs": [],
                     "affected_action_ids": action_ids,
                     "affected_route_ids": route_ids,
-                    "required_information": [],
+                    "required_information": (
+                        ["Additional deterministic E2E evidence"]
+                        if finding_kind == "EVIDENCE_GAP"
+                        else []
+                    ),
                 }
             )
         return {"schema_version": 1, "dimension": prompt_id, "findings": findings}
@@ -254,6 +259,8 @@ def _base_projection(prompt_input: Mapping[str, object]) -> Mapping[str, object]
 def _scenario(value: object) -> str:
     serialized = json.dumps(value, sort_keys=True, default=str).upper()
     for scenario in (
+        "EVIDENCE_BACK_EDGE",
+        "ANALYTICAL_READ",
         "RETRIEVAL_CACHE_LOSS",
         "UNKNOWN_RESULT_RECOVERY",
         "VERIFICATION_MISMATCH",
@@ -312,7 +319,7 @@ def _resource_hints(scenario: str) -> list[str]:
 def _route_semantics(scenario: str) -> tuple[list[str], list[str], list[str]]:
     if scenario == "ANSWER_ONLY":
         return [], [], []
-    if scenario == "GMAIL_READ":
+    if scenario in {"GMAIL_READ", "ANALYTICAL_READ"}:
         return ["EMAIL"], [], []
     if scenario == "TASKS_READ":
         return ["TASK"], [], []

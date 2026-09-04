@@ -24,10 +24,14 @@ def preflight_node(
     """Run freshness/Claim readiness without performing an external write."""
 
     returned = dict(check_freshness_and_claim(state))
-    patch = {key: value for key, value in returned.items() if state.get(key) != value}
-    target = patch.get("__target__")
+    target = returned.get("__target__")
     if target not in _ALLOWED_TARGETS:
-        raise ValueError("PREFLIGHT returned an unregistered target")
+        raise ValueError(f"PREFLIGHT returned an unregistered target: {target!r}")
+    patch = {key: value for key, value in returned.items() if state.get(key) != value}
+    patch["__target__"] = target
+    logical_target = returned.get("__logical_target__")
+    if isinstance(logical_target, str):
+        patch["__logical_target__"] = logical_target
     return patch
 
 

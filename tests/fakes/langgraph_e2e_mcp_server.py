@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
@@ -183,7 +184,11 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
     counts[tool_name] = int(counts.get(tool_name, 0)) + 1
     failure_mode = _failure_mode(arguments)
     fault_counts = cast(dict[str, int], state.setdefault("fault_counts", {}))
-    fault_key = f"{failure_mode}:{tool_name}"
+    claim_context = arguments.get("claim_context")
+    action_id = (
+        claim_context.get("action_id") if isinstance(claim_context, dict) else None
+    )
+    fault_key = f"{failure_mode}:{tool_name}:{action_id}"
     fault_counts[fault_key] = int(fault_counts.get(fault_key, 0)) + 1
     fault_count = fault_counts[fault_key]
     if failure_mode == "FAILED_RETRY" and fault_count == 1:
@@ -225,16 +230,13 @@ def _tool_payload(tool_name: str, arguments: dict[str, object]) -> dict[str, obj
         if isinstance(query, str) and query:
             items = [
                 item
-                for item in cast(
-                    dict[str, dict[str, object]], state.get("resources", {})
-                ).values()
-                if query in json.dumps(item, sort_keys=True)
+                for item in cast(dict[str, dict[str, object]], state.get("resources", {})).values()
+                if _resource_matches_list_tool(item, tool_name=tool_name)
+                and query in json.dumps(item, sort_keys=True)
             ]
             if not items and tool_name == "gmail_search_threads":
                 items = [_read_fixture(tool_name, arguments)]
-            resources = cast(
-                dict[str, dict[str, object]], state.setdefault("resources", {})
-            )
+            resources = cast(dict[str, dict[str, object]], state.setdefault("resources", {}))
             for item in items:
                 resources[_resource_key(item)] = item
             _save_state(state)
@@ -391,6 +393,18 @@ def _snapshot(
 
 def _resource_key(item: dict[str, object]) -> str:
     return f"{item['resource_type']}:{item['resource_id']}"
+
+
+def _resource_matches_list_tool(item: Mapping[str, object], *, tool_name: str) -> bool:
+    resource_type = item.get("resource_type")
+    expected = {
+        "gmail_search_threads": {"gmail_thread"},
+        "tasks_list_tasklists": {"task_list"},
+        "tasks_list_tasks": {"task"},
+        "calendar_list_calendars": {"calendar"},
+        "calendar_list_events": {"calendar_event"},
+    }
+    return resource_type in expected[tool_name]
 
 
 def _failure_mode(arguments: dict[str, object]) -> str | None:

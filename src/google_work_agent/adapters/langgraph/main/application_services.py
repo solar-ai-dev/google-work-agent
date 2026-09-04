@@ -10,6 +10,7 @@ from typing import Any
 class WorkflowApplicationServices:
     start_analysis: Any
     get_run_snapshot: Any
+    get_supervisor_observation: Any
     build_terminal_message: Any
     emit_terminal_trace: Any
     project_terminal_event: Any | None

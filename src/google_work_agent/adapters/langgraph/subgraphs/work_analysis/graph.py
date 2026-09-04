@@ -26,9 +26,10 @@ from google_work_agent.adapters.langgraph.main.state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.main.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
+    WorkAnalysisRouteResultV1,
+    route_supervisor,
 )
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorDecisionV1
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import (
     WorkAnalysisInputState,
@@ -371,9 +372,7 @@ class WorkAnalysisSubgraph:
             {
                 **patch,
                 "retry_budget": (
-                    consume_llm_call_budget(state)
-                    if llm_required
-                    else state["retry_budget"]
+                    consume_llm_call_budget(state) if llm_required else state["retry_budget"]
                 ),
                 "trace_context": self._trace(
                     state,
@@ -538,19 +537,19 @@ class WorkAnalysisSubgraph:
             artifact_id=self._id_factory(),
         )
         result = cast(WorkAnalysisResultV2, patch["final_analysis"])
-        decision: SupervisorDecisionV1 = {
-            "target": SupervisorTarget.SOLUTION_PLANNING.value,
-            "next_phase": WorkflowPhase.SOLUTION_PLANNING.value,
-            "state_update": {
-                "workflow_phase": WorkflowPhase.SOLUTION_PLANNING.value,
-                "work_analysis_result": result,
-                "workflow_signal": None,
-                "user_interrupt": None,
-                "finalize_intent": None,
-            },
-            "reason_code": "WORK_ANALYSIS_COMPLETE",
-            "budget_decision": None,
-        }
+        decision = route_supervisor(
+            phase=WorkflowPhase.WORK_ANALYSIS,
+            state=cast(GraphState, state),
+            result=cast(
+                WorkAnalysisRouteResultV1,
+                {
+                    "disposition": "COMPLETE",
+                    "typed_result": result,
+                    "workflow_signal": None,
+                    "reason_codes": [],
+                },
+            ),
+        )
         merged = self._merge_decision(
             state,
             {
@@ -597,49 +596,45 @@ class WorkAnalysisSubgraph:
             )
         if disposition == "NEEDS_MORE_DATA":
             signal: RetrievalRequiredV1 | RouteReconsiderationRequiredV1
-            target: SupervisorTarget
-            phase: WorkflowPhase
             if self._has_usable_input_route(state):
                 signal = {
                     "kind": "RETRIEVAL_REQUIRED",
                     "reason_codes": reason_codes,
                     "needs": list(cast(list[Any], state.get("retrieval_needs", []))),
                 }
-                target = SupervisorTarget.CONTEXT_RETRIEVAL
-                phase = WorkflowPhase.CONTEXT_RETRIEVAL
             else:
                 signal = {
                     "kind": "ROUTE_RECONSIDERATION_REQUIRED",
                     "reason_codes": reason_codes,
                 }
-                target = SupervisorTarget.TOOL_ROUTE
-                phase = WorkflowPhase.TOOL_ROUTING
-            return self._finish_with_signal(state, signal=signal, target=target, phase=phase)
+                disposition = "ROUTE_RECONSIDERATION_REQUIRED"
+            return self._finish_with_signal(
+                state,
+                disposition=cast(Any, disposition),
+                signal=signal,
+            )
         if disposition == "ROUTE_RECONSIDERATION_REQUIRED":
             return self._finish_with_signal(
                 state,
+                disposition="ROUTE_RECONSIDERATION_REQUIRED",
                 signal={
                     "kind": "ROUTE_RECONSIDERATION_REQUIRED",
                     "reason_codes": reason_codes,
                 },
-                target=SupervisorTarget.TOOL_ROUTE,
-                phase=WorkflowPhase.TOOL_ROUTING,
             )
-        decision: SupervisorDecisionV1 = {
-            "target": SupervisorTarget.FINALIZE.value,
-            "next_phase": WorkflowPhase.FINALIZE.value,
-            "state_update": {
-                "workflow_phase": WorkflowPhase.FINALIZE.value,
-                "workflow_signal": None,
-                "finalize_intent": {
-                    "schema_version": 1,
-                    "intent": "BLOCKED",
-                    "reason_code": reason_codes[0],
+        decision = route_supervisor(
+            phase=WorkflowPhase.WORK_ANALYSIS,
+            state=cast(GraphState, state),
+            result=cast(
+                WorkAnalysisRouteResultV1,
+                {
+                    "disposition": "BLOCKED",
+                    "typed_result": None,
+                    "workflow_signal": None,
+                    "reason_codes": reason_codes,
                 },
-            },
-            "reason_code": reason_codes[0],
-            "budget_decision": None,
-        }
+            ),
+        )
         return cast(
             WorkAnalysisLocalState,
             {
@@ -652,22 +647,23 @@ class WorkAnalysisSubgraph:
         self,
         state: WorkAnalysisLocalState,
         *,
+        disposition: str,
         signal: RetrievalRequiredV1 | RouteReconsiderationRequiredV1,
-        target: SupervisorTarget,
-        phase: WorkflowPhase,
     ) -> WorkAnalysisLocalState:
         reason_codes = signal["reason_codes"]
-        decision: SupervisorDecisionV1 = {
-            "target": target.value,
-            "next_phase": phase.value,
-            "state_update": {
-                "workflow_phase": phase.value,
-                "workflow_signal": signal,
-                "user_interrupt": None,
-            },
-            "reason_code": reason_codes[0],
-            "budget_decision": None,
-        }
+        decision = route_supervisor(
+            phase=WorkflowPhase.WORK_ANALYSIS,
+            state=cast(GraphState, state),
+            result=cast(
+                WorkAnalysisRouteResultV1,
+                {
+                    "disposition": disposition,
+                    "typed_result": None,
+                    "workflow_signal": signal,
+                    "reason_codes": reason_codes,
+                },
+            ),
+        )
         merged = self._merge_decision(state, {}, decision)
         merged.pop(ANALYSIS_AGENT_LOCAL_KEY, None)
         return cast(
@@ -790,8 +786,17 @@ class WorkAnalysisSubgraph:
     @staticmethod
     def _based_on(state: WorkAnalysisLocalState) -> list[StateArtifactRefV1]:
         result: list[StateArtifactRefV1] = []
-        for key in ("request_intent", "tool_route_plan", "retrieval_result"):
-            artifact = state.get(key)
+        route_plan = state.get("tool_route_plan")
+        route_artifacts = (
+            [route_plan.get("input_plan"), route_plan.get("output_plan")]
+            if isinstance(route_plan, Mapping)
+            else []
+        )
+        for artifact in [
+            state.get("request_intent"),
+            *route_artifacts,
+            state.get("retrieval_result"),
+        ]:
             meta = artifact.get("meta") if isinstance(artifact, Mapping) else None
             if not isinstance(meta, Mapping):
                 continue

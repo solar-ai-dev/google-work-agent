@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import asdict, is_dataclass
-from enum import StrEnum
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     build_user_interrupt_v1,
@@ -17,9 +16,32 @@ from google_work_agent.adapters.langgraph.main.state import (
     RequestUnderstandingResult,
     WorkflowPhase,
 )
+from google_work_agent.adapters.langgraph.main.supervisor_artifact_revisions import (
+    artifact_freshness_violation,
+    is_work_analysis_required,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    SupervisorDecisionV1,
+    SupervisorTarget,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    base_supervisor_state_update as _base_state_update,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    boundary_supervisor_state_update as _boundary_state_update,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    make_supervisor_decision as _decision,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
+    recovery_supervisor_decision as _contract_recovery,
+)
 from google_work_agent.application.agents.planning.contracts.domain_validation import (
     DomainValidationOutputV1,
     DomainValidationResult,
+)
+from google_work_agent.application.agents.planning.contracts.planning_result import (
+    PlanningResultV2,
 )
 from google_work_agent.application.agents.request_understanding.contracts import (
     request_understanding_output,
@@ -49,8 +71,8 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
     ToolRoutePlanV2,
     ToolRouteResultV1,
 )
-from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
-    effective_analysis_required,
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAnalysisResultV2,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetDecision,
@@ -59,7 +81,6 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     RunBudgetV2,
     approve_additional_acquisition,
     approve_planning_revision,
-    approve_review_recheck,
     approve_semantic_revision,
     build_semantic_failure_signature_v1,
     promote_run_budget_profile,
@@ -81,37 +102,6 @@ from google_work_agent.ports.system.contracts.workflow_signal import (
 JsonObject = dict[str, object]
 
 
-class SupervisorTarget(StrEnum):
-    """Deterministic routing targets selected by the Stage 10 supervisor."""
-
-    TOOL_ROUTE = "TOOL_ROUTE"
-    CONTEXT_RETRIEVAL = "CONTEXT_RETRIEVAL"
-    WORK_ANALYSIS = "WORK_ANALYSIS"
-    SOLUTION_PLANNING = "SOLUTION_PLANNING"
-    PLAN_REVIEW_INSPECT = "PLAN_REVIEW_INSPECT"
-    PLAN_REVIEW_RECHECK = "PLAN_REVIEW_RECHECK"
-    PLANNING_REVISE_ANSWER = "PLANNING_REVISE_ANSWER"
-    PLANNING_REVISE_PLAN = "PLANNING_REVISE_PLAN"
-    DOMAIN_VALIDATION = "DOMAIN_VALIDATION"
-    WAITING_APPROVAL = "WAITING_APPROVAL"
-    PREFLIGHT = "PREFLIGHT"
-    ACTION_EXECUTION = "ACTION_EXECUTION"
-    WAITING_CONFIRMATION = "WAITING_CONFIRMATION"
-    FINALIZE = "FINALIZE"
-    REAUTH = "REAUTH"
-    RECOVERY = "RECOVERY"
-
-
-class SupervisorDecisionV1(TypedDict):
-    """Minimal deterministic routing result returned by the supervisor."""
-
-    target: str
-    next_phase: str | None
-    state_update: GraphStateUpdateV1
-    reason_code: str | None
-    budget_decision: BudgetDecisionV1 | None
-
-
 class RetrievalRouteResultV1(TypedDict):
     """Retrieval's own SubgraphReturnV2-shaped routing input (Q2-HANDOFF).
 
@@ -126,6 +116,28 @@ class RetrievalRouteResultV1(TypedDict):
     typed_result: RetrievalResultV1 | None
 
 
+class WorkAnalysisRouteResultV1(TypedDict):
+    """Owner-local Work Analysis result consumed only by the Supervisor."""
+
+    disposition: Literal[
+        "COMPLETE",
+        "NEEDS_MORE_DATA",
+        "ROUTE_RECONSIDERATION_REQUIRED",
+        "BLOCKED",
+    ]
+    typed_result: WorkAnalysisResultV2 | None
+    workflow_signal: RetrievalRequiredV1 | RouteReconsiderationRequiredV1 | None
+    reason_codes: list[str]
+
+
+class PlanningRouteResultV1(TypedDict):
+    """Owner-local Planning result consumed only by the Supervisor."""
+
+    disposition: Literal["ANSWER_ONLY", "PLAN_READY", "BLOCKED"]
+    typed_result: object | None
+    reason_codes: list[str]
+
+
 def route_supervisor(
     *,
     phase: WorkflowPhase | str,
@@ -133,8 +145,16 @@ def route_supervisor(
     result: object | None = None,
 ) -> SupervisorDecisionV1:
     current_phase = WorkflowPhase(phase)
-    if current_phase is WorkflowPhase.WORK_ANALYSIS:
-        raise ValueError("Work Analysis routing is owned by its canonical eight-node subgraph")
+    if current_phase is WorkflowPhase.INITIALIZE:
+        return _route_initialize(_require_mapping(result, "result"))
+    freshness_reason = artifact_freshness_violation(current_phase, state)
+    if freshness_reason is not None:
+        return _decision(
+            target=SupervisorTarget.RECOVERY,
+            next_phase=WorkflowPhase.RECOVERY,
+            state_update=_base_state_update(WorkflowPhase.RECOVERY),
+            reason_code=freshness_reason,
+        )
     reconsideration = _route_reconsideration(current_phase, result)
     if reconsideration is not None:
         return reconsideration
@@ -157,6 +177,16 @@ def route_supervisor(
         return _route_retrieval(
             state=state,
             retrieval_return=cast(RetrievalRouteResultV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.WORK_ANALYSIS:
+        return _route_work_analysis(
+            state=state,
+            result=cast(WorkAnalysisRouteResultV1, _require_mapping(result, "result")),
+        )
+    if current_phase is WorkflowPhase.SOLUTION_PLANNING:
+        return _route_planning(
+            state=state,
+            result=cast(PlanningRouteResultV1, _require_mapping(result, "result")),
         )
     if current_phase is WorkflowPhase.PLAN_REVIEW:
         return _route_plan_review(
@@ -190,6 +220,22 @@ def route_supervisor(
     raise ValueError(f"unsupported supervisor phase: {current_phase.value}")
 
 
+def _route_initialize(result: JsonObject) -> SupervisorDecisionV1:
+    if result.get("current_status") == "ANALYZING":
+        return _decision(
+            target=SupervisorTarget.REQUEST_UNDERSTANDING,
+            next_phase=WorkflowPhase.REQUEST_ANALYSIS,
+            state_update={"workflow_phase": WorkflowPhase.REQUEST_ANALYSIS.value},
+            reason_code="REQUEST_UNDERSTANDING_REQUIRED",
+        )
+    return _decision(
+        target=SupervisorTarget.DOMAIN_RECONCILE,
+        next_phase=WorkflowPhase.INITIALIZE,
+        state_update={"workflow_phase": WorkflowPhase.INITIALIZE.value},
+        reason_code=str(result.get("current_status") or "INITIALIZE_NOT_APPLIED"),
+    )
+
+
 def _route_reconsideration(
     phase: WorkflowPhase,
     result: object | None,
@@ -199,6 +245,7 @@ def _route_reconsideration(
     status = result.get("disposition", result.get("status", result.get("result")))
     expected = {
         WorkflowPhase.CONTEXT_RETRIEVAL: "ROUTE_RECONSIDERATION_REQUIRED",
+        WorkflowPhase.WORK_ANALYSIS: "ROUTE_RECONSIDERATION_REQUIRED",
         WorkflowPhase.PLAN_REVIEW: "ROUTE_RECONSIDERATION",
     }.get(phase)
     if expected is None or status != expected:
@@ -236,6 +283,7 @@ def _route_reconsideration(
             WorkflowPhase.TOOL_ROUTING,
             workflow_signal=signal,
             acquisition_result=None,
+            retrieval_result=None,
             work_analysis_result=None,
             planning_result=None,
             **review_update,
@@ -367,7 +415,7 @@ def _route_frozen_tool_plan(
             ),
             reason_code=disposition.value,
         )
-    if _work_analysis_is_required(state=state, plan=plan):
+    if is_work_analysis_required(state=state, plan=plan):
         return _decision(
             target=SupervisorTarget.WORK_ANALYSIS,
             next_phase=WorkflowPhase.WORK_ANALYSIS,
@@ -390,13 +438,6 @@ def _route_frozen_tool_plan(
     )
 
 
-def _work_analysis_is_required(*, state: GraphState, plan: ToolRoutePlanV2) -> bool:
-    return effective_analysis_required(
-        request_intent=_request_intent_from_state(state),
-        tool_route_plan=plan,
-    )
-
-
 def _route_retrieval(
     *,
     state: GraphState,
@@ -412,7 +453,7 @@ def _route_retrieval(
         plan = state.get("tool_route_plan")
         if plan is None:
             raise ValueError("successful Retrieval return requires its frozen tool route plan")
-        if not _work_analysis_is_required(state=state, plan=plan):
+        if not is_work_analysis_required(state=state, plan=plan):
             return _decision(
                 target=SupervisorTarget.SOLUTION_PLANNING,
                 next_phase=WorkflowPhase.SOLUTION_PLANNING,
@@ -560,6 +601,109 @@ def _route_retrieval_required(
         reason_code=reason_codes[0],
         budget_decision=budget,
     )
+
+
+def _route_work_analysis(
+    *,
+    state: GraphState,
+    result: WorkAnalysisRouteResultV1,
+) -> SupervisorDecisionV1:
+    disposition = result.get("disposition")
+    reason_codes = [code for code in result.get("reason_codes", []) if code]
+    if disposition == "COMPLETE":
+        artifact = result.get("typed_result")
+        if artifact is None:
+            return _contract_recovery("WORK_ANALYSIS_RESULT_MISSING")
+        return _decision(
+            target=SupervisorTarget.SOLUTION_PLANNING,
+            next_phase=WorkflowPhase.SOLUTION_PLANNING,
+            state_update=_base_state_update(
+                WorkflowPhase.SOLUTION_PLANNING,
+                work_analysis_result=artifact,
+                workflow_signal=None,
+            ),
+            reason_code="WORK_ANALYSIS_COMPLETE",
+        )
+    if disposition == "NEEDS_MORE_DATA":
+        signal = result.get("workflow_signal")
+        if not isinstance(signal, Mapping) or signal.get("kind") != "RETRIEVAL_REQUIRED":
+            return _contract_recovery("WORK_ANALYSIS_RETRIEVAL_SIGNAL_INVALID")
+        needs = signal.get("needs")
+        if not isinstance(needs, list) or not needs:
+            return _contract_recovery("WORK_ANALYSIS_RETRIEVAL_NEEDS_MISSING")
+        request: AdditionalAcquisitionRequestV1 = {
+            "schema_version": 1,
+            "origin_phase": WorkflowPhase.WORK_ANALYSIS.value,
+            "origin_result": "NEEDS_MORE_DATA",
+            "missing_slots": [],
+            "missing_information": [
+                str(need["required_information"])
+                for need in needs
+                if isinstance(need, Mapping) and need.get("required_information")
+            ],
+            "evidence_refs": [],
+            "reason_codes": reason_codes or list(cast(list[str], signal.get("reason_codes", []))),
+        }
+        return _route_retrieval_required(
+            state=state,
+            reason_code=(reason_codes or ["WORK_ANALYSIS_NEEDS_MORE_DATA"])[0],
+            current_update={"work_analysis_result": None},
+            request=request,
+        )
+    if disposition == "BLOCKED":
+        return _finalize(
+            state=state,
+            intent=FinalizeIntent.BLOCKED.value,
+            reason_code=(reason_codes or ["WORK_ANALYSIS_BLOCKED"])[0],
+            work_analysis_result=None,
+            workflow_signal=None,
+        )
+    return _contract_recovery("WORK_ANALYSIS_CONTRACT_VIOLATION")
+
+
+def _route_planning(
+    *,
+    state: GraphState,
+    result: PlanningRouteResultV1,
+) -> SupervisorDecisionV1:
+    disposition = result.get("disposition")
+    artifact = result.get("typed_result")
+    reason_codes = [code for code in result.get("reason_codes", []) if code]
+    if disposition == "ANSWER_ONLY":
+        if not isinstance(artifact, Mapping) or not isinstance(artifact.get("answer"), str):
+            return _contract_recovery("PLANNING_ANSWER_RESULT_INVALID")
+        return _decision(
+            target=SupervisorTarget.RESPONSE_SYNTHESIS,
+            next_phase=WorkflowPhase.RESPONSE_SYNTHESIS,
+            state_update=_base_state_update(
+                WorkflowPhase.RESPONSE_SYNTHESIS,
+                planning_result=cast(PlanningResultV2, artifact),
+                workflow_signal=None,
+            ),
+            reason_code="ANSWER_ONLY_RESPONSE_READY",
+        )
+    if disposition == "PLAN_READY":
+        if not isinstance(artifact, Mapping) or not isinstance(artifact.get("actions"), list):
+            return _contract_recovery("PLANNING_ACTION_RESULT_INVALID")
+        return _decision(
+            target=SupervisorTarget.PLAN_REVIEW_INSPECT,
+            next_phase=WorkflowPhase.PLAN_REVIEW,
+            state_update=_base_state_update(
+                WorkflowPhase.PLAN_REVIEW,
+                planning_result=cast(PlanningResultV2, artifact),
+                workflow_signal=None,
+            ),
+            reason_code="PLAN_READY",
+        )
+    if disposition == "BLOCKED":
+        return _finalize(
+            state=state,
+            intent=FinalizeIntent.BLOCKED.value,
+            reason_code=(reason_codes or ["PLANNING_BLOCKED"])[0],
+            planning_result=None,
+            plan_review=None,
+        )
+    return _contract_recovery("PLANNING_CONTRACT_VIOLATION")
 
 
 def _route_plan_review(
@@ -728,6 +872,7 @@ def _route_preflight(
 ) -> SupervisorDecisionV1:
     result_code = _preflight_result_code(result, default="PREFLIGHT_REJECTED")
     safe_error_code = _preflight_safe_error_code(result)
+    raw_target = result.get("__logical_target__", result.get("__target__"))
     if safe_error_code == "REAUTH_REQUIRED" or result_code == "REAUTH_REQUIRED":
         return _decision(
             target=SupervisorTarget.REAUTH,
@@ -735,11 +880,31 @@ def _route_preflight(
             state_update=_boundary_state_update(),
             reason_code="REAUTH_REQUIRED",
         )
-    if bool(result.get("applied")):
+    if bool(result.get("applied")) or raw_target == "action_execution":
         return _decision(
             target=SupervisorTarget.ACTION_EXECUTION,
             next_phase=WorkflowPhase.ACTION_EXECUTION,
             state_update=_base_state_update(WorkflowPhase.ACTION_EXECUTION),
+            reason_code=result_code,
+        )
+    target = {
+        "domain_reconcile": SupervisorTarget.DOMAIN_RECONCILE,
+        "recovery": SupervisorTarget.RECOVERY,
+        "response_synthesis": SupervisorTarget.RESPONSE_SYNTHESIS,
+        "waiting_approval": SupervisorTarget.WAITING_APPROVAL,
+    }.get(str(raw_target))
+    if target is not None:
+        return _decision(
+            target=target,
+            next_phase=None,
+            state_update=_boundary_state_update(),
+            reason_code=result_code,
+        )
+    if raw_target == "end":
+        return _decision(
+            target=SupervisorTarget.SUSPEND,
+            next_phase=None,
+            state_update=_boundary_state_update(),
             reason_code=result_code,
         )
     return _finalize(
@@ -747,133 +912,6 @@ def _route_preflight(
         intent=FinalizeIntent.BLOCKED.value,
         reason_code=result_code,
     )
-
-
-def _route_additional_acquisition(
-    *,
-    state: GraphState,
-    reason_code: str,
-    current_update: GraphStateUpdateV1,
-    request: object,
-) -> SupervisorDecisionV1:
-    if request is None:
-        raise ValueError("additional acquisition route requires a structured request")
-    budget = approve_additional_acquisition(state["retry_budget"])
-    disposition = decide_insufficient_data(
-        InsufficientDataContext(
-            issues=(
-                InsufficientDataIssue(
-                    issue_type=reason_code,
-                    required=True,
-                    resolution_source=ResolutionSource.GOOGLE,
-                ),
-            ),
-            budget_remaining=1 if budget["decision"] == BudgetDecision.ALLOW.value else 0,
-            read_only=state.get("requested_effect_type") == "READ",
-            evidence_supported_partial_possible=_has_supported_evidence(current_update),
-            write_required_data_missing=state.get("requested_effect_type") != "READ",
-        )
-    )
-    if disposition is InsufficientDataDisposition.PARTIAL:
-        return _finalize(
-            state=state,
-            intent=FinalizeIntent.COMPLETED.value,
-            reason_code="EVIDENCE_SUPPORTED_PARTIAL",
-            result_kind="PARTIAL",
-            budget_decision=budget,
-            current_update=current_update,
-        )
-    if budget["decision"] == BudgetDecision.DENY.value:
-        return _finalize(
-            state=state,
-            intent=FinalizeIntent.BLOCKED.value,
-            reason_code=_budget_reason_code(budget, default=reason_code),
-            budget_decision=budget,
-            current_update=current_update,
-        )
-    return _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL,
-        next_phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-        state_update=_base_state_update(
-            WorkflowPhase.CONTEXT_RETRIEVAL,
-            retry_budget=budget["run_budget"],
-            current_update=current_update,
-        ),
-        reason_code=reason_code,
-        budget_decision=budget,
-    )
-
-
-def _route_review_recheck(
-    *,
-    state: GraphState,
-    current_update: GraphStateUpdateV1,
-) -> SupervisorDecisionV1:
-    budget = approve_review_recheck(state["retry_budget"])
-    if budget["decision"] == BudgetDecision.DENY.value:
-        return _finalize(
-            state=state,
-            intent=FinalizeIntent.BLOCKED.value,
-            reason_code=_budget_reason_code(budget, default="REVIEW_RECHECK_DENIED"),
-            budget_decision=budget,
-            current_update=current_update,
-        )
-    return _decision(
-        target=SupervisorTarget.PLAN_REVIEW_RECHECK,
-        next_phase=WorkflowPhase.PLAN_REVIEW,
-        state_update=_base_state_update(
-            WorkflowPhase.PLAN_REVIEW,
-            retry_budget=budget["run_budget"],
-            current_update=current_update,
-        ),
-        reason_code="REVIEW_RECHECK_READY",
-        budget_decision=budget,
-    )
-
-
-def _decision(
-    *,
-    target: SupervisorTarget,
-    next_phase: WorkflowPhase | None,
-    state_update: Mapping[str, object],
-    reason_code: str | None = None,
-    budget_decision: BudgetDecisionV1 | None = None,
-) -> SupervisorDecisionV1:
-    return {
-        "target": target.value,
-        "next_phase": None if next_phase is None else next_phase.value,
-        "state_update": _validated_state_update(state_update),
-        "reason_code": reason_code,
-        "budget_decision": budget_decision,
-    }
-
-
-def _validated_state_update(value: Mapping[str, object]) -> GraphStateUpdateV1:
-    unknown_fields = set(value).difference(GraphStateUpdateV1.__annotations__)
-    if unknown_fields:
-        names = ", ".join(sorted(unknown_fields))
-        raise ValueError(f"supervisor state update contains unknown fields: {names}")
-    return cast(GraphStateUpdateV1, dict(value))
-
-
-def _base_state_update(
-    next_phase: WorkflowPhase,
-    *,
-    retry_budget: object | None = None,
-    current_update: Mapping[str, object] | None = None,
-    **extra: object,
-) -> JsonObject:
-    update: JsonObject = {
-        "workflow_phase": next_phase.value,
-        "user_interrupt": None,
-        "finalize_intent": None,
-    }
-    if retry_budget is not None:
-        update["retry_budget"] = retry_budget
-    if current_update is not None:
-        update.update(current_update)
-    update.update(extra)
-    return update
 
 
 def _confirmation_state_update(
@@ -884,15 +922,6 @@ def _confirmation_state_update(
     update: JsonObject = {
         "workflow_phase": WorkflowPhase.WAITING_CONFIRMATION.value,
         "user_interrupt": build_user_interrupt_v1(question),
-        "finalize_intent": None,
-    }
-    update.update(extra)
-    return update
-
-
-def _boundary_state_update(**extra: object) -> JsonObject:
-    update: JsonObject = {
-        "user_interrupt": None,
         "finalize_intent": None,
     }
     update.update(extra)
@@ -957,11 +986,6 @@ def _review_target_from_state(
     raise ValueError("Review requires a Planning artifact")
 
 
-def _is_revision_follow_up(state: GraphState) -> bool:
-    review = state.get("plan_review")
-    return review is not None and review.get("status") == ReviewResult.REVISE.value
-
-
 def _request_invalid_reason_code(
     output: request_understanding_output.RequestUnderstandingOutputV1,
 ) -> str:
@@ -977,16 +1001,6 @@ def _request_invalid_reason_code(
     ):
         return cast(str, failure["reason_code"])
     return "REQUEST_UNDERSTANDING_INVALID"
-
-
-def _reason_from_failure_mapping(value: object, *, default: str) -> str:
-    failure = _mapping_or_none(value)
-    if failure is None:
-        return default
-    reason_code = failure.get("reason_code")
-    if isinstance(reason_code, str) and reason_code:
-        return reason_code
-    return default
 
 
 def _budget_reason_code(budget: BudgetDecisionV1, *, default: str) -> str:
@@ -1009,6 +1023,11 @@ def _preflight_result_code(result: JsonObject, *, default: str) -> str:
     result_code = result.get("result_code")
     if isinstance(result_code, str) and result_code:
         return result_code
+    control = _mapping_or_none(result.get("__workflow_control__"))
+    if control is not None:
+        reason = control.get("reason", control.get("stage"))
+        if isinstance(reason, str) and reason:
+            return reason
     return default
 
 
@@ -1016,6 +1035,11 @@ def _preflight_safe_error_code(result: JsonObject) -> str | None:
     safe_error_code = result.get("safe_error_code")
     if isinstance(safe_error_code, str) and safe_error_code:
         return safe_error_code
+    control = _mapping_or_none(result.get("__workflow_control__"))
+    if control is not None:
+        nested_code = control.get("safe_error_code")
+        if isinstance(nested_code, str) and nested_code:
+            return nested_code
     return None
 
 
@@ -1070,8 +1094,8 @@ def _claim_result_mapping(value: object, name: str) -> JsonObject:
 
 
 __all__ = [
+    "PlanningRouteResultV1",
     "RetrievalRouteResultV1",
-    "SupervisorDecisionV1",
-    "SupervisorTarget",
+    "WorkAnalysisRouteResultV1",
     "route_supervisor",
 ]

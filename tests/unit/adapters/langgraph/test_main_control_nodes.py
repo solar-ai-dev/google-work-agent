@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pytest
 
 from google_work_agent.adapters.langgraph.main.nodes.domain_reconcile_node import (
@@ -23,20 +21,23 @@ from google_work_agent.adapters.langgraph.main.nodes.review_entry_node import (
 )
 from google_work_agent.application.use_cases.run.begin_planning import BeginPlanningResult
 from google_work_agent.application.use_cases.run.begin_retrieval import BeginRetrievalResult
+from google_work_agent.application.use_cases.run.get_supervisor_observation import (
+    SupervisorObservationV1,
+)
 from google_work_agent.application.use_cases.run.start_analysis import StartAnalysisResult
-
-
-@dataclass
-class _RunFacts:
-    status: str
-    next_allowed_commands: tuple[str, ...]
 
 
 def test_initialize_projects__start_analysis_without__copying_foreign_state() -> None:
     patch = initialize_node(
         {"run_id": "run-1", "foreign": "keep"},
         start_analysis=lambda _run_id: StartAnalysisResult(True, "APPLIED", "ANALYZING", 1, ()),
-        request_node="request_understanding",
+        project_decision=lambda state, update, decision: {
+            **state,
+            **update,
+            **decision["state_update"],
+            "__logical_target__": "request_understanding",
+            "__target__": "request_understanding",
+        },
     )
 
     assert patch == {
@@ -151,6 +152,13 @@ def test_validation_and_preflight__reject_unregistered_targets__and_return_patch
             "__target__": "action_execution",
         },
     ) == {"__target__": "action_execution"}
+    assert (
+        preflight_node(
+            {"__target__": "action_execution"},
+            check_freshness_and_claim=lambda state: state,
+        )
+        == {"__target__": "action_execution"}
+    )
 
     with pytest.raises(ValueError, match="unregistered target"):
         domain_validation_node({}, validate_and_project=lambda _state: {"__target__": "unknown"})
@@ -159,16 +167,28 @@ def test_validation_and_preflight__reject_unregistered_targets__and_return_patch
 
 
 def test_domain_reconcile_uses__only_durable_status__and_allowed_commands() -> None:
-    assert domain_reconcile_node(
+    recovered = domain_reconcile_node(
         {"run_id": "run-1", "workflow_phase": "ACTION_EXECUTION"},
-        read_durable_run=lambda _run_id: _RunFacts("RECOVERY_REQUIRED", ("RESOLVE_RECOVERY",)),
-    ) == {
-        "workflow_phase": "RECOVERY",
-        "__logical_target__": "recovery",
-        "__target__": "recovery",
-    }
+        read_durable_facts=lambda _run_id: SupervisorObservationV1(
+            run_status="RECOVERY_REQUIRED",
+            next_allowed_commands=("RESOLVE_RECOVERY",),
+            action_statuses=(),
+            cancel_intent_active=False,
+        ),
+        project_decision=lambda state, update, decision: {
+            **state,
+            **update,
+            **decision["state_update"],
+            "__logical_target__": "recovery",
+            "__target__": "recovery",
+        },
+    )
+    assert recovered["workflow_phase"] == "RECOVERY"
+    assert recovered["__logical_target__"] == "recovery"
+    assert recovered["__target__"] == "recovery"
     suspended = domain_reconcile_node(
         {"run_id": "run-1"},
-        read_durable_run=lambda _run_id: None,
+        read_durable_facts=lambda _run_id: (_ for _ in ()).throw(LookupError("missing")),
+        project_decision=lambda state, update, decision: {**state, **update},
     )
     assert suspended["__target__"] == "end"

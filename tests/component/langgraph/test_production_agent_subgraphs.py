@@ -125,9 +125,7 @@ class _ComponentInferencePort:
             fallback_reason=None,
         )
 
-    def _response(
-        self, prompt_id: str, projection: Mapping[str, object]
-    ) -> dict[str, object]:
+    def _response(self, prompt_id: str, projection: Mapping[str, object]) -> dict[str, object]:
         has_confirmation = isinstance(projection.get("confirmation_response"), Mapping)
         if prompt_id == "request_understanding.identify_goal":
             return {
@@ -237,9 +235,7 @@ class _ComponentConnectorReadPort:
     def __init__(self) -> None:
         self.call_count = 0
 
-    def execute_read(
-        self, binding: Any, tool_arguments: dict[str, Any]
-    ) -> ConnectorReadResultV1:
+    def execute_read(self, binding: Any, tool_arguments: dict[str, Any]) -> ConnectorReadResultV1:
         del tool_arguments
         self.call_count += 1
         return ConnectorReadResultV1(
@@ -561,9 +557,7 @@ def test_planning__compiled_normal_path__produces_answer() -> None:
         return {"schema_version": 2, "answer": "done", "evidence_refs": []}
 
     graph = PlanningSubgraph(
-        dependencies=PlanningRuntimeDependencies(
-            invoke=cast(PlanningSemanticInvoker, invoke)
-        )
+        dependencies=PlanningRuntimeDependencies(invoke=cast(PlanningSemanticInvoker, invoke))
     ).build()
     result = graph.invoke(
         {
@@ -640,9 +634,7 @@ def test_request_confirmation__interrupts_and_resumes__same_owner() -> None:
     wrapper.add_edge(START, "request_understanding")
     wrapper.add_edge("request_understanding", END)
     graph = wrapper.compile(checkpointer=InMemorySaver())
-    config: RunnableConfig = {
-        "configurable": {"thread_id": "component-confirmation-thread"}
-    }
+    config: RunnableConfig = {"configurable": {"thread_id": "component-confirmation-thread"}}
 
     with provider_dispatch_execution_scope():
         interrupted = graph.invoke(_state(), config)
@@ -700,14 +692,31 @@ def test_agent_router__unknown_disposition__raises(
 def test_supervisor__unknown_agent_disposition__raises(
     phase: WorkflowPhase, result: dict[str, object]
 ) -> None:
+    state = _state()
+    if phase is WorkflowPhase.PLAN_REVIEW:
+        state["request_intent"] = cast(Any, _intent())
+        state["tool_route_plan"] = cast(Any, _answer_route_plan())
+        state["planning_result"] = cast(
+            Any,
+            {
+                "meta": {
+                    "artifact_id": "plan-1",
+                    "revision": 1,
+                    "based_on": [{"artifact_id": "output-1", "revision": 1}],
+                },
+                "answer": "answer",
+            },
+        )
     with pytest.raises(ValueError):
-        route_supervisor(phase=phase, state=_state(), result=result)
+        route_supervisor(phase=phase, state=state, result=result)
 
 
 def test_supervisor__unknown_tool_disposition__routes_recovery() -> None:
+    state = _state()
+    state["request_intent"] = cast(Any, _intent())
     decision = route_supervisor(
         phase=WorkflowPhase.TOOL_ROUTING,
-        state=_state(),
+        state=state,
         result={"disposition": "UNKNOWN"},
     )
 
@@ -716,9 +725,12 @@ def test_supervisor__unknown_tool_disposition__routes_recovery() -> None:
 
 
 def test_supervisor__unknown_retrieval_disposition__blocks_instead_of_normal_route() -> None:
+    state = _state()
+    state["request_intent"] = cast(Any, _intent())
+    state["tool_route_plan"] = cast(Any, _answer_route_plan(with_input_route=True))
     decision = route_supervisor(
         phase=WorkflowPhase.CONTEXT_RETRIEVAL,
-        state=_state(),
+        state=state,
         result={"disposition": "UNKNOWN", "typed_result": None},
     )
 

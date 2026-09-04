@@ -7,10 +7,10 @@ from google_work_agent.adapters.langgraph.main.nodes.response_synthesis_node imp
     response_synthesis_node,
 )
 from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESPONSE_SYNTHESIS_TARGET,
     GraphRouteTranslator,
 )
 from google_work_agent.adapters.langgraph.main.state import GraphState, WorkflowPhase
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
@@ -153,7 +153,7 @@ def test_response_synthesis__fails_closed__on_invalid_answer(planning_result: ob
 
 @pytest.mark.parametrize("profile", list(GraphProfile))
 def test_response_synthesis__target_is_routable__for_every_profile(profile: GraphProfile) -> None:
-    route = GraphRouteTranslator(profile).translate(RESPONSE_SYNTHESIS_TARGET)
+    route = GraphRouteTranslator(profile).translate(SupervisorTarget.RESPONSE_SYNTHESIS.value)
 
     assert route.logical_target == "response_synthesis"
     assert route.node == "response_synthesis"

@@ -41,9 +41,9 @@ from google_work_agent.adapters.langgraph.main.state import (
 )
 from google_work_agent.adapters.langgraph.main.supervisor import (
     RetrievalRouteResultV1,
-    SupervisorDecisionV1,
     route_supervisor,
 )
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorDecisionV1
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraph_state import (
     AgentLocalStateV1,

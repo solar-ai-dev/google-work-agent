@@ -22,9 +22,6 @@ from google_work_agent.adapters.langgraph.main.action_evidence_projection import
 from google_work_agent.adapters.langgraph.main.confirmation_projection import (
     build_user_interrupt_v1,
 )
-from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor import (
-    RESPONSE_SYNTHESIS_TARGET,
-)
 from google_work_agent.adapters.langgraph.main.state import (
     PLANNING_AGENT_LOCAL_KEY,
     GraphState,
@@ -33,8 +30,8 @@ from google_work_agent.adapters.langgraph.main.state import (
     request_from_state,
 )
 from google_work_agent.adapters.langgraph.main.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
+    PlanningRouteResultV1,
+    route_supervisor,
 )
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.planning.nodes import (
@@ -349,38 +346,24 @@ class PlanningSubgraph:
 
         answer = self._materialize_answer(state, candidate)
         assert self._merge_decision is not None
-        decision: SupervisorDecisionV1 = {
-            "target": RESPONSE_SYNTHESIS_TARGET,
-            "next_phase": WorkflowPhase.RESPONSE_SYNTHESIS.value,
-            "state_update": cast(
-                GraphStateUpdateV1,
+        decision = route_supervisor(
+            phase=WorkflowPhase.SOLUTION_PLANNING,
+            state=cast(GraphState, state),
+            result=cast(
+                PlanningRouteResultV1,
                 {
-                    "workflow_phase": WorkflowPhase.RESPONSE_SYNTHESIS.value,
-                    "planning_result": answer,
-                    "workflow_signal": None,
-                    "user_interrupt": None,
-                    "finalize_intent": None,
+                    "disposition": "ANSWER_ONLY",
+                    "typed_result": answer,
+                    "reason_codes": [],
                 },
             ),
-            "reason_code": "ANSWER_ONLY_RESPONSE_READY",
-            "budget_decision": None,
-        }
-        update = cast(
-            GraphStateUpdateV1,
-            {
-                "planning_result": answer,
-                **(
-                    {
-                        "retry_budget": consume_llm_call_budget(cast(Any, state)),
-                        "trace_context": self._trace(
-                            state, "compose_answer", self._prompt_refs["planning.compose_answer"]
-                        ),
-                    }
-                    if llm_invoked
-                    else {}
-                ),
-            },
         )
+        update = cast(GraphStateUpdateV1, {"planning_result": answer})
+        if llm_invoked:
+            update["retry_budget"] = consume_llm_call_budget(cast(Any, state))
+            update["trace_context"] = self._trace(
+                state, "compose_answer", self._prompt_refs["planning.compose_answer"]
+            )
         merged = self._merge_decision(state, update, decision)
         merged.pop(PLANNING_AGENT_LOCAL_KEY, None)
         return cast(
@@ -406,9 +389,7 @@ class PlanningSubgraph:
             for route in cast(list[object], routes)
         )
         if self._llm_runtime is not None and inference_count:
-            ensure_llm_call_budget(
-                cast(Any, working), provider_calls_requested=inference_count
-            )
+            ensure_llm_call_budget(cast(Any, working), provider_calls_requested=inference_count)
         patch = objective_node_module.draft_action_objective_per_output_route_node(
             cast(Mapping[str, object], working),
             invoke=self._semantic_invoker(state),
@@ -474,9 +455,7 @@ class PlanningSubgraph:
             for route in cast(list[object], routes)
         )
         if self._llm_runtime is not None and inference_count:
-            ensure_llm_call_budget(
-                cast(Any, working), provider_calls_requested=inference_count
-            )
+            ensure_llm_call_budget(cast(Any, working), provider_calls_requested=inference_count)
         try:
             patch = arguments_node_module.compose_arguments_per_output_route_node(
                 cast(Mapping[str, object], working),
@@ -565,22 +544,18 @@ class PlanningSubgraph:
                 {**patch, "planning_result": plan, "planning_disposition": "ACTION"},
             )
         assert self._merge_decision is not None
-        decision: SupervisorDecisionV1 = {
-            "target": SupervisorTarget.PLAN_REVIEW_INSPECT.value,
-            "next_phase": WorkflowPhase.PLAN_REVIEW.value,
-            "state_update": cast(
-                GraphStateUpdateV1,
+        decision = route_supervisor(
+            phase=WorkflowPhase.SOLUTION_PLANNING,
+            state=cast(GraphState, state),
+            result=cast(
+                PlanningRouteResultV1,
                 {
-                    "workflow_phase": WorkflowPhase.PLAN_REVIEW.value,
-                    "planning_result": plan,
-                    "workflow_signal": None,
-                    "user_interrupt": None,
-                    "finalize_intent": None,
+                    "disposition": "PLAN_READY",
+                    "typed_result": plan,
+                    "reason_codes": [],
                 },
             ),
-            "reason_code": "PLAN_READY",
-            "budget_decision": None,
-        }
+        )
         merged = self._merge_decision(
             state,
             cast(GraphStateUpdateV1, {"planning_result": plan}),
@@ -887,9 +862,7 @@ class PlanningSubgraph:
                 agent_invocation_id=invocation_id,
                 subgraph_namespace="planning",
                 node_name=node,
-                llm_call_id=(
-                    f"{state['run_id']}:planning.{node}" if llm_call_increment else None
-                ),
+                llm_call_id=(f"{state['run_id']}:planning.{node}" if llm_call_increment else None),
                 prompt_ref=prompt_ref,
                 agent_invocation_increment=1 if first else 0,
                 llm_call_increment=llm_call_increment,

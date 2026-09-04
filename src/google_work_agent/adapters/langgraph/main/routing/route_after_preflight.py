@@ -25,5 +25,5 @@ def route_after_preflight(
     if isinstance(run_id, str) and should_stop_for_cancel(run_id):
         return "end"
     if target not in ROUTE_AFTER_PREFLIGHT_SUCCESSORS or target not in available_targets:
-        raise ValueError("PREFLIGHT returned an unregistered successor")
+        raise ValueError(f"PREFLIGHT returned an unregistered successor: {target!r}")
     return str(target)

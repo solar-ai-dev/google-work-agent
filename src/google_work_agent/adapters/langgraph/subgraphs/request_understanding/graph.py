@@ -18,10 +18,8 @@ from google_work_agent.adapters.langgraph.main.state import (
     WorkflowPhase,
     request_from_run_input_state,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import (
-    SupervisorDecisionV1,
-    route_supervisor,
-)
+from google_work_agent.adapters.langgraph.main.supervisor import route_supervisor
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorDecisionV1
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.subgraphs.request_understanding.state import (
     RequestUnderstandingInputState,

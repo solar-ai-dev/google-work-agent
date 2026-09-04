@@ -20,7 +20,7 @@ from google_work_agent.adapters.langgraph.main.state import (
     GraphState,
     GraphStateUpdateV1,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import SupervisorDecisionV1
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorDecisionV1
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     BudgetProfile,
     promote_run_budget_profile,

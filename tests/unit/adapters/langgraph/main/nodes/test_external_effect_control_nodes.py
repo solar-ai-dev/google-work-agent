@@ -63,7 +63,11 @@ def test_recovery_projects__verification_without_invoking__a_write_seam() -> Non
 def test_cancel_resolution_requires__run_identity_and__runs_one_durable_step() -> None:
     calls: list[str] = []
     with pytest.raises(ValueError, match="run_id"):
-        cancel_resolution_node({}, continue_cancel_resolution=lambda _run_id: {})
+        cancel_resolution_node(
+            {},
+            continue_cancel_resolution=lambda _run_id: {},
+            supervise_result=lambda _state, result: result,
+        )
 
     def continue_cancel(run_id: str) -> dict[str, object]:
         calls.append(run_id)
@@ -72,6 +76,7 @@ def test_cancel_resolution_requires__run_identity_and__runs_one_durable_step() -
     patch = cancel_resolution_node(
         {"run_id": "run-1", "__target__": "cancel_resolution"},
         continue_cancel_resolution=continue_cancel,
+        supervise_result=lambda _state, result: result,
     )
 
     assert calls == ["run-1"]

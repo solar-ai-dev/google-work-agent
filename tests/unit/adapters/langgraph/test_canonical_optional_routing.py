@@ -1,166 +1,126 @@
 from typing import cast
 
-import pytest
-
-from google_work_agent.adapters.langgraph.main.response_synthesis import (
-    canonicalize_optional_stage_decision,
-)
-from google_work_agent.adapters.langgraph.main.state import (
-    GraphState,
-    GraphStateUpdateV1,
-    WorkflowPhase,
-)
+from google_work_agent.adapters.langgraph.main.state import GraphState, WorkflowPhase
 from google_work_agent.adapters.langgraph.main.supervisor import (
-    SupervisorDecisionV1,
-    SupervisorTarget,
+    PlanningRouteResultV1,
+    WorkAnalysisRouteResultV1,
+    route_supervisor,
 )
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
+from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
 
 
-def _state(
-    *, analysis_requirement: str, output_mode: str, input_routes: list[object]
-) -> GraphState:
-    return cast(
-        GraphState,
-        {
-            "request_intent": {
-                "schema_version": 2,
-                "meta": {"artifact_id": "intent-1", "revision": 1, "based_on": []},
-                "goal": "goal",
-                "completion_conditions": [],
-                "constraints": [],
-                "requested_effect_hints": [],
-                "requested_resource_hints": [],
-                "analysis_requirement": analysis_requirement,
-                "ambiguity": {
-                    "requires_confirmation": False,
-                    "reason_codes": [],
-                    "missing_fields": [],
-                },
-            },
-            "tool_route_plan": {
-                "schema_version": 2,
-                "registry_version": "registry-1",
-                "input_plan": {
-                    "schema_version": 1,
-                    "meta": {"artifact_id": "input-1", "revision": 1, "based_on": []},
-                    "input_routes": input_routes,
-                },
-                "output_plan": {
-                    "schema_version": 1,
-                    "meta": {"artifact_id": "output-1", "revision": 1, "based_on": []},
-                    "output_mode": output_mode,
-                    "output_routes": [],
-                },
-            },
+def test_work_analysis__complete_disposition__routes_to_planning() -> None:
+    state = _state(analysis_requirement="REQUIRED", with_retrieval=True)
+    analysis = {
+        "schema_version": 2,
+        "meta": {
+            "artifact_id": "analysis-1",
+            "revision": 1,
+            "based_on": [
+                {"artifact_id": "intent-1", "revision": 1},
+                {"artifact_id": "input-1", "revision": 1},
+                {"artifact_id": "output-1", "revision": 1},
+                {"artifact_id": "retrieval-1", "revision": 1},
+            ],
         },
-    )
-
-
-def _decision(*, target: str, reason_code: str) -> SupervisorDecisionV1:
-    phase = (
-        WorkflowPhase.CONTEXT_RETRIEVAL.value
-        if target == SupervisorTarget.CONTEXT_RETRIEVAL.value
-        else WorkflowPhase.WORK_ANALYSIS.value
-    )
-    return {
-        "target": target,
-        "next_phase": phase,
-        "state_update": cast(GraphStateUpdateV1, {"workflow_phase": phase}),
-        "reason_code": reason_code,
-        "budget_decision": None,
     }
 
-
-def test_tool_route__with_input__route_stays_retrieval() -> None:
-    state = _state(
-        analysis_requirement="NONE",
-        output_mode="ANSWER",
-        input_routes=[{"route_id": "in-1"}],
-    )
-    decision = _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
-        reason_code="ROUTE_READY",
-    )
-
-    assert canonicalize_optional_stage_decision(state, decision) == decision
-
-
-def test_answer_without_input__or_analysis_routes__directly_to_planning() -> None:
-    state = _state(analysis_requirement="NONE", output_mode="ANSWER", input_routes=[])
-    decision = _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
-        reason_code="NO_TOOL_NEEDED",
+    decision = route_supervisor(
+        phase=WorkflowPhase.WORK_ANALYSIS,
+        state=state,
+        result=cast(
+            WorkAnalysisRouteResultV1,
+            {
+                "disposition": "COMPLETE",
+                "typed_result": analysis,
+                "workflow_signal": None,
+                "reason_codes": [],
+            },
+        ),
     )
 
-    result = canonicalize_optional_stage_decision(state, decision)
-
-    assert result["target"] == SupervisorTarget.SOLUTION_PLANNING.value
-    assert result["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
-    assert result["state_update"]["retrieval_result"] is None
-    assert result["state_update"]["work_analysis_result"] is None
-
-
-def test_no_input_with__required_analysis_routes__to_work_analysis() -> None:
-    state = _state(analysis_requirement="REQUIRED", output_mode="ANSWER", input_routes=[])
-    decision = _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
-        reason_code="NO_TOOL_NEEDED",
-    )
-
-    result = canonicalize_optional_stage_decision(state, decision)
-
-    assert result["target"] == SupervisorTarget.WORK_ANALYSIS.value
-    assert result["next_phase"] == WorkflowPhase.WORK_ANALYSIS.value
-
-
-def test_action_without__input_does_not__invent_retrieval_skip() -> None:
-    state = _state(analysis_requirement="NONE", output_mode="ACTION", input_routes=[])
-    decision = _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
-        reason_code="ROUTE_READY",
-    )
-
-    assert canonicalize_optional_stage_decision(state, decision) == decision
+    assert decision["target"] == SupervisorTarget.SOLUTION_PLANNING.value
+    assert decision["state_update"]["work_analysis_result"] == analysis
 
 
 def test_retrieval_answer__with_no_analysis__routes_to_planning() -> None:
-    state = _state(
-        analysis_requirement="NONE",
-        output_mode="ANSWER",
-        input_routes=[{"route_id": "in-1"}],
-    )
-    decision = _decision(
-        target=SupervisorTarget.WORK_ANALYSIS.value,
-        reason_code="SUFFICIENT",
-    )
+    state = _state(analysis_requirement="NONE", with_retrieval=False)
+    answer = {
+        "schema_version": 2,
+        "meta": {
+            "artifact_id": "answer-1",
+            "revision": 1,
+            "based_on": [{"artifact_id": "output-1", "revision": 1}],
+        },
+        "answer": "완료했습니다.",
+        "evidence_refs": [],
+    }
 
-    result = canonicalize_optional_stage_decision(state, decision)
-
-    assert result["target"] == SupervisorTarget.SOLUTION_PLANNING.value
-    assert result["next_phase"] == WorkflowPhase.SOLUTION_PLANNING.value
-    assert result["state_update"]["work_analysis_result"] is None
-
-
-def test_retrieval_with__required_analysis__stays_work_analysis() -> None:
-    state = _state(
-        analysis_requirement="REQUIRED",
-        output_mode="ANSWER",
-        input_routes=[{"route_id": "in-1"}],
-    )
-    decision = _decision(
-        target=SupervisorTarget.WORK_ANALYSIS.value,
-        reason_code="PARTIAL",
+    decision = route_supervisor(
+        phase=WorkflowPhase.SOLUTION_PLANNING,
+        state=state,
+        result=cast(
+            PlanningRouteResultV1,
+            {
+                "disposition": "ANSWER_ONLY",
+                "typed_result": answer,
+                "reason_codes": [],
+            },
+        ),
     )
 
-    assert canonicalize_optional_stage_decision(state, decision) == decision
+    assert decision["target"] == SupervisorTarget.RESPONSE_SYNTHESIS.value
+    assert decision["state_update"]["planning_result"] == answer
 
 
-def test_invalid_analysis__requirement_fails__closed() -> None:
-    state = _state(analysis_requirement="UNKNOWN", output_mode="ANSWER", input_routes=[])
-    decision = _decision(
-        target=SupervisorTarget.CONTEXT_RETRIEVAL.value,
-        reason_code="NO_TOOL_NEEDED",
+def _state(*, analysis_requirement: str, with_retrieval: bool) -> GraphState:
+    request_ref = {"artifact_id": "intent-1", "revision": 1}
+    input_ref = {"artifact_id": "input-1", "revision": 1}
+    return cast(
+        GraphState,
+        {
+            "run_id": "run-1",
+            "workflow_phase": WorkflowPhase.WORK_ANALYSIS.value,
+            "request_intent": {
+                "schema_version": 2,
+                "meta": {**request_ref, "based_on": []},
+                "goal": "요청",
+                "analysis_requirement": analysis_requirement,
+            },
+            "tool_route_plan": {
+                "schema_version": 2,
+                "input_plan": {
+                    "schema_version": 1,
+                    "meta": {**input_ref, "based_on": [request_ref]},
+                    "input_routes": [{"route_id": "route-1"}] if with_retrieval else [],
+                },
+                "output_plan": {
+                    "schema_version": 1,
+                    "meta": {
+                        "artifact_id": "output-1",
+                        "revision": 1,
+                        "based_on": [request_ref],
+                    },
+                    "output_mode": "ANSWER",
+                },
+            },
+            "retrieval_result": (
+                {
+                    "schema_version": 1,
+                    "meta": {
+                        "artifact_id": "retrieval-1",
+                        "revision": 1,
+                        "based_on": [request_ref, input_ref],
+                    },
+                }
+                if with_retrieval
+                else None
+            ),
+            "work_analysis_result": None,
+            "planning_result": None,
+            "plan_review": None,
+            "retry_budget": build_default_run_budget(),
+            "trace_context": {},
+        },
     )
-
-    with pytest.raises(ValueError, match="analysis_requirement"):
-        canonicalize_optional_stage_decision(state, decision)

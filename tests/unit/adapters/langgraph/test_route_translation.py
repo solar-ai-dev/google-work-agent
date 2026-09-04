@@ -5,7 +5,7 @@ from google_work_agent.adapters.langgraph.main.routing.route_after_supervisor im
     GraphRouteTranslator,
     UnroutableSupervisorTargetError,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import SupervisorTarget
+from google_work_agent.adapters.langgraph.main.supervisor_decision import SupervisorTarget
 from google_work_agent.adapters.langgraph.profiles.profile_registry import GraphProfile
 from google_work_agent.adapters.langgraph.registry.node_registry import (
     RUNTIME_NODE_OWNERS,

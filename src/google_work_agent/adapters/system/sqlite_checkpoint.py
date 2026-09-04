@@ -587,9 +587,31 @@ class SqliteCheckpointAdapter(BaseCheckpointSaver[Any]):
                 ORDER BY e.checkpoint_generation DESC LIMIT 1;""",
                 (run_id, thread_id),
             ).fetchone()
+            latest_projection = connection.execute(
+                """SELECT checkpoint_generation, retrieval_cache_requirements_json
+                FROM workflow_checkpoint_envelopes
+                WHERE run_id=? AND langgraph_thread_id=?
+                ORDER BY checkpoint_generation DESC LIMIT 1;""",
+                (run_id, thread_id),
+            ).fetchone()
         if row is None:
             return None
         checkpoint = _to_checkpoint(row)
+        if (
+            latest_projection is not None
+            and int(latest_projection["checkpoint_generation"]) > checkpoint.checkpoint_generation
+        ):
+            # A nested Retrieval checkpoint can commit after the latest root
+            # checkpoint and before the subgraph returns.  Keep the root
+            # identity used for resume, but surface the newest bounded cache
+            # dependencies so startup reconciliation never resumes stale
+            # memory-only handles after process loss.
+            checkpoint = replace(
+                checkpoint,
+                retrieval_cache_requirements=_requirements_from_json(
+                    latest_projection["retrieval_cache_requirements_json"]
+                ),
+            )
         with self._projection_update_lock:
             pending_update = self._projection_updates.get((run_id, thread_id))
         if pending_update is None:
@@ -991,9 +1013,6 @@ def _requirements_json(requirements: tuple[RetrievalCacheRequirementV1, ...]) ->
 
 
 def _to_checkpoint(row: sqlite3.Row) -> GraphCheckpointEnvelopeV1:
-    requirements = cast(
-        list[dict[str, object]], json.loads(str(row["retrieval_cache_requirements_json"]))
-    )
     return GraphCheckpointEnvelopeV1(
         schema_version=1,
         checkpoint_id=str(row["checkpoint_id"]),
@@ -1010,20 +1029,27 @@ def _to_checkpoint(row: sqlite3.Row) -> GraphCheckpointEnvelopeV1:
         active_handoff_run_sequence=None
         if row["active_handoff_run_sequence"] is None
         else int(row["active_handoff_run_sequence"]),
-        retrieval_cache_requirements=tuple(
-            RetrievalCacheRequirementV1(
-                schema_version=1,
-                read_result_handle=str(item["read_result_handle"]),
-                route_id=str(item["route_id"]),
-                query_identity_hash=str(item["query_identity_hash"]),
-            )
-            for item in requirements
+        retrieval_cache_requirements=_requirements_from_json(
+            row["retrieval_cache_requirements_json"]
         ),
         created_at_ms=int(row["created_at_ms"]),
         checkpoint_blob=bytes(row["checkpoint_blob"]),
         pre_reauth_status=(
             None if row["pre_reauth_status"] is None else RunStatusV1(str(row["pre_reauth_status"]))
         ),
+    )
+
+
+def _requirements_from_json(value: object) -> tuple[RetrievalCacheRequirementV1, ...]:
+    requirements = cast(list[dict[str, object]], json.loads(str(value)))
+    return tuple(
+        RetrievalCacheRequirementV1(
+            schema_version=1,
+            read_result_handle=str(item["read_result_handle"]),
+            route_id=str(item["route_id"]),
+            query_identity_hash=str(item["query_identity_hash"]),
+        )
+        for item in requirements
     )
 
 

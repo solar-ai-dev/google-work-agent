@@ -8,9 +8,13 @@ from google_work_agent.adapters.langgraph.main.state import (
     GraphStateUpdateV1,
     WorkflowPhase,
 )
-from google_work_agent.adapters.langgraph.main.supervisor import (
+from google_work_agent.adapters.langgraph.main.supervisor import route_supervisor
+from google_work_agent.adapters.langgraph.main.supervisor_decision import (
     SupervisorTarget,
-    route_supervisor,
+    make_supervisor_decision,
+)
+from google_work_agent.adapters.langgraph.main.supervisor_lifecycle_rules import (
+    apply_durable_priority,
 )
 from google_work_agent.application.agents.planning.contracts.action_plan_draft import (
     ActionPlanDraftV2,
@@ -37,6 +41,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 )
 from google_work_agent.application.use_cases.execution_attempt.write_execution_contracts import (
     WriteActionResponse,
+)
+from google_work_agent.application.use_cases.run.get_supervisor_observation import (
+    SupervisorObservationV1,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import (
     RETRIEVAL_HEAVY_MAX_LLM_CALLS,
@@ -193,9 +200,7 @@ def test_retrieval_complete__with_explicit_analysis__routes_to_work_analysis() -
         state=_state(request_intent=intent, tool_route_plan=plan),
         result={
             "disposition": "SUFFICIENT",
-            "typed_result": cast(
-                RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}
-            ),
+            "typed_result": cast(RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}),
         },
     )
 
@@ -212,18 +217,14 @@ def test_policy_precondition__after_retrieval__forces_work_analysis(
 ) -> None:
     intent = _request_intent(analysis_requirement="NONE")
     plan = _tool_route_plan()
-    plan["input_plan"]["input_routes"] = [
-        _input_route(reason_code=policy_reason_code)
-    ]
+    plan["input_plan"]["input_routes"] = [_input_route(reason_code=policy_reason_code)]
 
     decision = route_supervisor(
         phase=WorkflowPhase.CONTEXT_RETRIEVAL,
         state=_state(request_intent=intent, tool_route_plan=plan),
         result={
             "disposition": "SUFFICIENT",
-            "typed_result": cast(
-                RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}
-            ),
+            "typed_result": cast(RetrievalResultV1, {"schema_version": 1, "evidence_refs": []}),
         },
     )
 
@@ -251,12 +252,19 @@ def test_unknown_tool__route_disposition_fails__closed_to_recovery() -> None:
 def test_work_analysis__routing_is_owned__by_canonical_subgraph() -> None:
     state = _state(workflow_phase=WorkflowPhase.WORK_ANALYSIS)
 
-    with pytest.raises(ValueError, match="canonical eight-node subgraph"):
-        route_supervisor(
-            phase=WorkflowPhase.WORK_ANALYSIS,
-            state=state,
-            result={},
-        )
+    decision = route_supervisor(
+        phase=WorkflowPhase.WORK_ANALYSIS,
+        state=state,
+        result={
+            "disposition": "UNKNOWN",
+            "typed_result": None,
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+
+    assert decision["target"] == SupervisorTarget.RECOVERY.value
+    assert decision["reason_code"] == "WORK_ANALYSIS_CONTRACT_VIOLATION"
 
 
 def test_review_pass__with_plan_routes__to_domain_validation() -> None:
@@ -605,6 +613,24 @@ def test_review_retrieve_more__with_frozen_route__becomes_retrieval_required() -
         planning_result=_answer_draft("ANSWER_ONLY"),
     )
     state["tool_route_plan"] = plan
+    state["retrieval_result"] = cast(
+        RetrievalResultV1,
+        {
+            "meta": {
+                "artifact_id": "retrieval-1",
+                "revision": 1,
+                "based_on": [
+                    {"artifact_id": "intent-1", "revision": 1},
+                    {"artifact_id": "route-plan-1", "revision": 1},
+                ],
+            },
+            "coverage": "PARTIAL",
+            "evidence_refs": ["evidence-1"],
+        },
+    )
+    state["planning_result"]["meta"]["based_on"].append(
+        {"artifact_id": "retrieval-1", "revision": 1}
+    )
 
     decision = route_supervisor(
         phase=WorkflowPhase.PLAN_REVIEW,
@@ -734,6 +760,93 @@ def test_recovery_phase__routes_to__recovery_boundary() -> None:
     assert decision["next_phase"] == WorkflowPhase.RECOVERY.value
 
 
+@pytest.mark.parametrize(
+    ("status", "action_statuses", "expected_target"),
+    [
+        ("REAUTH_REQUIRED", [], SupervisorTarget.REAUTH),
+        ("RECOVERY_REQUIRED", [], SupervisorTarget.RECOVERY),
+        ("PLANNING", ["UNKNOWN_RESULT"], SupervisorTarget.RECOVERY),
+        ("WAITING_APPROVAL", ["EXECUTED"], SupervisorTarget.VERIFICATION),
+        ("WAITING_APPROVAL", ["EXECUTING"], SupervisorTarget.ACTION_EXECUTION),
+        ("CANCEL_REQUESTED", [], SupervisorTarget.CANCEL_RESOLUTION),
+    ],
+)
+def test_durable_priority__with_lifecycle_fact__preempts_normal_planning(
+    status: str,
+    action_statuses: list[str],
+    expected_target: SupervisorTarget,
+) -> None:
+    candidate = route_supervisor(
+        phase=WorkflowPhase.TOOL_ROUTING,
+        state=_state(request_intent=_request_intent(analysis_requirement="NONE")),
+        result={
+            "schema_version": 1,
+            "disposition": "NO_TOOL_NEEDED",
+            "tool_route_plan": _tool_route_plan(),
+            "workflow_signal": None,
+            "reason_codes": [],
+        },
+    )
+    facts = SupervisorObservationV1(
+        run_status=status,
+        next_allowed_commands=(),
+        action_statuses=tuple(action_statuses),
+        cancel_intent_active=status == "CANCEL_REQUESTED",
+    )
+
+    decision = apply_durable_priority(
+        state=_state(),
+        decision=candidate,
+        facts=facts,
+    )
+
+    assert decision["target"] == expected_target.value
+
+
+def test_waiting_approval__during_fresh_review__allows_domain_validation() -> None:
+    decision = route_supervisor(
+        phase=WorkflowPhase.PLAN_REVIEW,
+        state=_state(
+            workflow_phase=WorkflowPhase.PLAN_REVIEW,
+            planning_result=_plan_draft("PLAN_READY"),
+        ),
+        result=_review_result("PASS"),
+    )
+    facts = SupervisorObservationV1(
+        run_status="WAITING_APPROVAL",
+        next_allowed_commands=(),
+        action_statuses=("MODIFIED",),
+        cancel_intent_active=False,
+    )
+
+    routed = apply_durable_priority(state=_state(), decision=decision, facts=facts)
+
+    assert routed["target"] == SupervisorTarget.DOMAIN_VALIDATION.value
+
+
+def test_recovery_owner_suspend__does_not_create_same_state_self_loop() -> None:
+    candidate = make_supervisor_decision(
+        target=SupervisorTarget.SUSPEND,
+        next_phase=None,
+        state_update={},
+        reason_code="RECOVERY_NOT_VERIFIED",
+    )
+    facts = SupervisorObservationV1(
+        run_status="RECOVERY_REQUIRED",
+        next_allowed_commands=("RESOLVE_RECOVERY",),
+        action_statuses=("UNKNOWN_RESULT",),
+        cancel_intent_active=False,
+    )
+
+    routed = apply_durable_priority(
+        state=_state(workflow_phase=WorkflowPhase.RECOVERY),
+        decision=candidate,
+        facts=facts,
+    )
+
+    assert routed["target"] == SupervisorTarget.SUSPEND.value
+
+
 def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,
@@ -745,6 +858,24 @@ def _state(
     approved_plan_id: str | None = None,
     retry_budget: RunBudgetV2 | None = None,
 ) -> GraphState:
+    effective_intent = request_intent
+    if effective_intent is None and workflow_phase is not WorkflowPhase.REQUEST_ANALYSIS:
+        effective_intent = _request_intent(
+            analysis_requirement="NONE" if planning_result is not None else "REQUIRED"
+        )
+    effective_route = tool_route_plan
+    if effective_route is None and workflow_phase not in {
+        WorkflowPhase.REQUEST_ANALYSIS,
+        WorkflowPhase.TOOL_ROUTING,
+    }:
+        effective_route = _tool_route_plan()
+    effective_review = plan_review
+    if (
+        effective_review is None
+        and planning_result is not None
+        and workflow_phase is WorkflowPhase.DOMAIN_VALIDATION
+    ):
+        effective_review = _review_result("PASS")
     return cast(
         GraphState,
         {
@@ -761,14 +892,14 @@ def _state(
                 "selected_resource_refs": [],
                 "requested_mode": "AUTO",
             },
-            "request_intent": request_intent,
-            "tool_route_plan": tool_route_plan,
+            "request_intent": effective_intent,
+            "tool_route_plan": effective_route,
             "workflow_signal": None,
             "acquisition_result": None,
             "retrieval_result": retrieval_result,
             "work_analysis_result": None,
             "planning_result": planning_result,
-            "plan_review": plan_review,
+            "plan_review": effective_review,
             "approved_plan_id": approved_plan_id,
             "execution_summary": None,
             "verification_summary": None,
@@ -806,10 +937,11 @@ def _request_intent(
 
 
 def _tool_route_plan() -> ToolRoutePlanV2:
+    request_ref = {"artifact_id": "intent-1", "revision": 1}
     meta: StateArtifactMetaV1 = {
         "artifact_id": "route-plan-1",
         "revision": 1,
-        "based_on": [],
+        "based_on": [request_ref],
     }
     return {
         "schema_version": 2,
@@ -841,7 +973,11 @@ def _answer_draft(
     del status
     return {
         "schema_version": 2,
-        "meta": {"artifact_id": "answer-1", "revision": 1, "based_on": []},
+        "meta": {
+            "artifact_id": "answer-1",
+            "revision": 1,
+            "based_on": [{"artifact_id": "route-plan-1", "revision": 1}],
+        },
         "answer": "Here is the answer.",
         "evidence_refs": ["evidence-1"],
     }
@@ -853,7 +989,11 @@ def _plan_draft(
     del status
     return {
         "schema_version": 2,
-        "meta": {"artifact_id": "plan-1", "revision": 1, "based_on": []},
+        "meta": {
+            "artifact_id": "plan-1",
+            "revision": 1,
+            "based_on": [{"artifact_id": "route-plan-1", "revision": 1}],
+        },
         "actions": [_action_draft()],
     }
 
@@ -873,7 +1013,11 @@ def _action_draft() -> PlannedActionV2:
 def _review_result(
     status: Literal["PASS", "REVISE", "RETRIEVE_MORE", "ROUTE_RECONSIDERATION", "CONFIRM", "BLOCK"],
 ) -> PlanReviewResultV2:
-    meta = {"artifact_id": "review-1", "revision": 1, "based_on": []}
+    meta = {
+        "artifact_id": "review-1",
+        "revision": 1,
+        "based_on": [{"artifact_id": "plan-1", "revision": 1}],
+    }
     result: dict[str, object] = {
         "schema_version": 2,
         "meta": meta,
