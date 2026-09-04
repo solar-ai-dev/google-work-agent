@@ -847,6 +847,29 @@ def test_recovery_owner_suspend__does_not_create_same_state_self_loop() -> None:
     assert routed["target"] == SupervisorTarget.SUSPEND.value
 
 
+def test_cancel_owner_ready_to_finalize__reaches_terminal_message_instead_of_self_loop() -> None:
+    candidate = make_supervisor_decision(
+        target=SupervisorTarget.RESPONSE_SYNTHESIS,
+        next_phase=None,
+        state_update={},
+        reason_code="READY_TO_FINALIZE",
+    )
+    facts = SupervisorObservationV1(
+        run_status="CANCEL_REQUESTED",
+        next_allowed_commands=(),
+        action_statuses=(),
+        cancel_intent_active=True,
+    )
+
+    routed = apply_durable_priority(
+        state=_state(workflow_phase=WorkflowPhase.RECOVERY),
+        decision=candidate,
+        facts=facts,
+    )
+
+    assert routed["target"] == SupervisorTarget.RESPONSE_SYNTHESIS.value
+
+
 def _state(
     *,
     workflow_phase: WorkflowPhase = WorkflowPhase.REQUEST_ANALYSIS,

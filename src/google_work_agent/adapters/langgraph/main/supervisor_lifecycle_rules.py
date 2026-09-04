@@ -46,6 +46,14 @@ def apply_durable_priority(
         return decision
 
     if status == "CANCEL_REQUESTED" or facts.cancel_intent_active:
+        if (
+            candidate == SupervisorTarget.RESPONSE_SYNTHESIS.value
+            and decision["reason_code"] in {"READY_TO_FINALIZE", "FINALIZED"}
+        ):
+            # CancelResolution has proved every child settled.  The terminal
+            # commit still owns the CANCELLED transition and final message;
+            # sending this handoff back to CancelResolution cannot add a fact.
+            return decision
         if "UNKNOWN_RESULT" in action_statuses or "MISMATCH" in action_statuses:
             return _priority_decision(
                 target=SupervisorTarget.RECOVERY,
