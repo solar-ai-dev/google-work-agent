@@ -113,7 +113,7 @@ def test_select_evidence__sole_exact_selected_read__skips_llm() -> None:
     assert result["evidence_drafts"][0]["role"] == "SUPPORTS"
 
 
-def test_exact_selected_read__with_multiple_segments__selects_them_without_llm() -> None:
+def test_exact_selected_read__with_multiple_segments__selects_top_rank_without_llm() -> None:
     runtime = FakeLLMRuntime()
     intent = _intent()
     intent["analysis_requirement"] = "NONE"
@@ -158,11 +158,7 @@ def test_exact_selected_read__with_multiple_segments__selects_them_without_llm()
     )
 
     assert runtime.calls == []
-    assert result["selected_segment_ids"] == [
-        "segment-1",
-        "segment-2",
-        "segment-3",
-    ]
+    assert result["selected_segment_ids"] == ["segment-1"]
 
 
 def test_select_evidence__repairs_container_only_selection__for_task_read() -> None:

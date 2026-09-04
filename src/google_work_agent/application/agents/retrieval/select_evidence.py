@@ -99,7 +99,6 @@ def select_evidence(
         request_intent=request_intent,
         candidates=eligible_candidates,
         exclusion_obligations=obligations,
-        max_evidence=context_budget.max_evidence,
     )
     if deterministic_selection is not None:
         return deterministic_selection, retry_budget
@@ -244,7 +243,6 @@ def _exact_selected_read_selection(
     request_intent: RequestIntentV2,
     candidates: list[RagCandidateV1],
     exclusion_obligations: Collection[str],
-    max_evidence: int,
 ) -> EvidenceSelectionResultV2 | None:
     """Select bounded segments from one exact selected resource without inference."""
 
@@ -257,9 +255,7 @@ def _exact_selected_read_selection(
         or any("EXACT_RESOURCE" not in candidate["reason_codes"] for candidate in candidates)
     ):
         return None
-    selected_segment_ids = [
-        candidate["segment_id"] for candidate in candidates[:max_evidence]
-    ]
+    selected_segment_ids = [candidates[0]["segment_id"]]
     return {
         "schema_version": 2,
         "evidence_drafts": [
