@@ -499,6 +499,8 @@ def test_retrieval__compiled_normal_path__materializes_evidence() -> None:
     llm = _ComponentInferencePort()
     connector = _ComponentConnectorReadPort()
     graph = RetrievalSubgraph(
+        now_ms=lambda: 1_000,
+        timezone_provider=lambda: "Asia/Seoul",
         llm_runtime=llm,
         prompt_manifest_path=None,
         prompt_execution_scope=DEVELOPMENT_SMOKE,
@@ -531,6 +533,8 @@ def test_retrieval__main_back_edge__extends_checkpointed_prior_query() -> None:
     connector = _ComponentConnectorReadPort()
     cache = InMemoryRunRetrievalCache()
     graph = RetrievalSubgraph(
+        now_ms=lambda: 1_000,
+        timezone_provider=lambda: "Asia/Seoul",
         llm_runtime=llm,
         prompt_manifest_path=None,
         prompt_execution_scope=DEVELOPMENT_SMOKE,
@@ -583,6 +587,8 @@ def test_retrieval__exhausted_local_followups__return_partial_instead_of_leaking
     llm = _ComponentInferencePort(retrieval_needs_more=True)
     connector = _ComponentConnectorReadPort()
     graph = RetrievalSubgraph(
+        now_ms=lambda: 1_000,
+        timezone_provider=lambda: "Asia/Seoul",
         llm_runtime=llm,
         prompt_manifest_path=None,
         prompt_execution_scope=DEVELOPMENT_SMOKE,

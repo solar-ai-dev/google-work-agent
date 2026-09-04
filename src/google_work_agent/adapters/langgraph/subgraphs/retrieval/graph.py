@@ -356,6 +356,8 @@ class RetrievalSubgraph:
         tool_catalog: SignedToolRegistry,
         read_result_cache: RunRetrievalCachePort,
         confirm_inline: ConfirmInline,
+        now_ms: Callable[[], int],
+        timezone_provider: Callable[[], str],
         default_tasklist_id_provider: Callable[[], str | None] | None = None,
         default_calendar_id_provider: Callable[[], str | None] | None = None,
     ) -> None:
@@ -381,6 +383,8 @@ class RetrievalSubgraph:
         self._tool_catalog = tool_catalog
         self._read_result_cache = read_result_cache
         self._confirm_inline = confirm_inline
+        self._now_ms = now_ms
+        self._timezone_provider = timezone_provider
         # Pre-Prompt Runtime Closure: TASK routes' only supported semantic
         # constraint kind is CONTAINER_REF (_runtime_route_constraint_policies
         # below), but nothing ever populated validated_container_refs for the
@@ -986,6 +990,8 @@ class RetrievalSubgraph:
                             "validated_container_refs": validated_container_refs,
                             "detail_candidate_refs": detail_candidate_refs,
                             "attempted_detail_candidate_refs": attempted_detail_candidate_refs,
+                            "now_ms": self._now_ms(),
+                            "timezone": self._timezone_provider(),
                         }
                     }
                 },

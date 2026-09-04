@@ -1085,9 +1085,7 @@ def test_general_gmail_search__uses_preserved_person_and_search_terms() -> None:
         prompt_input=prompt_input,
         requested_mode="LOCAL_GPU",
         frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
-        route_policies={
-            "route-1": RouteConstraintPolicy(frozenset({"PARTICIPANT", "KEYWORD"}))
-        },
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"PARTICIPANT", "KEYWORD"}))},
         retry_budget=build_default_run_budget(),
     )
 
@@ -1101,6 +1099,91 @@ def test_general_gmail_search__uses_preserved_person_and_search_terms() -> None:
             "match_mode": "ALL",
         },
         {"kind": "KEYWORD", "terms": ["프로젝트", "일정"], "match_mode": "ALL"},
+    ]
+
+
+def test_general_gmail_search__resolves_last_week_from_injected_clock() -> None:
+    output = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "SEARCH",
+                "reason_codes": ["USER_REQUEST"],
+                "search_spec": {
+                    "mode": "INITIAL",
+                    "constraints": [
+                        {"kind": "KEYWORD", "terms": ["wrong"], "match_mode": "PHRASE"}
+                    ],
+                },
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["matching threads"],
+        "retrieval_order": ["route-1"],
+    }
+    runtime = FakeStructuredInferencePort(outputs=[output])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+
+    result, _, _ = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={
+            "request_intent": {
+                "constraints": [
+                    {"kind": "DATE", "field": "period", "value": ["지난주"]},
+                    {
+                        "kind": "USER_REQUIREMENT",
+                        "field": "search_terms",
+                        "value": ["프로젝트", "일정"],
+                    },
+                ]
+            },
+            "input_routes": frozen_routes,
+        },
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD", "TEMPORAL_RANGE"}))},
+        retry_budget=build_default_run_budget(),
+        now_ms=1_788_560_100_000,
+        timezone="Asia/Seoul",
+    )
+
+    search_spec = result["route_queries"][0]["search_spec"]
+    assert search_spec is not None
+    assert search_spec["constraints"] == [
+        {"kind": "KEYWORD", "terms": ["프로젝트", "일정"], "match_mode": "ALL"},
+        {
+            "kind": "TEMPORAL_RANGE",
+            "axis": "MESSAGE_TIME",
+            "start_local": "2026-08-24T00:00:00",
+            "end_local": "2026-08-31T00:00:00",
+            "timezone": "Asia/Seoul",
+        },
     ]
 
 

@@ -59,6 +59,8 @@ def build_pre_analysis_subgraphs(
     ],
     evidence_store: RunScopedEvidenceStore,
     read_result_cache: RunRetrievalCachePort,
+    now_ms: Callable[[], int],
+    timezone_provider: Callable[[], str],
     default_tasklist_id_provider: Callable[[], str | None] | None = None,
     default_calendar_id_provider: Callable[[], str | None] | None = None,
 ) -> PreAnalysisSubgraphs:
@@ -98,6 +100,8 @@ def build_pre_analysis_subgraphs(
             tool_catalog=tool_catalog,
             read_result_cache=read_result_cache,
             confirm_inline=confirm_context_retrieval_inline,
+            now_ms=now_ms,
+            timezone_provider=timezone_provider,
             default_tasklist_id_provider=default_tasklist_id_provider,
             default_calendar_id_provider=default_calendar_id_provider,
         ).build(),

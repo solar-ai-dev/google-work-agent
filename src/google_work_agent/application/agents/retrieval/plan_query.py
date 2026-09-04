@@ -31,6 +31,9 @@ from google_work_agent.application.agents.retrieval.plan_candidate_detail import
 from google_work_agent.application.agents.retrieval.plan_query_expansion import (
     deterministic_followup_query_plan,
 )
+from google_work_agent.application.agents.retrieval.resolve_relative_period import (
+    resolve_relative_period,
+)
 from google_work_agent.application.agents.tool_routing.bind_registry_candidates import (
     coarse_resource_category,
 )
@@ -400,6 +403,8 @@ def plan_query(
     validated_container_refs: Mapping[str, Collection[str]] | None = None,
     detail_candidate_refs: Collection[str] = (),
     attempted_detail_candidate_refs: Collection[str] = (),
+    now_ms: int | None = None,
+    timezone: str | None = None,
 ) -> tuple[RetrievalQueryPlanV2, RunBudgetV2, bool]:
     """Plan provider-neutral retrieval intent against already-frozen input routes."""
     supported_kinds = _applicable_constraint_kinds(
@@ -452,6 +457,8 @@ def plan_query(
         result.structured_output,
         prompt_input=prompt_input,
         frozen_routes=frozen_routes,
+        now_ms=now_ms,
+        timezone=timezone,
     )
     try:
         validated = validate_retrieval_query_plan_v2(
@@ -488,6 +495,8 @@ def plan_query(
             failure_detail=str(error),
             retry_budget=retry_budget,
             is_followup=is_followup,
+            now_ms=now_ms,
+            timezone=timezone,
         )
     return revised_plan, revised_budget, True
 
@@ -583,6 +592,8 @@ def _revise_plan_once(
     failure_detail: str,
     retry_budget: RunBudgetV2,
     is_followup: bool,
+    now_ms: int | None,
+    timezone: str | None,
 ) -> tuple[RetrievalQueryPlanV2, RunBudgetV2]:
     signature = build_semantic_failure_signature_v1(
         node_id="retrieval.plan_query",
@@ -620,6 +631,8 @@ def _revise_plan_once(
         revision.structured_output,
         prompt_input=prompt_input,
         frozen_routes=frozen_routes,
+        now_ms=now_ms,
+        timezone=timezone,
     )
     validated = validate_retrieval_query_plan_v2(
         candidate,
@@ -640,6 +653,8 @@ def _preserve_explicit_gmail_constraints(
     *,
     prompt_input: Mapping[str, object],
     frozen_routes: Sequence[InputToolRouteV1],
+    now_ms: int | None,
+    timezone: str | None,
 ) -> object:
     """Keep validated explicit Gmail values exact across semantic planning.
 
@@ -653,7 +668,11 @@ def _preserve_explicit_gmail_constraints(
     request_intent = prompt_input.get("request_intent")
     if not isinstance(request_intent, Mapping):
         return value
-    explicit_constraints = _explicit_gmail_constraints(request_intent.get("constraints"))
+    explicit_constraints = _explicit_gmail_constraints(
+        request_intent.get("constraints"),
+        now_ms=now_ms,
+        timezone=timezone,
+    )
     if not explicit_constraints or not isinstance(value, Mapping):
         return value
     route_queries = value.get("route_queries")
@@ -685,7 +704,12 @@ def _preserve_explicit_gmail_constraints(
     return candidate
 
 
-def _explicit_gmail_constraints(value: object) -> list[dict[str, object]]:
+def _explicit_gmail_constraints(
+    value: object,
+    *,
+    now_ms: int | None,
+    timezone: str | None,
+) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
     participants: list[dict[str, str]] = []
@@ -738,6 +762,10 @@ def _explicit_gmail_constraints(value: object) -> list[dict[str, object]]:
                 "match_mode": "ALL" if len(search_terms) > 1 else "PHRASE",
             }
         )
+    if now_ms is not None and timezone is not None:
+        temporal = resolve_relative_period(value, now_ms=now_ms, timezone=timezone)
+        if temporal is not None:
+            result.append(dict(temporal))
     return result
 
 

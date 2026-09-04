@@ -407,6 +407,7 @@ class _WorkflowRuntimeComposition:
         self._work_hours_provider = work_hours_provider or (
             lambda: CalendarWorkHours(timezone=(timezone_provider or (lambda: "Asia/Seoul"))())
         )
+        self._timezone_provider = timezone_provider or (lambda: "Asia/Seoul")
         self._default_tasklist_id_provider = default_tasklist_id_provider
         self._default_calendar_id_provider = default_calendar_id_provider
         self._cancel_signal_lock = Lock()
@@ -543,6 +544,8 @@ class _WorkflowRuntimeComposition:
             confirm_context_retrieval_inline=self._confirm_context_retrieval_inline,
             evidence_store=self._evidence_store,
             read_result_cache=self._read_result_cache,
+            now_ms=now_ms,
+            timezone_provider=self._timezone_provider,
             default_tasklist_id_provider=self._default_tasklist_id_provider,
             default_calendar_id_provider=self._default_calendar_id_provider,
         )
@@ -1726,9 +1729,7 @@ class _WorkflowRuntimeComposition:
         result: Mapping[str, object],
         source_phase: WorkflowPhase,
     ) -> GraphState:
-        lifecycle_patch = {
-            key: value for key, value in result.items() if state.get(key) != value
-        }
+        lifecycle_patch = {key: value for key, value in result.items() if state.get(key) != value}
         candidate = lifecycle_control_decision(
             source_phase=source_phase,
             control_result=lifecycle_patch,

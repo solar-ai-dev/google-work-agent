@@ -30,6 +30,8 @@ class PlanQueryInput(TypedDict):
     validated_container_refs: NotRequired[Mapping[str, Collection[str]] | None]
     detail_candidate_refs: NotRequired[Collection[str]]
     attempted_detail_candidate_refs: NotRequired[Collection[str]]
+    now_ms: NotRequired[int | None]
+    timezone: NotRequired[str | None]
 
 
 def project_plan_query_input(state: Mapping[str, object]) -> PlanQueryInput:
