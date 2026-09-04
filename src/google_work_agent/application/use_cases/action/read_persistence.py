@@ -459,28 +459,21 @@ def handle_existing_finalize_receipt(
     plan = require_plan(unit_of_work, action.plan_id)
     if action.status == ActionStatusV1.VERIFIED.value:
         aggregate = _inspect_read_plan_state(unit_of_work, plan.id)
-        if _plan_and_run_match_reconciled_state(unit_of_work, plan, aggregate):
-            response = ReadActionCommandResponse(
-                applied=True,
-                result_code=ResultCode.TRANSITION_APPLIED.value,
-                action_id=action.id,
-                action_status=action.status,
-                action_version=action.version,
-                next_allowed_commands=(),
-                plan_completed=aggregate.plan_completed,
-                run_completed=aggregate.run_completed,
-                partial=aggregate.partial,
-            )
-            finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
-            unit_of_work.commit()
-            return _PendingReceiptResolution(should_return=True, response=response)
-        return _return_recovery_required_action(
-            unit_of_work=unit_of_work,
-            command_id=command_id,
-            action=action,
-            completed_at_ms=completed_at_ms,
-            detail="finalize_read_action parent reconciliation is incomplete",
+        run = require_run(unit_of_work, plan.run_id)
+        response = ReadActionCommandResponse(
+            applied=True,
+            result_code=ResultCode.TRANSITION_APPLIED.value,
+            action_id=action.id,
+            action_status=action.status,
+            action_version=action.version,
+            next_allowed_commands=(),
+            plan_completed=plan.status is PlanStatusV1.COMPLETED,
+            run_completed=run.status is RunStatusV1.COMPLETED,
+            partial=aggregate.partial,
         )
+        finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
+        unit_of_work.commit()
+        return _PendingReceiptResolution(should_return=True, response=response)
     if (
         action.status == ActionStatusV1.EXECUTED.value
         and action.version == command.expected_version
@@ -523,29 +516,22 @@ def handle_existing_fail_receipt(
     plan = require_plan(unit_of_work, action.plan_id)
     if action.status == ActionStatusV1.FAILED.value:
         aggregate = _inspect_read_plan_state(unit_of_work, plan.id)
-        if _plan_and_run_match_reconciled_state(unit_of_work, plan, aggregate):
-            response = ReadActionCommandResponse(
-                applied=True,
-                result_code=ResultCode.TRANSITION_APPLIED.value,
-                action_id=action.id,
-                action_status=action.status,
-                action_version=action.version,
-                next_allowed_commands=(),
-                plan_completed=aggregate.plan_completed,
-                run_completed=aggregate.run_completed,
-                partial=aggregate.partial,
-                safe_error_code=command.safe_error_code,
-            )
-            finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
-            unit_of_work.commit()
-            return _PendingReceiptResolution(should_return=True, response=response)
-        return _return_recovery_required_action(
-            unit_of_work=unit_of_work,
-            command_id=command_id,
-            action=action,
-            completed_at_ms=completed_at_ms,
-            detail="fail_read_action parent reconciliation is incomplete",
+        run = require_run(unit_of_work, plan.run_id)
+        response = ReadActionCommandResponse(
+            applied=True,
+            result_code=ResultCode.TRANSITION_APPLIED.value,
+            action_id=action.id,
+            action_status=action.status,
+            action_version=action.version,
+            next_allowed_commands=(),
+            plan_completed=plan.status is PlanStatusV1.COMPLETED,
+            run_completed=run.status is RunStatusV1.COMPLETED,
+            partial=aggregate.partial,
+            safe_error_code=command.safe_error_code,
         )
+        finish_json_receipt(unit_of_work, command_id, response, action.version, completed_at_ms)
+        unit_of_work.commit()
+        return _PendingReceiptResolution(should_return=True, response=response)
     if (
         action.status == ActionStatusV1.EXECUTING.value
         and action.version == command.expected_version
@@ -770,18 +756,3 @@ def _inspect_read_plan_state(unit_of_work: UnitOfWork, plan_id: str) -> _Aggrega
     if any(status not in READ_ACTION_TERMINAL_STATUSES for status in statuses):
         return _AggregateState(plan_completed=False, run_completed=False, partial=partial)
     return _AggregateState(plan_completed=True, run_completed=True, partial=partial)
-
-
-def _plan_and_run_match_reconciled_state(
-    unit_of_work: UnitOfWork,
-    plan: PlanRecord,
-    aggregate: _AggregateState,
-) -> bool:
-    run = require_run(unit_of_work, plan.run_id)
-    expected_plan_status = (
-        PlanStatusV1.COMPLETED if aggregate.plan_completed else PlanStatusV1.ACTIVE
-    )
-    expected_run_status = (
-        RunStatusV1.COMPLETED if aggregate.run_completed else RunStatusV1.EXECUTING
-    )
-    return plan.status is expected_plan_status and run.status is expected_run_status

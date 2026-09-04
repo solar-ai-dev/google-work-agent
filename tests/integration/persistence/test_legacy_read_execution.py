@@ -40,6 +40,15 @@ from google_work_agent.application.use_cases.plan.record_review_result import (
 from google_work_agent.application.use_cases.resource.connector_read_projection import (
     ConnectorReadProjection,
 )
+from google_work_agent.application.use_cases.run.build_terminal_message import (
+    BuildTerminalMessageHandler,
+    BuildTerminalMessageQueryV1,
+    TerminalActionOutcomeV1,
+)
+from google_work_agent.application.use_cases.run.complete_read_only_run import (
+    CompleteReadOnlyRunCommand,
+    CompleteReadOnlyRunHandler,
+)
 from google_work_agent.domain.evidence.model import EvidenceOriginType
 from tests.support.fakes import FakeGoogleGateway
 from tests.support.fixtures import ProductFixtureSnapshotLoader
@@ -212,8 +221,46 @@ def test_fresh_legacy_read__reaches_connector_and__closes_without_write_facts(
     )
     assert finalized.applied is True
     assert finalized.action_status == "VERIFIED"
-    assert finalized.plan_completed is True
-    assert finalized.run_completed is True
+    assert finalized.plan_completed is False
+    assert finalized.run_completed is False
+
+    terminal_message = BuildTerminalMessageHandler()(
+        BuildTerminalMessageQueryV1(
+            schema_version=1,
+            run_id="run-1",
+            expected_run_version=published.run_version,
+            source_kind="READ_RESULT_SUMMARY",
+            result_kind="SUCCESS",
+            answer_text=None,
+            reason_codes=[],
+            request_text="Summarize the project thread.",
+            action_outcomes=(
+                TerminalActionOutcomeV1(
+                    tool_name="gmail_get_thread",
+                    effect_type="READ",
+                    status="VERIFIED",
+                    arguments={"thread_id": "thread-project"},
+                    evidence_excerpts=tuple(item.excerpt for item in executed.evidence),
+                ),
+            ),
+        )
+    )
+    complete_handler = CompleteReadOnlyRunHandler(
+        unit_of_work_factory=unit_of_work_factory,
+        now_ms=lambda: 1050,
+        message_id_factory=lambda: "message-final-1",
+    )
+    complete_command = CompleteReadOnlyRunCommand(
+        command_id="complete-run-1",
+        request_hash="f" * 64,
+        run_id="run-1",
+        plan_id="plan-1",
+        expected_version=published.run_version,
+        terminal_message=terminal_message,
+    )
+    completed_run = complete_handler(complete_command)
+    assert completed_run.applied is True
+    assert complete_handler(complete_command) == completed_run
 
     connection = connect_sqlite(database_path)
     try:
@@ -235,5 +282,9 @@ def test_fresh_legacy_read__reaches_connector_and__closes_without_write_facts(
         assert run["terminal_result_kind"] == "SUCCESS"
         assert plan["status"] == "COMPLETED"
         assert tuple(counts) == (0, 0, 0, 1)
+        message = connection.execute(
+            "SELECT content FROM messages WHERE id = 'message-final-1';"
+        ).fetchone()
+        assert "Need a draft for the Thursday recap" in message["content"]
     finally:
         connection.close()

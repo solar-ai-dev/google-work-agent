@@ -27,8 +27,13 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalAssistantMessageInputV1,
+    validate_terminal_assistant_message_input,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.project_terminal_message_context import (
+    project_terminal_message_context,
+)
 from google_work_agent.domain.action.model import Action, ActionStatusV1
 from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.message.model import Message as MessageRecord
@@ -48,6 +53,7 @@ class FinalizeCancelCommand:
     request_hash: str
     run_id: str
     expected_run_version: int
+    terminal_message: TerminalAssistantMessageInputV1 | None = None
 
 
 class FinalizeCancelHandler:
@@ -69,24 +75,6 @@ class FinalizeCancelHandler:
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: FinalizeCancelCommand) -> WriteRunResponse:
-        terminal_result_kinds: tuple[Literal["PARTIAL", "CANCELLED"], ...] = (
-            "PARTIAL",
-            "CANCELLED",
-        )
-        terminal_messages = {
-            result_kind: self._build_terminal_message(
-                BuildTerminalMessageQueryV1(
-                    schema_version=1,
-                    run_id=command.run_id,
-                    expected_run_version=command.expected_run_version,
-                    source_kind="CANCEL_RESULT",
-                    result_kind=result_kind,
-                    answer_text=None,
-                    reason_codes=[],
-                )
-            )
-            for result_kind in terminal_result_kinds
-        }
         with self._unit_of_work_factory() as unit_of_work:
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
             if existing is not None:
@@ -318,9 +306,29 @@ class FinalizeCancelHandler:
             if response.applied and response.run_status == RunStatusV1.CANCELLED.value:
                 if response.result_kind not in {"PARTIAL", "CANCELLED"}:
                     raise RuntimeError("cancel terminal result kind is invalid")
-                terminal_message = terminal_messages[
-                    cast(Literal["PARTIAL", "CANCELLED"], response.result_kind)
-                ]
+                terminal_message = command.terminal_message
+                if terminal_message is None:
+                    request_text, action_outcomes = project_terminal_message_context(
+                        unit_of_work, run.id
+                    )
+                    terminal_message = self._build_terminal_message(
+                        BuildTerminalMessageQueryV1(
+                            schema_version=1,
+                            run_id=run.id,
+                            expected_run_version=command.expected_run_version,
+                            source_kind="CANCEL_RESULT",
+                            result_kind=cast(Literal["PARTIAL", "CANCELLED"], response.result_kind),
+                            answer_text=None,
+                            reason_codes=[],
+                            request_text=request_text,
+                            action_outcomes=action_outcomes,
+                        )
+                    )
+                validate_terminal_assistant_message_input(terminal_message)
+                if terminal_message.result_kind != response.result_kind:
+                    raise RuntimeError(
+                        "terminal message result kind does not match durable cancel result"
+                    )
                 message_id = self._message_id_factory()
                 unit_of_work.messages.append_terminal_assistant_message(
                     MessageRecord(

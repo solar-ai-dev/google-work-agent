@@ -878,6 +878,14 @@ class _WorkflowRuntimeComposition:
         snapshot = self._get_run_snapshot_handler(GetRunSnapshotQuery(run_id))
         if snapshot is None:
             raise LookupError(f"run not found: {run_id}")
+        with self._unit_of_work_factory() as unit_of_work:
+            evidence_by_action = {
+                action.action_id: [
+                    evidence.excerpt
+                    for evidence in unit_of_work.evidence.list_for_action(action.action_id)
+                ]
+                for action in snapshot.actions
+            }
         return {
             "run_id": run_id,
             "conversation_id": snapshot.run.conversation_id,
@@ -894,6 +902,16 @@ class _WorkflowRuntimeComposition:
             ),
             "action_statuses": [action.status for action in snapshot.actions],
             "action_effect_types": [action.effect_type for action in snapshot.actions],
+            "actions": [
+                {
+                    "tool_name": action.tool_name,
+                    "effect_type": action.effect_type,
+                    "status": action.status,
+                    "arguments": action.arguments,
+                    "evidence_excerpts": evidence_by_action[action.action_id],
+                }
+                for action in snapshot.actions
+            ],
         }
 
     def _terminal_complete_answer_only(
@@ -1006,6 +1024,7 @@ class _WorkflowRuntimeComposition:
                 run_id=run_id,
                 plan_id=plan_id,
                 expected_version=intent["expected_run_version"],
+                terminal_message=intent["terminal_message"],
             )
         )
 
@@ -1020,6 +1039,7 @@ class _WorkflowRuntimeComposition:
                 request_hash=calculate_canonical_json_hash(payload),
                 run_id=run_id,
                 expected_version=intent["expected_run_version"],
+                terminal_message=intent["terminal_message"],
             )
         )
 
@@ -1035,6 +1055,7 @@ class _WorkflowRuntimeComposition:
                 run_id=run_id,
                 expected_version=intent["expected_run_version"],
                 reason_code=intent["reason_codes"][0] if intent["reason_codes"] else "BLOCKED",
+                terminal_message=intent["terminal_message"],
             )
         )
 
@@ -1049,6 +1070,7 @@ class _WorkflowRuntimeComposition:
                 request_hash=calculate_canonical_json_hash(payload),
                 run_id=run_id,
                 expected_run_version=intent["expected_run_version"],
+                terminal_message=intent["terminal_message"],
             )
         )
 
@@ -1079,6 +1101,7 @@ class _WorkflowRuntimeComposition:
                 resolution=resolution,
                 target_kind=cast(Literal["RUN", "ACTION"], context["scope"]),
                 target_action_id=None if action_id is None else str(action_id),
+                terminal_message=intent["terminal_message"],
             )
         )
 

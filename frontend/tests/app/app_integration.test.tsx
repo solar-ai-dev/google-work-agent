@@ -65,6 +65,13 @@ type SnapshotShape = {
   execution_status: { action_count: number; terminal_action_count: number };
   verification_summary: { verified_count: number; mismatch_count: number };
   recovery_summary: { unknown_result_action_count: number };
+  messages?: Array<{
+    id: string;
+    run_id: string | null;
+    role: string;
+    content: string;
+    created_at_ms: number;
+  }>;
   pending_interrupt?: {
     schema_version: 1;
     interrupt_id: string;
@@ -318,7 +325,18 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
       });
     }
     if (path === "/api/v1/runs/run-1") {
-      return jsonResponse(snapshotPayload({ conversation_id: createdConversationId, status: "FAILED", entry_mode: "RESOURCE_SELECTED" }));
+      return jsonResponse(snapshotPayload({
+        conversation_id: createdConversationId,
+        status: "FAILED",
+        entry_mode: "RESOURCE_SELECTED",
+        messages: [{
+          id: "message-final-1",
+          run_id: "run-1",
+          role: "ASSISTANT",
+          content: "선택한 메일을 요약하지 못했습니다. 완료되지 않은 상태입니다.",
+          created_at_ms: 2,
+        }],
+      }));
     }
     if (path === "/api/v1/runs/run-1/context") {
       return jsonResponse({
@@ -362,16 +380,22 @@ test("starts a run in RESOURCE_SELECTED mode", async () => {
   };
   expect(body.entry_mode).toBe("RESOURCE_SELECTED");
   expect(body.selected_resource_handles).toEqual(["handle-resource-1"]);
-  expect(await screen.findByText("메인 에이전트 · 작업을 완료하지 못했습니다.")).toBeInTheDocument();
-  expect(screen.getByText("작업을 완료하지 못했습니다.")).toBeInTheDocument();
+  expect(
+    await screen.findByText("선택한 메일을 요약하지 못했습니다. 완료되지 않은 상태입니다."),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("region", { name: "에이전트 진행" })).not.toBeInTheDocument();
 });
 
 test("clears the previous conversation projection when starting a new conversation", async () => {
-  installUiContractFetch({ conversations: true, status: "FAILED" });
+  installUiContractFetch({
+    conversations: true,
+    status: "FAILED",
+    terminalMessage: "요청한 작업을 완료하지 못했습니다.",
+  });
   const user = userEvent.setup();
   render(<App />);
 
-  expect(await screen.findByRole("region", { name: "에이전트 진행" })).toHaveTextContent("작업을 완료하지 못했습니다.");
+  expect(await screen.findByText("요청한 작업을 완료하지 못했습니다.")).toBeInTheDocument();
 
   await user.click(screen.getByRole("button", { name: "새 대화" }));
 
@@ -3076,11 +3100,15 @@ test("TST-UI-213 hides raw runtime status and has no native window controls", as
 });
 
 test("shows a partial-result notice after a run is cancelled", async () => {
-  installUiContractFetch({ status: "CANCELLED", resultKind: "PARTIAL" });
+  installUiContractFetch({
+    status: "CANCELLED",
+    resultKind: "PARTIAL",
+    terminalMessage: "요청하신 작업 중 일부만 완료한 뒤 나머지는 취소했습니다.",
+  });
   render(<App />);
 
   expect(
-    await screen.findByText("일부 작업은 완료되었고 나머지는 취소되었습니다."),
+    await screen.findByText("요청하신 작업 중 일부만 완료한 뒤 나머지는 취소했습니다."),
   ).toBeInTheDocument();
 });
 
@@ -3257,6 +3285,7 @@ function installUiContractFetch(options: {
   twoItems?: boolean;
   contextPreview?: Record<string, unknown>;
   externalLlmScope?: Record<string, unknown>;
+  terminalMessage?: string;
 } = {}): Array<{ path: string; init?: RequestInit }> {
   conversationOpenRunEnabled = options.run !== false;
   const requests: Array<{ path: string; init?: RequestInit }> = [];
@@ -3556,7 +3585,7 @@ function installUiContractFetch(options: {
       return jsonFetchResponse({ applied: true, result_code: "ACCEPTED", run_id: "run-1", conversation_id: "conversation-1", run_status: "WAITING_APPROVAL", run_version: 1, user_message_id: "message-1", workflow_key: "workflow-1", enqueued: true, request_replayed: false });
     }
     if (path === "/api/v1/runs/run-1") return jsonFetchResponse({
-      ...snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: actionStatus === "APPROVED" ? ["MODIFY", "REJECT"] : actionStatus === "PROPOSED" || actionStatus === "MODIFIED" ? ["APPROVE", "MODIFY", "REJECT"] : [] }] : [] }),
+      ...snapshotPayload({ status: options.status ?? "WAITING_APPROVAL", result_kind: options.resultKind, messages: options.terminalMessage ? [{ id: "message-final-1", run_id: "run-1", role: "ASSISTANT", content: options.terminalMessage, created_at_ms: 2 }] : [], actions: options.action ? [{ action_id: "action-1", tool_name: options.actionToolName ?? "gmail_draft", status: actionStatus, version: 7, effect_type: "CREATE", approval_required: true, verification_policy: "GET_COMPARE", risk: options.actionRisk ?? {}, next_allowed_commands: actionStatus === "APPROVED" ? ["MODIFY", "REJECT"] : actionStatus === "PROPOSED" || actionStatus === "MODIFIED" ? ["APPROVE", "MODIFY", "REJECT"] : [] }] : [] }),
       context_preview: options.contextPreview ?? null,
       external_llm_transfer_scope: options.externalLlmScope ?? null,
     });
@@ -3968,7 +3997,10 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
       finished_at_ms: snapshot.finished_at_ms,
       next_allowed_commands: snapshot.next_allowed_commands,
     },
-    messages: [],
+    messages: (snapshot.messages ?? []).map((message) => ({
+      schema_version: 1,
+      ...message,
+    })),
     current_plan: snapshot.active_plan,
     actions: snapshot.actions.map((action) => {
       const risk = action.risk ?? {};
@@ -3995,7 +4027,7 @@ function snapshotPayload(overrides: Partial<SnapshotShape>) {
     recovery_summary: snapshot.recovery_summary,
     context_preview: null,
     pending_interrupt: snapshot.pending_interrupt ?? null,
-    recovery: snapshot.recovery ?? (snapshot.status === "RECOVERY_REQUIRED" && snapshot.actions.some((action) => action.status === "MISMATCH") ? { reason_code: "VERIFICATION_MISMATCH", target: { target_kind: "ACTION", action_id: snapshot.actions.find((action) => action.status === "MISMATCH")!.action_id }, allowed_resolution_kinds: ["ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN"] } : null),
+    recovery: snapshot.recovery ?? (snapshot.status === "RECOVERY_REQUIRED" && snapshot.actions.some((action) => action.status === "MISMATCH") ? { reason_code: "VERIFICATION_MISMATCH", message: "Google에서 확인한 결과가 요청과 다릅니다.", target: { target_kind: "ACTION", action_id: snapshot.actions.find((action) => action.status === "MISMATCH")!.action_id }, allowed_resolution_kinds: ["ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN"] } : null),
     error: snapshot.error ?? (() => {
       const actions: Array<Record<string, unknown>> = snapshot.actions.filter((action) => action.next_allowed_commands.includes("PREPARE_RETRY")).map((action) => ({ kind: "PREPARE_RETRY", action_id: action.action_id }));
       if (snapshot.next_allowed_commands.includes("RESUME")) actions.push({ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" });

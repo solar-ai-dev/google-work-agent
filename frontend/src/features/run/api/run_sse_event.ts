@@ -26,6 +26,7 @@ export type RunSsePayloadByType = {
   reauth_required: { connector_id: string };
   recovery_required: { recovery: {
     reason_code: "UNKNOWN_RESULT" | "VERIFICATION_MISMATCH" | "CHECKPOINT_MISMATCH" | "CONTRACT_VIOLATION";
+    message: string;
     target: { target_kind: "RUN" } | { target_kind: "ACTION"; action_id: string };
     allowed_resolution_kinds: RecoveryResolution[];
   } };
@@ -95,7 +96,7 @@ function validatePayload(eventType: RunSseEventType, raw: unknown): void {
 function validateRecovery(raw: Record<string, unknown>): void {
   if (!hasExactKeys(raw, ["recovery"]) || !isRecord(raw.recovery)) throw new RunSseContractError("recovery_required payload is invalid");
   const recovery = raw.recovery;
-  if (!hasExactKeys(recovery, ["reason_code", "target", "allowed_resolution_kinds"]) || !isOneOf(recovery.reason_code, RECOVERY_REASONS) || !isOneOfArray(recovery.allowed_resolution_kinds, RECOVERY_RESOLUTIONS) || !isRecord(recovery.target)) throw new RunSseContractError("recovery projection is invalid");
+  if (!hasExactKeys(recovery, ["reason_code", "message", "target", "allowed_resolution_kinds"]) || !isOneOf(recovery.reason_code, RECOVERY_REASONS) || !isString(recovery.message) || !isOneOfArray(recovery.allowed_resolution_kinds, RECOVERY_RESOLUTIONS) || !isRecord(recovery.target)) throw new RunSseContractError("recovery projection is invalid");
   const target = recovery.target;
   const validTarget = target.target_kind === "RUN"
     ? hasExactKeys(target, ["target_kind"])

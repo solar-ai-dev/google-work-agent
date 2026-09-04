@@ -10,8 +10,8 @@ export function RecoveryCard({ snapshot, busy, onResolve, onErrorAction = () => 
   if (!recovery && (!snapshot.error || transientResumeOnlyError)) return null;
   return (
     <article className="info-card">
-      <strong>Recovery</strong>
-      {recovery ? <><p>{recovery.reason_code}</p><div className="button-row">{recovery.allowed_resolution_kinds.map((kind) => <button className="button-secondary" type="button" key={kind} disabled={busy === `recovery-${kind}`} onClick={() => onResolve(kind)}>{resolutionLabel(kind)}</button>)}</div></> : null}
+      <strong>복구가 필요합니다</strong>
+      {recovery ? <><p>{recovery.message}</p><div className="button-row">{recovery.allowed_resolution_kinds.map((kind) => <button className="button-secondary" type="button" key={kind} disabled={busy === `recovery-${kind}`} onClick={() => onResolve(kind)}>{resolutionLabel(kind)}</button>)}</div></> : null}
       {snapshot.error ? <><p className="status-warn">{snapshot.error.message}</p><div className="button-row">{snapshot.error.actions.filter((action) => action.kind === "REAUTHENTICATE_GOOGLE" || action.kind === "OPEN_SETTINGS" || action.kind === "OPEN_DIAGNOSTICS").map((action) => <button className="button-secondary" type="button" key={action.kind} onClick={() => onErrorAction(action.kind as "REAUTHENTICATE_GOOGLE" | "OPEN_SETTINGS" | "OPEN_DIAGNOSTICS")}>{errorActionLabel(action.kind)}</button>)}</div></> : null}
     </article>
   );

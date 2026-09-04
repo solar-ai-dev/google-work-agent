@@ -187,7 +187,8 @@ test("F_E2E_006_REAUTH_PASS", async () => {
   expect(reauth.plans[0].id).toBe(originalPlanId);
   expect(reauth.actions[0].id).toBe(originalActionId);
   expect(harness.effectCount(reauth) - harness.effectCount(baseline)).toBe(0);
-  await expect(page.getByText("REAUTH_REQUIRED", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Google 연결이 만료되어 작업을 계속하려면 재인증이 필요합니다/)).toBeVisible();
+  await expect(page.getByText("REAUTH_REQUIRED", { exact: true })).toHaveCount(0);
 
   await harness.completeReauthFault();
   const resumed = await harness.waitForRunStatus(runId, "WAITING_APPROVAL");
@@ -234,13 +235,16 @@ test("F_E2E_007_VERIFICATION_MISMATCH_PASS", async () => {
     "CREATE_CORRECTIVE_PLAN",
     "FAIL",
   ]);
-  await expect(recoveryCard()).toContainText("VERIFICATION_MISMATCH");
+  await expect(recoveryCard()).toContainText("Google에서 다시 확인한 결과가 요청한 내용과 일치하지 않습니다");
+  await expect(recoveryCard()).not.toContainText("VERIFICATION_MISMATCH");
   await expect(page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toHaveCount(0);
 
   await recoveryCard().getByRole("button", { name: "현재 결과 수용" }).click();
   const completed = await harness.waitForRunStatus(runId, "COMPLETED");
   expect(completed.run.terminal_result_kind).toBe("PARTIAL");
-  await expect(page.getByText("일부 작업은 완료되었고 나머지는 취소되었습니다.")).toBeVisible();
+  await expect(page.getByRole("article", { name: "에이전트 응답" })).toContainText(
+    "완료로 처리하지 않았습니다",
+  );
 });
 
 test("F_E2E_008_MCP_FAILURE_PASS", async () => {
@@ -271,12 +275,15 @@ test("F_E2E_008_MCP_FAILURE_PASS", async () => {
   expect(harness.auditTypes(failed)).toEqual(
     expect.arrayContaining(["WRITE_UNKNOWN_RESULT", "WRITE_RECOVERY_RESOLVED_FAILED"]),
   );
-  await expect(page.getByText("FAILED", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Tasks 실행 에이전트 · 작업을 완료하지 못했습니다.", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("FAILED", { exact: true })).toHaveCount(0);
   await expect(page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toHaveCount(0);
 });
 
 function recoveryCard() {
-  return page.getByRole("article").filter({ hasText: "Recovery" });
+  return page.getByRole("article").filter({ hasText: "복구가 필요합니다" });
 }
 
 function confirmationCard() {

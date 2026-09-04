@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, join, resolve } from "node:path";
 
 const port = 18765;
 const controlPort = 18766;
@@ -11,9 +11,14 @@ process.env.GWA_BROWSER_E2E_STORAGE_STATE_PATH = join(
   runtimeRoot,
   "browser-storage-state.json",
 );
-const python = process.platform === "win32"
-  ? ".\\.venv\\Scripts\\python.exe"
-  : "./.venv/bin/python";
+const defaultPython = process.platform === "win32"
+  ? (existsSync(join("..", ".venv", "Scripts", "python.exe"))
+      ? ".\\.venv\\Scripts\\python.exe"
+      : ".\\.venv-cpu\\Scripts\\python.exe")
+  : (existsSync(join("..", ".venv", "bin", "python"))
+      ? "./.venv/bin/python"
+      : "./.venv-cpu/bin/python");
+const python = process.env.GWA_E2E_PYTHON ?? defaultPython;
 
 export default defineConfig({
   testDir: "./tests/product-e2e",
@@ -46,6 +51,9 @@ export default defineConfig({
       GWA_BROWSER_E2E_PORT: String(port),
       GWA_BROWSER_E2E_CONTROL_PORT: String(controlPort),
       GWA_BROWSER_E2E_RUNTIME_ROOT: runtimeRoot,
+      PYTHONPATH: [resolve("..", "src"), process.env.PYTHONPATH]
+        .filter((value): value is string => Boolean(value))
+        .join(delimiter),
     },
     url: `http://127.0.0.1:${controlPort}/health/live`,
     reuseExistingServer: false,

@@ -159,6 +159,7 @@ class WorkflowOutcomeProjector:
         return {
             "recovery": {
                 "reason_code": projection.reason_code,
+                "message": projection.message,
                 "target": projection.target,
                 "allowed_resolution_kinds": list(projection.allowed_resolution_kinds),
             }

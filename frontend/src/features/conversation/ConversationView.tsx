@@ -44,13 +44,19 @@ export type ConversationViewProps = { children: ReactNode; viewModel: Conversati
 export function ConversationView({ children, viewModel }: ConversationViewProps): JSX.Element {
   const { controller, resourceContext, formatTime, onOpenSettings, onOpenDiagnostics } = viewModel;
   const { selectedConversationId, historyMessages, runSnapshot, runContext, latestRunEvent, confirmationText, setConfirmationText, composerText, composerError, setComposerText, setComposerError, busyCommand, handleStartRun, handleApprove, handleSimpleAction, handleAttachDescriptors, handleCancelRun, handleResumeRun, handleAdjustContext, handleConfirmation, handleResolveRecovery } = controller;
+  const timelineMessages = mergeConversationMessages(
+    historyMessages,
+    runSnapshot?.messages ?? [],
+  );
   const showTransientRequest = Boolean(runContext?.request_text)
-    && !historyMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
+    && !timelineMessages.some((message) => message.role === "USER" && message.run_id === runContext?.run_id);
+  const isTerminal = runSnapshot !== null
+    && ["COMPLETED", "BLOCKED", "FAILED", "CANCELLED"].includes(runSnapshot.run.status);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const node = timelineRef.current;
     if (node) node.scrollTop = node.scrollHeight;
-  }, [selectedConversationId, historyMessages, latestRunEvent?.event_id, runSnapshot?.projection_version, showTransientRequest]);
+  }, [selectedConversationId, timelineMessages, latestRunEvent?.event_id, runSnapshot?.projection_version, showTransientRequest]);
   const retryActionIds = new Set(runSnapshot?.error?.actions.filter((action) => action.kind === "PREPARE_RETRY" && action.action_id).map((action) => action.action_id!) ?? []);
 
   return (
@@ -60,17 +66,17 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
           {children}
           <section className="agent-workspace" aria-label="에이전트 대화">
             <section className="card-list">
-              {groupMessagesByDate(historyMessages).map(({ message, separatorLabel }) => (
+              {groupMessagesByDate(timelineMessages).map(({ message, separatorLabel }) => (
                 <Fragment key={message.id}>
                   {separatorLabel ? <DateSeparator label={separatorLabel} /> : null}
                   {message.role === "USER" ? <UserMessageBubble content={message.content} createdAtMs={message.created_at_ms} /> : message.role === "ASSISTANT" ? <AssistantMessageBubble content={message.content} createdAtMs={message.created_at_ms} /> : <article className="info-card"><strong>시스템 메시지</strong><p>{message.content}</p></article>}
                 </Fragment>
               ))}
               {showTransientRequest ? <UserMessageBubble content={runContext!.request_text} /> : null}
-              {runSnapshot ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
-              {runSnapshot?.pending_interrupt ? <ConfirmationCard interrupt={runSnapshot.pending_interrupt} text={confirmationText} busy={busyCommand === "confirm-run"} onTextChange={setConfirmationText} onSubmit={(option) => void handleConfirmation(option)} /> : null}
-              {runSnapshot ? <div className="action-execution-flow"><ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /><ExecutionStatusCard snapshot={runSnapshot} /></div> : null}
-              {runSnapshot ? <RecoveryCard snapshot={runSnapshot} busy={busyCommand} onResolve={(kind) => void handleResolveRecovery(kind)} onErrorAction={(kind) => kind === "OPEN_DIAGNOSTICS" ? onOpenDiagnostics() : onOpenSettings()} /> : null}
+              {runSnapshot && !isTerminal ? <RunProgress snapshot={runSnapshot} latestEvent={latestRunEvent} busy={busyCommand} onCancel={() => void handleCancelRun()} onResume={(kind) => void handleResumeRun(kind)} /> : null}
+              {!isTerminal && runSnapshot?.pending_interrupt ? <ConfirmationCard interrupt={runSnapshot.pending_interrupt} text={confirmationText} busy={busyCommand === "confirm-run"} onTextChange={setConfirmationText} onSubmit={(option) => void handleConfirmation(option)} /> : null}
+              {runSnapshot && !isTerminal ? <div className="action-execution-flow"><ActionPlanCard snapshot={runSnapshot} busy={busyCommand} retryActionIds={retryActionIds} formatTime={formatTime} onApprove={(action, acknowledgements) => void handleApprove(action, acknowledgements)} onModify={(action, patch) => void handleSimpleAction("modify", action, patch)} onReject={(action) => void handleSimpleAction("reject", action)} onRetry={(action) => void handleSimpleAction("retry", action)} onAttachDescriptors={(action, descriptors) => handleAttachDescriptors(action, descriptors)} /><ExecutionStatusCard snapshot={runSnapshot} /></div> : null}
+              {runSnapshot && !isTerminal ? <RecoveryCard snapshot={runSnapshot} busy={busyCommand} onResolve={(kind) => void handleResolveRecovery(kind)} onErrorAction={(kind) => kind === "OPEN_DIAGNOSTICS" ? onOpenDiagnostics() : onOpenSettings()} /> : null}
             </section>
           </section>
         </div>
@@ -79,6 +85,17 @@ export function ConversationView({ children, viewModel }: ConversationViewProps)
         <RequestComposer text={composerText} error={composerError} busy={busyCommand === "start-run"} prompt={resourceContext.composerPrompt} selectedResourceLabels={resourceContext.selectedResourceLabels} setText={setComposerText} setError={setComposerError} onSubmit={handleStartRun} />
       </div>
     </>
+  );
+}
+
+export function mergeConversationMessages(
+  historyMessages: ConversationMessage[],
+  snapshotMessages: ConversationMessage[],
+): ConversationMessage[] {
+  const byId = new Map(historyMessages.map((message) => [message.id, message]));
+  for (const message of snapshotMessages) byId.set(message.id, message);
+  return Array.from(byId.values()).sort(
+    (left, right) => left.created_at_ms - right.created_at_ms || left.id.localeCompare(right.id),
   );
 }
 

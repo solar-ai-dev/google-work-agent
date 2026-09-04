@@ -155,14 +155,17 @@ Current `MainResumeStageIdV1` is exactly `RETRIEVAL_ENTRY | PLANNING_ENTRY | REV
 Answer-only·처리 불가 안내 → RESPONSE_SYNTHESIS → TERMINAL_COMMIT(CompleteAnswerOnlyRun) → COMPLETED → FINALIZE
 Policy block              → deterministic blocked response → TERMINAL_COMMIT(BlockRun) → BLOCKED → FINALIZE
 Write 정상 완료           → RESPONSE_SYNTHESIS → TERMINAL_COMMIT(CompleteWriteRun) → COMPLETED → FINALIZE
+READ 정상/부분 완료       → RESPONSE_SYNTHESIS → TERMINAL_COMMIT(CompleteReadOnlyRun) → COMPLETED → FINALIZE
 Cancel 완료               → deterministic cancel response → TERMINAL_COMMIT(FinalizeCancel) → CANCELLED → FINALIZE
 Recovery 실패             → deterministic failure response → TERMINAL_COMMIT(ResolveRecovery(FAIL)) → FAILED → FINALIZE
 Recovery 부분 수용        → RESPONSE_SYNTHESIS → TERMINAL_COMMIT(ResolveRecovery(ACCEPT_PARTIAL)) → COMPLETED → FINALIZE
 ```
 
-`RESPONSE_SYNTHESIS`의 단일 책임은 terminal command 전에 `TerminalAssistantMessageInputV1`을 만드는 것이다. Answer-only는 Planning의 검증된 `AnswerDraftV2`, Write는 persisted Plan/Action/Verification Result, Recovery/Cancel/Block은 typed reason/result만 입력으로 사용한다. P0에서 이 단계는 **deterministic Application formatting**이며 새 LLM call을 하지 않는다. Run status·Policy·Approval·Execution·Verification 결과를 결정하거나 변경하지 않는다. `BLOCKED | CANCELLED | FAILED`의 result kind와 reason code는 deterministic input으로 고정되며 Prompt가 바꿀 수 없다.
+`RESPONSE_SYNTHESIS`의 단일 책임은 terminal command 전에 `TerminalAssistantMessageInputV1`을 만드는 것이다. Answer-only는 Planning의 검증된 `AnswerDraftV2`, Write는 persisted Plan/Action/Verification Result, Recovery/Cancel/Block은 typed reason/result만 입력으로 사용한다. P0에서 이 단계는 **deterministic Application formatting**이며 새 LLM call을 하지 않는다. Run status·Policy·Approval·Execution·Verification 결과를 결정하거나 변경하지 않는다. `BLOCKED | CANCELLED | FAILED`의 result kind와 reason code는 deterministic input으로 고정되며 Prompt가 바꿀 수 없다. 최종 `content`는 현재 Run 요청 언어와 durable outcome을 반영한 대화형 답변이어야 하며 generic completion 문장, raw state, reason code가 답변을 대신할 수 없다.
 
 `TERMINAL_COMMIT`은 `TerminalCommitIntentV1.kind`를 closed dispatch하여 정확히 하나의 기존 lifecycle handler(`CompleteAnswerOnlyRun | CompleteReadOnlyRun(legacy) | CompleteWriteRun | BlockRun | FinalizeCancel | terminal ResolveRecovery`)만 호출한다. 각 handler가 Receipt + Domain terminal mutation + final ASSISTANT Message + required Audit를 같은 UoW로 commit한다. `TERMINAL_COMMIT` 자체는 새 Domain semantics를 만들지 않고, unknown kind/status/version은 fail closed한다. API에서 terminal `ResolveRecovery`가 이미 같은 atomic contract로 commit된 뒤 Graph가 resume된 경우에는 terminal snapshot + final Message 존재를 확인하고 중복 command를 호출하지 않는다.
+
+Legacy READ action finalize/fail handler는 Action과 Evidence만 확정하며 parent Run을 terminal로 닫지 않는다. READ parent terminal authority는 `RESPONSE_SYNTHESIS → CompleteReadOnlyRun` 하나다.
 
 `FINALIZE` runtime adapter는 `adapters/langgraph/main/nodes/finalize_node.py` 하나이며 terminal snapshot을 확인한 뒤 `trace_event.emit_trace_event`와 `sse_event.project_run_event`를 호출하고 END로 간다. 둘의 실패는 Domain rollback이나 Connector 재실행을 만들지 않는다.
 

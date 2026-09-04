@@ -131,7 +131,7 @@ export class BrowserProductHarness {
       await this.page.getByLabel("저장 방식").selectOption("SESSION_ONLY");
       await this.page.getByRole("button", { name: "저장하고 연결 검사" }).click();
     }
-    await expect(this.page.getByText("완료 · API LLM 연결")).toBeVisible();
+    await expect(this.page.getByText("완료 · LLM 자동 연결")).toBeVisible();
     const completeSetup = this.page.getByRole("button", { name: "설정 완료하고 시작" });
     await expect(completeSetup).toBeEnabled();
     await completeSetup.click();
@@ -242,7 +242,9 @@ export class BrowserProductHarness {
   }
 
   async assertCompletedUi(answer?: string): Promise<void> {
-    await expect(this.page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true })).toBeVisible();
+    await expect(
+      this.page.getByText("메인 에이전트 · 작업을 완료했습니다.", { exact: true }),
+    ).toHaveCount(0);
     let assistantMessage = this.page.getByRole("article", { name: "에이전트 응답" });
     if (answer) assistantMessage = assistantMessage.filter({ hasText: answer });
     await expect(assistantMessage).toBeVisible();
@@ -304,7 +306,12 @@ export class BrowserProductHarness {
   effectCount(state: ProductState): number {
     const resources = state.mcp_state.resources;
     return resources && typeof resources === "object"
-      ? Object.keys(resources).length
+      ? Object.values(resources).filter(
+          (resource) =>
+            resource !== null &&
+            typeof resource === "object" &&
+            typeof (resource as ProductRow).recovery_fingerprint === "string",
+        ).length
       : 0;
   }
 

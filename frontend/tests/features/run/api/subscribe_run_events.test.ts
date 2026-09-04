@@ -14,7 +14,7 @@ const payloads: Record<RunSseEventType, Record<string, unknown>> = {
   action_status: { action_id: "a-1", status: "APPROVED" },
   verification_result: { action_id: "a-1", outcome: "VERIFIED" },
   reauth_required: { connector_id: "google" },
-  recovery_required: { recovery: { reason_code: "CHECKPOINT_MISMATCH", target: { target_kind: "RUN" }, allowed_resolution_kinds: ["RECHECK", "CANCEL", "FAIL"] } },
+  recovery_required: { recovery: { reason_code: "CHECKPOINT_MISMATCH", message: "저장된 진행 위치를 다시 확인해야 합니다.", target: { target_kind: "RUN" }, allowed_resolution_kinds: ["RECHECK", "CANCEL", "FAIL"] } },
   completed: { status: "COMPLETED", result_kind: "SUCCESS" },
   error: { error_code: "INTERNAL_ERROR", recoverable: false },
 };

@@ -805,6 +805,9 @@ Local Storage에는 Secret, Approval/Claim 실행 권위 값(`approval_id`, `cla
 - Answer-only 결과에는 승인·실행 Card를 표시하지 않는다.
 - **Legacy/호환 READ-only Plan**에는 실행 상태 Card만 표시하고 승인 Button은 표시하지 않는다. 새 Release Planning의 primary path로 표시하지 않는다.
 - Write 실패 후 기존 Approval을 재사용하는 즉시 재실행 Button을 제공하지 않는다.
+- Terminal 시점의 primary output은 실제 final ASSISTANT Message다. 진행 상태·Run enum·reason code·generic completion 문장은 최종 답변을 대신하지 않는다.
+- React는 현재 `RunSnapshotResponseV1.messages`의 authoritative final Message를 즉시 Timeline에 병합하고, Conversation History refresh는 후속 동기화로 취급한다. Snapshot과 History에 같은 Message가 있으면 `message.id`로 한 번만 표시한다.
+- Recovery·Reauth·Failure Card는 서버가 제공한 사용자용 `message`와 허용된 다음 행동을 표시하며 raw reason code/state enum을 본문으로 렌더링하지 않는다.
 
 ## 27. UX 실행 계약
 

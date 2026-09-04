@@ -23,9 +23,14 @@ from google_work_agent.application.use_cases.recovery.require_recovery import (
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalAssistantMessageInputV1,
     TerminalResultKindV1,
+    validate_terminal_assistant_message_input,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.project_terminal_message_context import (
+    project_terminal_message_context,
+)
 from google_work_agent.application.use_cases.run.resume_confirmation import ResumeTargetIssuer
 from google_work_agent.application.use_cases.run.schedule_run_execution import (
     ScheduleRunExecutionCommand,
@@ -67,6 +72,7 @@ class ResolveRecoveryCommandV1:
     resolution: RecoveryResolution
     target_kind: Literal["RUN", "ACTION"]
     target_action_id: str | None = None
+    terminal_message: TerminalAssistantMessageInputV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,6 +391,7 @@ class ResolveRecoveryHandler:
                     command.expected_version,
                     result_kind,
                     now_ms,
+                    command.terminal_message,
                 )
                 unit_of_work.workflow_handoffs.supersede_unconsumed_for_run(
                     command.run_id, "RECOVERY_TERMINAL"
@@ -741,20 +748,29 @@ class ResolveRecoveryHandler:
         expected_run_version: int,
         result_kind: str | None,
         now_ms: int,
+        terminal_message: TerminalAssistantMessageInputV1 | None,
     ) -> None:
         if self._next_id is None or result_kind not in {"PARTIAL", "FAILED", "CANCELLED"}:
             raise RuntimeError("terminal recovery requires message identity and result kind")
-        message = self._build_terminal_message(
-            BuildTerminalMessageQueryV1(
-                schema_version=1,
-                run_id=run_id,
-                expected_run_version=expected_run_version,
-                source_kind="RECOVERY_RESULT",
-                result_kind=_terminal_result_kind(result_kind),
-                answer_text=None,
-                reason_codes=[],
+        message = terminal_message
+        if message is None:
+            request_text, action_outcomes = project_terminal_message_context(unit_of_work, run_id)
+            message = self._build_terminal_message(
+                BuildTerminalMessageQueryV1(
+                    schema_version=1,
+                    run_id=run_id,
+                    expected_run_version=expected_run_version,
+                    source_kind="RECOVERY_RESULT",
+                    result_kind=_terminal_result_kind(result_kind),
+                    answer_text=None,
+                    reason_codes=[],
+                    request_text=request_text,
+                    action_outcomes=action_outcomes,
+                )
             )
-        )
+        validate_terminal_assistant_message_input(message)
+        if message.result_kind != result_kind:
+            raise RuntimeError("terminal message result kind does not match recovery result")
         unit_of_work.messages.append_terminal_assistant_message(
             MessageRecord(
                 id=self._next_id(),

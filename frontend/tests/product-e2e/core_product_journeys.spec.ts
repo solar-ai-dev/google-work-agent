@@ -17,7 +17,7 @@ test.beforeAll(async ({ browser }, testInfo) => {
 });
 
 test.afterAll(async () => {
-  await harness.close();
+  if (harness) await harness.close();
 });
 
 test("E2E_001_ANSWER_ONLY_PASS", async () => {
@@ -25,7 +25,7 @@ test("E2E_001_ANSWER_ONLY_PASS", async () => {
   const { runId } = await startNewRun("E2E:ANSWER_ONLY 현재 상태를 설명해줘");
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
-  await assertCompletedUi("E2E completed: ANSWER_ONLY");
+  await assertCompletedUi("현재 요청을 처리할 준비가 되어 있습니다.");
   expect(completed.run.terminal_result_kind).toBe("SUCCESS");
   expect(completed.plans).toHaveLength(0);
   expect(completed.actions).toHaveLength(0);
@@ -51,10 +51,11 @@ test("E2E_002_GMAIL_READ_PASS", async () => {
   expect(requestPayload.selected_resource_handles).toEqual([expect.any(String)]);
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
-  await assertCompletedUi("E2E completed: GMAIL_READ");
+  await assertCompletedUi("선택한 메일의 핵심 내용은 deterministic Gmail evidence입니다.");
   expect(completed.run.terminal_result_kind).toBe("SUCCESS");
   expect(completed.actions).toHaveLength(0);
-  expect(toolCount(completed, "gmail_search_threads") - toolCount(baseline, "gmail_search_threads")).toBe(1);
+  expect(toolCount(completed, "gmail_search_threads") - toolCount(baseline, "gmail_search_threads")).toBe(0);
+  expect(toolCount(completed, "gmail_get_thread") - toolCount(baseline, "gmail_get_thread")).toBe(1);
   expect(writeCount(completed) - writeCount(baseline)).toBe(0);
   expect(completed.messages.filter((message) => message.role === "ASSISTANT")).toHaveLength(1);
 
@@ -69,11 +70,16 @@ test("E2E_003_TASK_CREATE_APPROVE_VERIFY_PASS", async () => {
   const waiting = await waitForRunStatus(runId, "WAITING_APPROVAL");
 
   const card = await actionCard("tasks_create_task");
+  await expect(card).toContainText("E2E APPROVED_WRITE");
+  await expect(card).toContainText("실행 후 Google에서 다시 확인");
   expect(toolCount(waiting, "tasks_create_task") - toolCount(baseline, "tasks_create_task")).toBe(0);
   await approve(card);
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
   await assertCompletedUi();
+  await expect(page.getByRole("article", { name: "에이전트 응답" })).toContainText(
+    "Google에서 결과를 다시 확인했습니다",
+  );
   expect(completed.run.terminal_result_kind).toBe("SUCCESS");
   expect(completed.actions.map((action) => action.status)).toEqual(["VERIFIED"]);
   expect(completed.execution_attempts.map((attempt) => attempt.status)).toEqual(["SUCCEEDED"]);
@@ -116,7 +122,9 @@ test("E2E_005_REJECT_WRITE_ZERO_PASS", async () => {
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
   await assertCompletedUi();
-  await expect(page.getByText("일부 작업은 완료되었고 나머지는 취소되었습니다.")).toBeVisible();
+  await expect(page.getByRole("article", { name: "에이전트 응답" })).toContainText(
+    "사용자 선택에 따라 실행하지 않았습니다",
+  );
   expect(completed.run.terminal_result_kind).toBe("PARTIAL");
   expect(completed.actions.map((action) => action.status)).toEqual(["REJECTED"]);
   expect(completed.execution_attempts).toHaveLength(0);
@@ -179,7 +187,9 @@ test("E2E_007_PARTIAL_APPROVAL_PASS", async () => {
   const completed = await waitForRunStatus(runId, "COMPLETED");
 
   await assertCompletedUi();
-  await expect(page.getByText("일부 작업은 완료되었고 나머지는 취소되었습니다.")).toBeVisible();
+  await expect(page.getByRole("article", { name: "에이전트 응답" })).toContainText(
+    "사용자 선택에 따라 실행하지 않았습니다",
+  );
   const statusByTool = Object.fromEntries(completed.actions.map((action) => [action.tool_name, action.status]));
   expect(statusByTool).toEqual({ calendar_create_event: "REJECTED", tasks_create_task: "VERIFIED" });
   expect(completed.run.terminal_result_kind).toBe("PARTIAL");

@@ -68,6 +68,7 @@ class ProjectErrorActionsHandler:
             plans = current_plan_tuple(unit_of_work.plans, run.id)
             plan = max(plans, key=lambda item: (item.revision_no, item.id), default=None)
             actions = () if plan is None else unit_of_work.actions.list_for_plan(plan.id)
+            korean = _uses_korean(_request_text(unit_of_work, run.id, run.conversation_id))
 
             retry_actions = tuple(
                 ErrorUiActionV1("PREPARE_RETRY", action_id=action.id)
@@ -79,7 +80,13 @@ class ProjectErrorActionsHandler:
                 return ProjectErrorActionsResultV1(
                     1,
                     "GOOGLE_REAUTH_REQUIRED",
-                    "Google authentication must be restored before this run can continue.",
+                    (
+                        "Google 연결이 만료되어 작업을 계속하려면 재인증이 필요합니다. "
+                        "같은 작업을 다시 보내지 않고 재연결 후 현재 결과부터 확인합니다."
+                        if korean
+                        else "Your Google connection expired. Reconnect to continue; the same "
+                        "action will not be resent before the current result is checked."
+                    ),
                     (
                         ErrorUiActionV1("REAUTHENTICATE_GOOGLE"),
                         ErrorUiActionV1("OPEN_SETTINGS"),
@@ -90,7 +97,13 @@ class ProjectErrorActionsHandler:
                 return ProjectErrorActionsResultV1(
                     1,
                     "ACTION_NOT_SENT",
-                    "One or more actions failed before provider delivery.",
+                    (
+                        "일부 작업이 Google에 전달되기 전에 실패했습니다. "
+                        "아직 적용되지 않은 항목만 다시 준비할 수 있습니다."
+                        if korean
+                        else "Some actions failed before reaching Google. Only the items that "
+                        "were not applied can be prepared again."
+                    ),
                     (*retry_actions, ErrorUiActionV1("OPEN_DIAGNOSTICS")),
                 )
             if safe_checkpoint_resume_is_allowed(
@@ -102,7 +115,13 @@ class ProjectErrorActionsHandler:
                 return ProjectErrorActionsResultV1(
                     1,
                     "SAFE_CHECKPOINT_RESUME_AVAILABLE",
-                    "This run can continue from its validated safe checkpoint.",
+                    (
+                        "검증된 안전 지점이 있어 완료되지 않은 작업을 "
+                        "그 위치부터 계속할 수 있습니다."
+                        if korean
+                        else "A validated safe checkpoint is available, so the unfinished work "
+                        "can continue from there."
+                    ),
                     (
                         ErrorUiActionV1(
                             "RESUME_SAFE_CHECKPOINT",
@@ -115,10 +134,33 @@ class ProjectErrorActionsHandler:
                 return ProjectErrorActionsResultV1(
                     1,
                     "RUN_FAILED",
-                    "The run failed.",
+                    (
+                        "요청을 완료하지 못했으며 성공으로 처리하지 않았습니다. "
+                        "진단에서 실패 지점을 확인할 수 있습니다."
+                        if korean
+                        else "I could not complete the request and did not report it as a "
+                        "success. You can inspect the failure point in diagnostics."
+                    ),
                     (ErrorUiActionV1("OPEN_DIAGNOSTICS"),),
                 )
         return None
+
+
+def _request_text(unit_of_work: UnitOfWork, run_id: str, conversation_id: str) -> str | None:
+    messages, _ = unit_of_work.messages.list_by_conversation_keyset(
+        conversation_id=conversation_id,
+        cursor=None,
+        page_size=200,
+    )
+    message = next(
+        (item for item in messages if item.run_id == run_id and item.role == "USER"),
+        None,
+    )
+    return None if message is None else message.content
+
+
+def _uses_korean(value: str | None) -> bool:
+    return value is None or any("\uac00" <= character <= "\ud7a3" for character in value)
 
 
 __all__ = [

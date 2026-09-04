@@ -19,9 +19,6 @@ from google_work_agent.application.use_cases.action.read_persistence import (
     require_action,
     require_plan,
 )
-from google_work_agent.application.use_cases.run.complete_read_only_run import (
-    CompleteReadOnlyRunHandler,
-)
 from google_work_agent.domain.action.model import ActionStatusV1, EffectType
 from google_work_agent.domain.action.transitions.finalize_read_action import (
     transition_finalize_read_action,
@@ -90,13 +87,6 @@ class FinalizeReadActionHandler:
             ):
                 raise RuntimeError("validated FinalizeReadAction CAS failed")
             response = action_result_response(command.action_id, result)
-            completion = CompleteReadOnlyRunHandler.try_apply_for_parent(
-                unit_of_work,
-                parent_command_id=command.command_id,
-                run_id=plan.run_id,
-                plan_id=plan.id,
-                now_ms=now_ms,
-            )
             partial = any(
                 ActionStatusV1(item.status) is ActionStatusV1.FAILED
                 for item in unit_of_work.actions.list_for_plan(plan.id)
@@ -104,8 +94,8 @@ class FinalizeReadActionHandler:
             response = ReadActionCommandResponse(
                 **{
                     **asdict(response),
-                    "plan_completed": completion is not None,
-                    "run_completed": completion is not None,
+                    "plan_completed": False,
+                    "run_completed": False,
                     "partial": partial,
                 }
             )

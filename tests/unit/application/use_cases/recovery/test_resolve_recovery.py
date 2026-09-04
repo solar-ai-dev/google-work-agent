@@ -37,9 +37,10 @@ def test_recheck_from__recovery_required__transitions_to_verifying(tmp_path: Pat
     assert _count(database_path, "recovery_contexts") == 0
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
     with connect_sqlite(database_path) as connection:
-        assert connection.execute(
-            "SELECT status FROM actions WHERE id='action-1';"
-        ).fetchone()[0] == "EXECUTED"
+        assert (
+            connection.execute("SELECT status FROM actions WHERE id='action-1';").fetchone()[0]
+            == "EXECUTED"
+        )
 
 
 def test_replay_with__same_request_hash__returns_cached_result(tmp_path: Path) -> None:
@@ -268,6 +269,11 @@ def test_fail_settles_plan__clears_context_and__writes_terminal_message(tmp_path
             ).fetchone()[0]
             == "ASSISTANT"
         )
+        content = connection.execute(
+            "SELECT content FROM messages WHERE id='terminal-message-1';"
+        ).fetchone()[0]
+        assert "검증 불일치 태스크" in content
+        assert "VERIFICATION_MISMATCH" not in content
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED"]
 
 
@@ -331,6 +337,12 @@ def test_accept_partial__writes_required__completion_audit(tmp_path: Path) -> No
 
     assert result.applied and result.current_status == "COMPLETED"
     assert _audit_events(database_path) == ["RECOVERY_RESOLVED", "RUN_COMPLETED"]
+    with connect_sqlite(database_path) as connection:
+        content = connection.execute(
+            "SELECT content FROM messages WHERE id='terminal-message-1';"
+        ).fetchone()[0]
+    assert "검증 불일치 태스크" in content
+    assert "완료로 처리하지 않았습니다" in content
 
 
 def _command(command_id: str, resolution: RecoveryResolution) -> ResolveRecoveryCommandV1:
@@ -422,6 +434,13 @@ def _database(
         )
         connection.execute(
             """
+            INSERT INTO messages (id, conversation_id, run_id, role, content, created_at_ms)
+            VALUES ('message-user-1', 'c-1', 'r-1', 'USER',
+                    '검증 불일치 태스크를 만들어 줘', 1);
+            """
+        )
+        connection.execute(
+            """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
                 review_status, review_disposition
@@ -437,7 +456,8 @@ def _database(
                 arguments_hash, expected_json, risk_json, version, created_at_ms, updated_at_ms
             ) VALUES (
                 'action-1', 'plan-1', 1, 'tasks_create_task', 'CREATE', 'REQUIRED',
-                'GET_COMPARE', 'RESOURCE_SEARCH', ?, '{}',
+                'GET_COMPARE', 'RESOURCE_SEARCH', ?,
+                '{"payload":{"title":"검증 불일치 태스크"}}',
                 ?, '{}', '{}', 0, 1, 1
             );
             """,

@@ -188,6 +188,7 @@ export type RunSnapshot = {
   pending_interrupt?: PendingInterrupt | null;
   recovery?: {
     reason_code: "UNKNOWN_RESULT" | "VERIFICATION_MISMATCH" | "CHECKPOINT_MISMATCH" | "CONTRACT_VIOLATION";
+    message: string;
     target: { target_kind: "RUN" } | { target_kind: "ACTION"; action_id: string };
     allowed_resolution_kinds: ("RECHECK" | "ACCEPT_PARTIAL" | "CREATE_CORRECTIVE_PLAN" | "CANCEL" | "FAIL")[];
   } | null;

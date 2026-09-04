@@ -42,6 +42,21 @@ def test_projection_matches__domain_matrix__without_cancel_intent(
             command_receipts=SimpleNamespace(has_durable_cancel_intent=lambda _run_id: False),
             plans=SimpleNamespace(get_current=lambda _run_id: None),
             actions=SimpleNamespace(get=lambda _action_id: None, list_for_plan=lambda _plan_id: ()),
+            runs=SimpleNamespace(
+                get=lambda _run_id: SimpleNamespace(conversation_id="conversation-1")
+            ),
+            messages=SimpleNamespace(
+                list_by_conversation_keyset=lambda **_kwargs: (
+                    (
+                        SimpleNamespace(
+                            run_id="run-1",
+                            role="USER",
+                            content="실제 결과를 확인해 줘",
+                        ),
+                    ),
+                    None,
+                )
+            ),
         )
 
     result = ProjectRecoveryOptionsHandler(cast(Callable[[], UnitOfWork], factory))(
@@ -49,6 +64,7 @@ def test_projection_matches__domain_matrix__without_cancel_intent(
     )
 
     assert result.allowed_resolution_kinds == expected
+    assert reason not in result.message
     assert result.target == (
         {"target_kind": "ACTION", "action_id": "action-1"}
         if reason in {"UNKNOWN_RESULT", "VERIFICATION_MISMATCH"}
@@ -69,6 +85,21 @@ def test_executed_awaiting__verification_hides__terminal_resolutions() -> None:
             plans=SimpleNamespace(get_current=lambda _run_id: plan),
             actions=SimpleNamespace(
                 get=lambda _action_id: None, list_for_plan=lambda _plan_id: (executed,)
+            ),
+            runs=SimpleNamespace(
+                get=lambda _run_id: SimpleNamespace(conversation_id="conversation-1")
+            ),
+            messages=SimpleNamespace(
+                list_by_conversation_keyset=lambda **_kwargs: (
+                    (
+                        SimpleNamespace(
+                            run_id="run-1",
+                            role="USER",
+                            content="결과를 복구해 줘",
+                        ),
+                    ),
+                    None,
+                )
             ),
         )
 

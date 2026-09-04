@@ -579,7 +579,7 @@ Validation rules: `OPTION`은 current interrupt option set에 존재하는 `sele
 
 공통 오류: Version/Command Hash 충돌은 `409`, Schema·허용 Enum·상태 precondition 위반은 `422`, 필요한 Local Runtime·MCP·Google 상태가 일시적으로 준비되지 않으면 `503`을 사용한다. 실패 응답 자체가 Domain 사실을 임의 변경하지 않는다.
 
-`RecoveryResolutionKindV1` / `ResolveRecoveryRequestV1.resolution_kind`의 wire enum은 `RECHECK | ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN | CANCEL | FAIL` 하나만 사용한다. `recovery.project_recovery_options`가 persisted `RecoveryContextV1`과 State Contract reason×disposition matrix를 읽어 `ProjectRecoveryOptionsResultV1(reason_code, target, allowed_resolution_kinds)`를 만드는 **유일한 Application derivation authority**다. API schema는 이를 `RecoveryUiProjectionV1`로 one-way serialization만 한다. **Browser는 reason에서 허용 resolution을 재계산하지 않고 이 subset만 표시**하며 별도 reason-specific enum/mapping table을 만들지 않는다. 일반 업무 취소 요청의 진입점은 `/cancel`이며, 이미 `RECOVERY_REQUIRED`인 cancel-intent flow의 terminal resolution만 `CANCEL`을 사용한다.
+`RecoveryResolutionKindV1` / `ResolveRecoveryRequestV1.resolution_kind`의 wire enum은 `RECHECK | ACCEPT_PARTIAL | CREATE_CORRECTIVE_PLAN | CANCEL | FAIL` 하나만 사용한다. `recovery.project_recovery_options`가 persisted `RecoveryContextV1`과 State Contract reason×disposition matrix를 읽어 `ProjectRecoveryOptionsResultV1(reason_code, message, target, allowed_resolution_kinds)`를 만드는 **유일한 Application derivation authority**다. API schema는 이를 `RecoveryUiProjectionV1`로 one-way serialization만 한다. **Browser는 reason에서 사용자 문구나 허용 resolution을 재계산하지 않고 server가 제공한 `message`와 subset만 표시**하며 별도 reason-specific enum/mapping table을 만들지 않는다. 일반 업무 취소 요청의 진입점은 `/cancel`이며, 이미 `RECOVERY_REQUIRED`인 cancel-intent flow의 terminal resolution만 `CANCEL`을 사용한다.
 `RecoveryTargetV1`은 reason scope를 표현한다. `UNKNOWN_RESULT | VERIFICATION_MISMATCH`는 `ACTION(action_id)`가 persisted `RecoveryContextV1.action_id`와 일치해야 하고, `CHECKPOINT_MISMATCH | CONTRACT_VIOLATION`은 `RUN` target만 허용한다. `/resume`의 `RECOVERY_RECHECK`는 Browser target을 새로 받지 않고 persisted RecoveryContext에서 동일 target을 materialize하여 **같은 internal `ResolveRecoveryCommandV1`**를 호출한다. nullable/sentinel action ID나 별도 recovery handler family를 만들지 않는다.
 
 ```text
@@ -598,7 +598,7 @@ ProjectRecoveryOptionsResultV1
 
 ```python
 TerminalMessageSourceKindV1 = Literal[
-    "ANSWER_DRAFT", "WRITE_VERIFICATION_SUMMARY", "POLICY_BLOCK",
+    "ANSWER_DRAFT", "READ_RESULT_SUMMARY", "WRITE_VERIFICATION_SUMMARY", "POLICY_BLOCK",
     "CANCEL_RESULT", "RECOVERY_RESULT", "INVALID_REQUEST"
 ]
 
@@ -610,6 +610,18 @@ class BuildTerminalMessageQueryV1:
     result_kind: Literal["SUCCESS", "PARTIAL", "BLOCKED", "FAILED", "CANCELLED"]
     answer_text: str | None         # ANSWER_DRAFT에서만 non-null; 이미 검증된 AnswerDraftV2 content
     reason_codes: list[str]         # max 16, 각 code max 64 chars
+    request_text: str | None        # 현재 Run USER 요청; 언어 선택에만 사용하며 그대로 재노출하지 않음
+    action_outcomes: list[TerminalActionOutcomeV1]  # persisted Action + Verification의 bounded projection
+
+class TerminalActionOutcomeV1:
+    tool_name: str
+    effect_type: Literal["READ", "CREATE", "UPDATE", "SEND", "DELETE"]
+    status: Literal[
+        "VERIFIED", "REJECTED", "FAILED", "MISMATCH", "BLOCKED", "DEPENDENCY_BLOCKED",
+        "CANCELLED"
+    ]
+    arguments: dict[str, JsonValue]  # 승인 UI와 동일한 canonical Action arguments의 bounded subset
+    evidence_excerpts: tuple[str, ...]  # READ에서 persist된 bounded Evidence excerpt; Write는 empty
 
 class TerminalAssistantMessageInputV1:
     schema_version: Literal[1]
@@ -620,7 +632,7 @@ class TerminalAssistantMessageInputV1:
 
 `TerminalCommitIntentV1`의 exact shape/kind owner는 06 Workflow current contract다. 07은 그 intent가 호출하는 lifecycle handler의 Application/Domain interface만 제공하고 별도 terminal kind를 발명하지 않는다.
 
-이 타입은 Browser Wire Request가 아니다. `BuildTerminalMessageHandler`가 `BuildTerminalMessageQueryV1`을 받아 UoW **전에** 만든 Application input이다. P0 terminal response synthesis는 deterministic이다: `ANSWER_DRAFT`는 이미 검증된 `answer_text`를 그대로 사용하고, WRITE/Block/Cancel/Recovery는 persisted typed Run·Plan·Action·Verification projection과 bounded `reason_codes`를 고정 템플릿으로 포맷한다. 이 단계에서 새 LLM call은 하지 않으며 lifecycle/policy/outcome을 재판정하지 않는다. `message_id`, `conversation_id`, `run_id`, `created_at_ms`는 server-owned aggregate/context에서 채우며 Product Prompt가 생성하지 않는다. Terminal lifecycle handler는 이 값을 Domain transition·Receipt·required Audit와 같은 UoW에 stage한다.
+이 타입은 Browser Wire Request가 아니다. `BuildTerminalMessageHandler`가 `BuildTerminalMessageQueryV1`을 받아 UoW **전에** 만든 Application input이다. P0 terminal response synthesis는 deterministic이다: `ANSWER_DRAFT`는 이미 검증된 `answer_text`를 그대로 사용하고, WRITE/Block/Cancel/Recovery는 persisted typed Run·Plan·Action·Verification projection과 bounded `reason_codes`를 고정 템플릿으로 포맷한다. 사용자-facing `content`는 `request_text`의 언어를 보존하고 실제 완료·미실행·실패 Action을 구분하며, raw state/reason code/artifact id를 포함하지 않는다. 이 단계에서 새 LLM call은 하지 않으며 lifecycle/policy/outcome을 재판정하지 않는다. `message_id`, `conversation_id`, `run_id`, `created_at_ms`는 server-owned aggregate/context에서 채우며 Product Prompt가 생성하지 않는다. Terminal lifecycle handler는 이 값을 Domain transition·Receipt·required Audit와 같은 UoW에 stage한다.
 
 ### 3.4 SSE 계약
 
@@ -772,6 +784,7 @@ class RecoveryUiProjectionV1:
         "UNKNOWN_RESULT", "VERIFICATION_MISMATCH",
         "CHECKPOINT_MISMATCH", "CONTRACT_VIOLATION"
     ]
+    message: str
     target: RecoveryTargetV1
     allowed_resolution_kinds: list[RecoveryResolutionKindV1]
 

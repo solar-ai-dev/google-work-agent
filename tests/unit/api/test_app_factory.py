@@ -422,6 +422,7 @@ def test_run_snapshot__rest_projection_includes__structured_action_risk() -> Non
         pending_interrupt=None,
         recovery=ProjectRecoveryOptionsResultV1(
             reason_code="VERIFICATION_MISMATCH",
+            message="Google에서 확인한 결과가 요청과 다릅니다.",
             target={"target_kind": "ACTION", "action_id": "action-1"},
             allowed_resolution_kinds=("RECHECK", "ACCEPT_PARTIAL"),
         ),
@@ -440,11 +441,10 @@ def test_run_snapshot__rest_projection_includes__structured_action_risk() -> Non
 
     assert response.status_code == 200
     assert response.json()["actions"][0]["risk"] == risk
-    assert response.json()["actions"][0]["arguments"] == {
-        "payload": {"title": "Ship report"}
-    }
+    assert response.json()["actions"][0]["arguments"] == {"payload": {"title": "Ship report"}}
     assert response.json()["recovery"] == {
         "reason_code": "VERIFICATION_MISMATCH",
+        "message": "Google에서 확인한 결과가 요청과 다릅니다.",
         "target": {"target_kind": "ACTION", "action_id": "action-1"},
         "allowed_resolution_kinds": ["RECHECK", "ACCEPT_PARTIAL"],
     }

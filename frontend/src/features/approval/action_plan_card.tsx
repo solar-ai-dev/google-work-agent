@@ -50,7 +50,7 @@ function ActionDecisionCard({ action, approval, busy, canRetry, formatTime, onAp
       {feasibility === "RISK" ? <p className="status-warn">현재 일정 기준으로 가능한 시간이 제한적입니다.</p> : null}
       {feasibility === "INFEASIBLE" ? <p className="status-warn">현재 업무 시간과 일정 기준으로 마감 전에 필요한 연속 시간을 확보할 수 없습니다.</p> : null}
       {hasOtherRisk(action.risk) ? <p className="status-warn">서버 검증에서 확인된 위험 정보가 있습니다. 승인 전에 확인해 주세요.</p> : null}
-      <details><summary>무엇을 실행하나요?</summary><dl className="metadata-list"><div><dt>작업</dt><dd>{actionLabel(action.tool_name)}</dd></div><div><dt>실행 방식</dt><dd>{effectLabel(action.effect_type)}</dd></div>{argumentSummary.map((item) => <div key={item.field}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}<div><dt>결과 확인</dt><dd>{verificationLabel(action.verification_policy)}</dd></div></dl></details>
+      <details open><summary>무엇을 실행하나요?</summary><dl className="metadata-list"><div><dt>작업</dt><dd>{actionLabel(action.tool_name)}</dd></div><div><dt>실행 방식</dt><dd>{effectLabel(action.effect_type)}</dd></div>{argumentSummary.map((item) => <div key={item.field}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}<div><dt>결과 확인</dt><dd>{verificationLabel(action.verification_policy)}</dd></div></dl></details>
       {approval ? <div className="muted">{approvalStatusLabel(approval.status)} · {formatTime(approval.expires_at_ms)}까지 유효합니다.</div> : null}
       {requiredAcknowledgements.map((item) => (
         <label key={item}><input type="checkbox" checked={acknowledgements.has(item)} onChange={(event) => setAcknowledgements((current) => { const next = new Set(current); if (event.target.checked) next.add(item); else next.delete(item); return next; })} /> {item === "TASK_DUPLICATE" ? "중복 가능성을 확인했습니다." : "일정 충돌 가능성을 확인했습니다."}</label>

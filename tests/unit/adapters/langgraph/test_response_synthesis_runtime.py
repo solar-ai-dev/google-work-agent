@@ -56,6 +56,80 @@ def test_response_synthesis__materializes_terminal__commit_intent() -> None:
     assert intent["expected_run_version"] == 4
 
 
+def test_response_synthesis__projects_verified_write_into__assistant_message() -> None:
+    state = cast(
+        GraphState,
+        {
+            "run_id": "run-1",
+            "run_input": {"user_request": "회의 준비 태스크를 만들어 줘"},
+            "__target__": "response_synthesis",
+        },
+    )
+
+    result = response_synthesis_node(
+        state,
+        read_terminal_facts=lambda _run_id: {
+            "status": "VERIFYING",
+            "version": 7,
+            "terminal_result_kind": None,
+            "action_statuses": ["VERIFIED"],
+            "action_effect_types": ["CREATE"],
+            "actions": [
+                {
+                    "tool_name": "tasks_create_task",
+                    "effect_type": "CREATE",
+                    "status": "VERIFIED",
+                    "arguments": {"title": "회의 준비"},
+                }
+            ],
+        },
+        build_terminal_message=BuildTerminalMessageHandler(),
+    )
+
+    intent = cast(TerminalCommitIntentV1, result["terminal_commit_intent"])
+    assert intent["kind"] == "COMPLETE_WRITE"
+    assert intent["terminal_message"].result_kind == "SUCCESS"
+    assert "회의 준비" in intent["terminal_message"].content
+    assert "Google에서 결과를 다시 확인했습니다" in intent["terminal_message"].content
+    assert "WRITE_VERIFIED" not in intent["terminal_message"].content
+
+
+def test_response_synthesis__projects_read_evidence_into__assistant_message() -> None:
+    state = cast(
+        GraphState,
+        {
+            "run_id": "run-1",
+            "run_input": {"user_request": "선택한 메일을 요약해 줘"},
+            "__target__": "response_synthesis",
+        },
+    )
+
+    result = response_synthesis_node(
+        state,
+        read_terminal_facts=lambda _run_id: {
+            "status": "EXECUTING",
+            "version": 5,
+            "terminal_result_kind": None,
+            "action_statuses": ["VERIFIED"],
+            "action_effect_types": ["READ"],
+            "actions": [
+                {
+                    "tool_name": "gmail_get_thread",
+                    "effect_type": "READ",
+                    "status": "VERIFIED",
+                    "arguments": {"thread_id": "thread-project"},
+                    "evidence_excerpts": ["목요일 회고 초안이 필요합니다."],
+                }
+            ],
+        },
+        build_terminal_message=BuildTerminalMessageHandler(),
+    )
+
+    intent = cast(TerminalCommitIntentV1, result["terminal_commit_intent"])
+    assert intent["kind"] == "COMPLETE_READ_ONLY"
+    assert "목요일 회고 초안이 필요합니다" in intent["terminal_message"].content
+
+
 @pytest.mark.parametrize(
     "planning_result",
     [None, {"actions": []}, {"schema_version": 2, "answer": ""}],

@@ -50,6 +50,13 @@ def _seed(database_path: Path, *, action_status: str) -> None:
         )
         connection.execute(
             """
+            INSERT INTO messages (id, conversation_id, run_id, role, content, created_at_ms)
+            VALUES ('message-user-1', 'conversation-1', 'run-1', 'USER',
+                    '분기 보고서 검토 태스크를 만들어 줘', 1);
+            """
+        )
+        connection.execute(
+            """
             INSERT INTO plans (
                 id, run_id, revision_no, status, summary_text, created_at_ms,
                 review_status, review_version, review_disposition
@@ -67,7 +74,7 @@ def _seed(database_path: Path, *, action_status: str) -> None:
                 arguments_json, arguments_hash, expected_json, created_at_ms, updated_at_ms
             ) VALUES ('action-1', 'plan-1', 'google_workspace', 1, 'tasks_create_task',
                       'CREATE', 'REQUIRED', 'GET_COMPARE', 'RESOURCE_SEARCH', ?,
-                      '{}', ?, '{}', 1, 1);
+                      '{"payload":{"title":"분기 보고서 검토"}}', ?, '{}', 1, 1);
             """,
             (persisted_action_status, "a" * 64),
         )
@@ -159,6 +166,11 @@ def test_complete_write__run_message_and__result_survive_restart(
             ).fetchone()[0]
             == 1
         )
+        content = connection.execute(
+            "SELECT content FROM messages WHERE id = 'message-final-1';"
+        ).fetchone()[0]
+        assert "분기 보고서 검토" in content
+        assert "WRITE_VERIFIED" not in content
         assert (
             connection.execute(
                 "SELECT COUNT(*) FROM audit_events WHERE run_id = 'run-1' "
@@ -194,6 +206,12 @@ class _FailingAppend:
 
 
 class _FailingTerminalMessage:
+    def __init__(self, delegate: object) -> None:
+        self._delegate = delegate
+
+    def list_by_conversation_keyset(self, **kwargs: object) -> object:
+        return cast(Any, self._delegate).list_by_conversation_keyset(**kwargs)
+
     def append_terminal_assistant_message(self, _value: object) -> None:
         raise RuntimeError("injected terminal message failure")
 
@@ -201,7 +219,7 @@ class _FailingTerminalMessage:
 class _FailingMessageUow(SqliteUnitOfWork):
     def __enter__(self) -> SqliteUnitOfWork:
         entered = super().__enter__()
-        entered.messages = _FailingTerminalMessage()  # type: ignore[assignment]
+        entered.messages = _FailingTerminalMessage(entered.messages)  # type: ignore[assignment]
         return entered
 
 

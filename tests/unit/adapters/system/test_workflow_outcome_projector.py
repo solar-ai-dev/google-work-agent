@@ -21,6 +21,7 @@ def test_waiting_approval_without_action_projection__publishes_run_status__for_s
         recovery_target=lambda _run_id: None,
         project_recovery_options=lambda _query: ProjectRecoveryOptionsResultV1(
             "VERIFICATION_MISMATCH",
+            "Google에서 확인한 결과가 요청과 다릅니다.",
             {"target_kind": "ACTION", "action_id": "action-1"},
             ("RECHECK", "ACCEPT_PARTIAL", "FAIL"),
         ),
@@ -60,6 +61,7 @@ def test_recovery_outcome__publishes_domain_backed__canonical_recovery_event() -
         recovery_target=lambda _run_id: None,
         project_recovery_options=lambda _query: ProjectRecoveryOptionsResultV1(
             "VERIFICATION_MISMATCH",
+            "Google에서 확인한 결과가 요청과 다릅니다.",
             {"target_kind": "ACTION", "action_id": "action-1"},
             ("RECHECK", "ACCEPT_PARTIAL", "CREATE_CORRECTIVE_PLAN", "FAIL"),
         ),
@@ -77,6 +79,7 @@ def test_recovery_outcome__publishes_domain_backed__canonical_recovery_event() -
     assert published[0].payload == {
         "recovery": {
             "reason_code": "VERIFICATION_MISMATCH",
+            "message": "Google에서 확인한 결과가 요청과 다릅니다.",
             "target": {"target_kind": "ACTION", "action_id": "action-1"},
             "allowed_resolution_kinds": [
                 "RECHECK",

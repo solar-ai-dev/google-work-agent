@@ -17,6 +17,11 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalAssistantMessageInputV1,
+    validate_terminal_assistant_message_input,
+)
+from google_work_agent.application.use_cases.run.project_terminal_message_context import (
+    project_terminal_message_context,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent as AuditEventRecord
@@ -47,6 +52,7 @@ class BlockRunCommand:
     expected_version: int
     reason_code: str
     policy_origin: bool = False
+    terminal_message: TerminalAssistantMessageInputV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,17 +85,11 @@ class BlockRunHandler:
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: BlockRunCommand) -> BlockRunResult:
-        terminal_message = self._build_terminal_message(
-            BuildTerminalMessageQueryV1(
-                schema_version=1,
-                run_id=command.run_id,
-                expected_run_version=command.expected_version,
-                source_kind="POLICY_BLOCK" if command.policy_origin else "INVALID_REQUEST",
-                result_kind="BLOCKED",
-                answer_text=None,
-                reason_codes=[command.reason_code],
-            )
-        )
+        terminal_message = command.terminal_message
+        if terminal_message is not None:
+            validate_terminal_assistant_message_input(terminal_message)
+        if terminal_message is not None and terminal_message.result_kind != "BLOCKED":
+            raise ValueError("BlockRun terminal message must be BLOCKED")
         with self._unit_of_work_factory() as unit_of_work:
             completed_at_ms = self._now_ms()
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -113,6 +113,25 @@ class BlockRunHandler:
             conversation = unit_of_work.conversations.get(run.conversation_id)
             if conversation is None:
                 raise LookupError(f"conversation not found: {run.conversation_id}")
+            if terminal_message is None:
+                request_text, action_outcomes = project_terminal_message_context(
+                    unit_of_work, run.id
+                )
+                terminal_message = self._build_terminal_message(
+                    BuildTerminalMessageQueryV1(
+                        schema_version=1,
+                        run_id=run.id,
+                        expected_run_version=command.expected_version,
+                        source_kind=(
+                            "POLICY_BLOCK" if command.policy_origin else "INVALID_REQUEST"
+                        ),
+                        result_kind="BLOCKED",
+                        answer_text=None,
+                        reason_codes=[command.reason_code],
+                        request_text=request_text,
+                        action_outcomes=action_outcomes,
+                    )
+                )
             result = self._transition(unit_of_work, run, command.expected_version)
             if result.applied:
                 self._settle_children(

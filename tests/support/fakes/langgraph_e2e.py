@@ -194,7 +194,7 @@ def _respond(
         outline = cast(Mapping[str, object], base["answer_outline"])
         return {
             "schema_version": 2,
-            "answer": f"E2E completed: {scenario}",
+            "answer": _answer_for(scenario),
             "evidence_refs": list(cast(list[str], outline["evidence_refs"])),
         }
     if prompt_id == "planning.draft_action_objective_per_output_route":
@@ -280,6 +280,15 @@ def _scenario(value: object) -> str:
         if scenario in serialized:
             return scenario
     return "ANSWER_ONLY"
+
+
+def _answer_for(scenario: str) -> str:
+    return {
+        "ANSWER_ONLY": "현재 요청을 처리할 준비가 되어 있습니다.",
+        "GMAIL_READ": "선택한 메일의 핵심 내용은 deterministic Gmail evidence입니다.",
+        "TASKS_READ": "확인한 태스크의 핵심 내용은 E2E task입니다.",
+        "CALENDAR_READ": "확인한 일정의 핵심 내용은 E2E event입니다.",
+    }.get(scenario, f"E2E 결과를 정리했습니다: {scenario}")
 
 
 def _effect_for(scenario: str) -> str:

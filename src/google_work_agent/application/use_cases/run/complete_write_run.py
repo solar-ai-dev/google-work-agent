@@ -11,8 +11,13 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalAssistantMessageInputV1,
+    validate_terminal_assistant_message_input,
 )
 from google_work_agent.application.use_cases.run.cancel_intent import has_durable_cancel_intent
+from google_work_agent.application.use_cases.run.project_terminal_message_context import (
+    project_terminal_message_context,
+)
 from google_work_agent.application.use_cases.run.run_terminal import (
     RunTransitionResponse,
     _finish_json_receipt,
@@ -50,6 +55,7 @@ class CompleteWriteRunCommand:
     request_hash: str
     run_id: str
     expected_version: int
+    terminal_message: TerminalAssistantMessageInputV1 | None = None
 
 
 _UNRESOLVED_ATTEMPT_STATUSES = frozenset(
@@ -84,30 +90,6 @@ class CompleteWriteRunHandler:
         self._build_terminal_message = build_terminal_message or BuildTerminalMessageHandler()
 
     def __call__(self, command: CompleteWriteRunCommand) -> RunTransitionResponse:
-        terminal_messages = {
-            "SUCCESS": self._build_terminal_message(
-                BuildTerminalMessageQueryV1(
-                    schema_version=1,
-                    run_id=command.run_id,
-                    expected_run_version=command.expected_version,
-                    source_kind="WRITE_VERIFICATION_SUMMARY",
-                    result_kind="SUCCESS",
-                    answer_text=None,
-                    reason_codes=["WRITE_VERIFIED"],
-                )
-            ),
-            "PARTIAL": self._build_terminal_message(
-                BuildTerminalMessageQueryV1(
-                    schema_version=1,
-                    run_id=command.run_id,
-                    expected_run_version=command.expected_version,
-                    source_kind="WRITE_VERIFICATION_SUMMARY",
-                    result_kind="PARTIAL",
-                    answer_text=None,
-                    reason_codes=["WRITE_CLOSED"],
-                )
-            ),
-        }
         with self._unit_of_work_factory() as unit_of_work:
             completed_at_ms = self._now_ms()
             existing = unit_of_work.command_receipts.get_by_command_id(command.command_id)
@@ -225,7 +207,29 @@ class CompleteWriteRunHandler:
                     is None
                 ):
                     raise RuntimeError(f"validated Plan completion CAS failed: {plan.id}")
-                terminal_message = terminal_messages[result_kind.value]
+                terminal_message = command.terminal_message
+                if terminal_message is None:
+                    request_text, action_outcomes = project_terminal_message_context(
+                        unit_of_work, run.id
+                    )
+                    terminal_message = self._build_terminal_message(
+                        BuildTerminalMessageQueryV1(
+                            schema_version=1,
+                            run_id=run.id,
+                            expected_run_version=command.expected_version,
+                            source_kind="WRITE_VERIFICATION_SUMMARY",
+                            result_kind=result_kind.value,
+                            answer_text=None,
+                            reason_codes=[reason_code],
+                            request_text=request_text,
+                            action_outcomes=action_outcomes,
+                        )
+                    )
+                validate_terminal_assistant_message_input(terminal_message)
+                if terminal_message.result_kind != result_kind.value:
+                    raise RuntimeError(
+                        "terminal message result kind does not match durable write result"
+                    )
                 message_id = self._message_id_factory()
                 unit_of_work.messages.append_terminal_assistant_message(
                     MessageRecord(

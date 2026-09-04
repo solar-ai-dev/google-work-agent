@@ -36,6 +36,7 @@ VALID_PAYLOADS: Mapping[str, dict[str, object]] = {
     "recovery_required": {
         "recovery": {
             "reason_code": "CHECKPOINT_MISMATCH",
+            "message": "안전한 지점부터 다시 확인할 수 있습니다.",
             "target": {"target_kind": "RUN"},
             "allowed_resolution_kinds": ["RECHECK", "CANCEL", "FAIL"],
         }
@@ -52,9 +53,7 @@ class _Buffer:
     def append(self, event: RunSseEventV1) -> None:
         self.events.append(event)
 
-    def list_after(
-        self, run_id: str, last_event_id: str | None, limit: int
-    ) -> SseEventPageV1:
+    def list_after(self, run_id: str, last_event_id: str | None, limit: int) -> SseEventPageV1:
         raise NotImplementedError
 
     def clear_run(self, run_id: str) -> None:
@@ -100,9 +99,7 @@ def test_contract__has_exact_event__and_envelope_sets() -> None:
     ("event_type", "payload_type"),
     list(zip(VALID_PAYLOADS, [*list(VALID_PAYLOADS)[1:], next(iter(VALID_PAYLOADS))], strict=True)),
 )
-def test_event_type__rejects_mismatched__payload_model(
-    event_type: str, payload_type: str
-) -> None:
+def test_event_type__rejects_mismatched__payload_model(event_type: str, payload_type: str) -> None:
     buffer = _Buffer()
     with pytest.raises(ValidationError):
         ProjectRunEventHandler(buffer)(_command(event_type, VALID_PAYLOADS[payload_type]))

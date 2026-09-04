@@ -37,6 +37,7 @@ class RecoveryUiProjectionV1(ApiModel):
         "CHECKPOINT_MISMATCH",
         "CONTRACT_VIOLATION",
     ]
+    message: str
     target: RecoveryTargetV1
     allowed_resolution_kinds: list[RecoveryResolutionKindV1]
 

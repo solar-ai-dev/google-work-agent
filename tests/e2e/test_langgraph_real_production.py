@@ -56,6 +56,12 @@ def test_answer_only__reaches_terminal_through__real_production_composition(
 
     assert snapshot["terminal_result_kind"] == "SUCCESS"
     assert snapshot["actions"] == []
+    final_messages = [
+        str(message["content"])
+        for message in cast(list[dict[str, object]], snapshot["messages"])
+        if message["role"] == "ASSISTANT"
+    ]
+    assert final_messages == ["현재 요청을 처리할 준비가 되어 있습니다."]
     invoked = {
         str(item["prompt_id"]) for item in transport.invocations if item.get("kind") == "invoke"
     }
@@ -111,11 +117,18 @@ def test_google_reads_reach__terminal_through_actual__retrieval_and_mcp(
 
     assert snapshot["terminal_result_kind"] == "SUCCESS"
     assert snapshot["actions"] == []
-    assert any(
-        message["role"] == "ASSISTANT"
-        and message["content"] == f"E2E completed: {scenario}"
+    final_messages = [
+        str(message["content"])
         for message in cast(list[dict[str, object]], snapshot["messages"])
-    )
+        if message["role"] == "ASSISTANT"
+    ]
+    assert final_messages == [
+        {
+            "GMAIL_READ": "선택한 메일의 핵심 내용은 deterministic Gmail evidence입니다.",
+            "TASKS_READ": "확인한 태스크의 핵심 내용은 E2E task입니다.",
+            "CALENDAR_READ": "확인한 일정의 핵심 내용은 E2E event입니다.",
+        }[scenario]
+    ]
     assert workflow_binding is not None
     assert retrieval_head is not None
     assert retrieval_head.run_id == run_id
@@ -173,6 +186,11 @@ def test_selected_gmail_resource__uses_exact_detail__without_routing_or_query_ll
         snapshot = _wait_for_status(client, run_id, {"COMPLETED"})
 
     assert snapshot["terminal_result_kind"] == "SUCCESS"
+    assert any(
+        "deterministic Gmail evidence" in str(message["content"])
+        for message in cast(list[dict[str, object]], snapshot["messages"])
+        if message["role"] == "ASSISTANT"
+    )
     names = [event["tool_name"] for event in _mcp_events(runtime_root)]
     assert names.count("gmail_search_threads") == 1  # Sidebar listing only.
     assert names.count("gmail_get_thread") == 1

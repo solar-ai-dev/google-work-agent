@@ -8,7 +8,10 @@ from typing import Literal, Required, TypedDict, cast
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalActionOutcomeV1,
+    TerminalActionStatusV1,
     TerminalAssistantMessageInputV1,
+    TerminalEffectTypeV1,
     TerminalMessageSourceKindV1,
 )
 
@@ -91,6 +94,8 @@ def response_synthesis_node(
             result_kind=result_kind,
             answer_text=answer_text,
             reason_codes=reason_codes,
+            request_text=_request_text(state),
+            action_outcomes=_action_outcomes(facts.get("actions")),
         )
     )
     intent: TerminalCommitIntentV1 = {
@@ -193,7 +198,7 @@ def _classify(
             "PARTIAL" if "FAILED" in action_statuses else "SUCCESS",
         )
         reasons = ["READ_ACTION_FAILED"] if result == "PARTIAL" else []
-        return "COMPLETE_READ_ONLY", "WRITE_VERIFICATION_SUMMARY", result, None, reasons
+        return "COMPLETE_READ_ONLY", "READ_RESULT_SUMMARY", result, None, reasons
     if action_effect_types:
         if not action_statuses or any(
             item not in _WRITE_FINAL_STATUSES for item in action_statuses
@@ -203,7 +208,8 @@ def _classify(
             TerminalResultKindV1,
             "SUCCESS" if all(item == "VERIFIED" for item in action_statuses) else "PARTIAL",
         )
-        return "COMPLETE_WRITE", "WRITE_VERIFICATION_SUMMARY", result, None, ["WRITE_VERIFIED"]
+        reasons = ["WRITE_VERIFIED"] if result == "SUCCESS" else ["WRITE_CLOSED"]
+        return "COMPLETE_WRITE", "WRITE_VERIFICATION_SUMMARY", result, None, reasons
     if status in _TERMINAL_STATUSES and durable_result in {"SUCCESS", "PARTIAL"}:
         raise ValueError("completed terminal facts do not identify a canonical handler")
     raise ValueError("current durable facts do not authorize terminal synthesis")
@@ -230,6 +236,58 @@ def _answer_text(value: object) -> str | None:
         return None
     answer = value.get("answer")
     return answer if isinstance(answer, str) and answer.strip() else None
+
+
+def _request_text(state: Mapping[str, object]) -> str | None:
+    run_input = state.get("run_input")
+    if not isinstance(run_input, Mapping):
+        return None
+    user_request = run_input.get("user_request")
+    return user_request if isinstance(user_request, str) and user_request.strip() else None
+
+
+def _action_outcomes(value: object) -> tuple[TerminalActionOutcomeV1, ...]:
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError("actions must be a collection")
+    result: list[TerminalActionOutcomeV1] = []
+    closed_statuses = {
+        "VERIFIED",
+        "REJECTED",
+        "FAILED",
+        "MISMATCH",
+        "BLOCKED",
+        "DEPENDENCY_BLOCKED",
+        "CANCELLED",
+    }
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError("actions must contain objects")
+        status = item.get("status")
+        if status not in closed_statuses:
+            continue
+        arguments = item.get("arguments")
+        if not isinstance(arguments, Mapping):
+            raise ValueError("action arguments must be an object")
+        evidence_excerpts = item.get("evidence_excerpts", ())
+        if not isinstance(evidence_excerpts, (list, tuple)) or any(
+            not isinstance(excerpt, str) for excerpt in evidence_excerpts
+        ):
+            raise ValueError("action evidence_excerpts must be a string collection")
+        result.append(
+            TerminalActionOutcomeV1(
+                tool_name=_required_string(item.get("tool_name"), "action.tool_name"),
+                effect_type=cast(
+                    TerminalEffectTypeV1,
+                    _required_string(item.get("effect_type"), "action.effect_type"),
+                ),
+                status=cast(TerminalActionStatusV1, status),
+                arguments=dict(arguments),
+                evidence_excerpts=tuple(evidence_excerpts),
+            )
+        )
+    return tuple(result)
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:

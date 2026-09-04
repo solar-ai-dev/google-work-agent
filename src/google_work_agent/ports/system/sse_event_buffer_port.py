@@ -169,6 +169,7 @@ class _RecoveryUiProjectionV1(_ClosedSseModel):
         "CHECKPOINT_MISMATCH",
         "CONTRACT_VIOLATION",
     ]
+    message: StrictStr
     target: Annotated[
         _RunRecoveryTargetV1 | _ActionRecoveryTargetV1,
         Field(discriminator="target_kind"),

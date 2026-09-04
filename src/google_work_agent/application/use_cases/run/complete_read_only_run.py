@@ -14,10 +14,14 @@ from google_work_agent.application.use_cases.plan.persistence_projection import 
 from google_work_agent.application.use_cases.run.build_terminal_message import (
     BuildTerminalMessageHandler,
     BuildTerminalMessageQueryV1,
+    TerminalAssistantMessageInputV1,
+    validate_terminal_assistant_message_input,
+)
+from google_work_agent.application.use_cases.run.project_terminal_message_context import (
+    project_terminal_message_context,
 )
 from google_work_agent.domain.action.model import ActionStatusV1
 from google_work_agent.domain.audit_event.model import AuditEvent
-from google_work_agent.domain.canonical import calculate_canonical_json_hash
 from google_work_agent.domain.command_receipt.model import CommandReceiptStatus
 from google_work_agent.domain.message.model import Message
 from google_work_agent.domain.plan.model import PlanStatusV1
@@ -35,6 +39,7 @@ class CompleteReadOnlyRunCommand:
     run_id: str
     plan_id: str
     expected_version: int
+    terminal_message: TerminalAssistantMessageInputV1 | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,40 +80,6 @@ class CompleteReadOnlyRunHandler:
             )
             unit_of_work.commit()
             return result
-
-    @staticmethod
-    def try_apply_for_parent(
-        unit_of_work: UnitOfWork,
-        *,
-        parent_command_id: str,
-        run_id: str,
-        plan_id: str,
-        now_ms: int,
-        message_id_factory: Callable[[], str] | None = None,
-        build_terminal_message: BuildTerminalMessageHandler | None = None,
-    ) -> CompleteReadOnlyRunResult | None:
-        statuses = tuple(
-            ActionStatusV1(action.status) for action in unit_of_work.actions.list_for_plan(plan_id)
-        )
-        if not statuses or any(
-            status not in {ActionStatusV1.VERIFIED, ActionStatusV1.FAILED} for status in statuses
-        ):
-            return None
-        run = unit_of_work.runs.get(run_id)
-        if run is None:
-            raise LookupError(f"run not found: {run_id}")
-        return CompleteReadOnlyRunHandler.apply_in_unit_of_work(
-            unit_of_work,
-            CompleteReadOnlyRunHandler.command_for_parent(
-                parent_command_id=parent_command_id,
-                run_id=run_id,
-                plan_id=plan_id,
-                expected_version=run.version,
-            ),
-            now_ms,
-            message_id_factory=message_id_factory,
-            build_terminal_message=build_terminal_message,
-        )
 
     @staticmethod
     def apply_in_unit_of_work(
@@ -223,17 +194,29 @@ class CompleteReadOnlyRunHandler:
                     created_at_ms=now_ms,
                 )
             )
-            terminal_message = (build_terminal_message or BuildTerminalMessageHandler())(
-                BuildTerminalMessageQueryV1(
-                    schema_version=1,
-                    run_id=run.id,
-                    expected_run_version=command.expected_version,
-                    source_kind="WRITE_VERIFICATION_SUMMARY",
-                    result_kind=result_kind,
-                    answer_text=None,
-                    reason_codes=["READ_ACTION_FAILED"] if result_kind == "PARTIAL" else [],
+            terminal_message = command.terminal_message
+            if terminal_message is None:
+                request_text, action_outcomes = project_terminal_message_context(
+                    unit_of_work, run.id
                 )
-            )
+                terminal_message = (build_terminal_message or BuildTerminalMessageHandler())(
+                    BuildTerminalMessageQueryV1(
+                        schema_version=1,
+                        run_id=run.id,
+                        expected_run_version=command.expected_version,
+                        source_kind="READ_RESULT_SUMMARY",
+                        result_kind=result_kind,
+                        answer_text=None,
+                        reason_codes=(["READ_ACTION_FAILED"] if result_kind == "PARTIAL" else []),
+                        request_text=request_text,
+                        action_outcomes=action_outcomes,
+                    )
+                )
+            validate_terminal_assistant_message_input(terminal_message)
+            if terminal_message.result_kind != result_kind:
+                raise RuntimeError(
+                    "terminal message result kind does not match durable read result"
+                )
             unit_of_work.messages.append_terminal_assistant_message(
                 Message(
                     id=(message_id_factory or (lambda: str(uuid4())))(),
@@ -253,19 +236,6 @@ class CompleteReadOnlyRunHandler:
             completed_at_ms=now_ms,
         )
         return result
-
-    @staticmethod
-    def command_for_parent(
-        *, parent_command_id: str, run_id: str, plan_id: str, expected_version: int
-    ) -> CompleteReadOnlyRunCommand:
-        payload = {"run_id": run_id, "plan_id": plan_id, "expected_version": expected_version}
-        return CompleteReadOnlyRunCommand(
-            command_id=f"system:complete-read-only-run:{parent_command_id}",
-            request_hash=calculate_canonical_json_hash(payload),
-            run_id=run_id,
-            plan_id=plan_id,
-            expected_version=expected_version,
-        )
 
 
 def _current_result(
