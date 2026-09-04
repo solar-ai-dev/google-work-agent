@@ -12,6 +12,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     AnswerOutlineV1,
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.project_task_read_answer import (
+    project_task_read_answer,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.compose_answer"
@@ -76,6 +79,16 @@ def compose_answer(
         prompt_input["work_analysis"] = dict(work_analysis)
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
+    task_projection = project_task_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if task_projection is not None:
+        approved_refs = set(answer_outline["evidence_refs"])
+        if not set(task_projection.draft["evidence_refs"]).issubset(approved_refs):
+            raise ValueError("task read answer references evidence outside its approved outline")
+        return task_projection.draft
     candidate = invoke(PROMPT_ID, prompt_input)
     schema_version = candidate.get("schema_version")
     answer = candidate.get("answer")

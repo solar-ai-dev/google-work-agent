@@ -74,3 +74,41 @@ def test_outline__does_not_replace__invalid_evidence_identity() -> None:
                 "evidence_refs": ["invented-reference"],
             },
         )
+
+
+def test_outline_task_read__selects_concrete_task_without_llm() -> None:
+    invoked = False
+
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
+
+    result = outline_answer(
+        user_request="Google Tasks 할 일을 목록으로 알려줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["TASK"],
+            "analysis_requirement": "NONE",
+        },
+        work_analysis=None,
+        evidence=[
+            {
+                "evidence_id": "e-task",
+                "resource_handle": "task:1",
+                "excerpt": "보고서 제출",
+            },
+            {
+                "evidence_id": "e-list",
+                "resource_handle": "task_list:default",
+                "excerpt": "내 할 일 목록",
+            },
+        ],
+        invoke=invoke,
+    )
+
+    assert invoked is False
+    assert result == {
+        "sections": ["현재 Google Tasks 할 일"],
+        "evidence_refs": ["e-task"],
+    }

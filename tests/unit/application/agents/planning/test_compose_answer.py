@@ -80,3 +80,34 @@ def test_compose_rejects__serialized_internal_object__as_user_answer() -> None:
                 "evidence_refs": ["e1"],
             },
         )
+
+
+def test_compose_task_read__uses_grounded_projection_without_llm() -> None:
+    invoked = False
+
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
+
+    result = compose_answer(
+        user_request="Google Tasks 할 일을 목록으로 알려줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["TASK"],
+            "analysis_requirement": "NONE",
+        },
+        answer_outline={"sections": ["현재 Google Tasks 할 일"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[
+            {
+                "evidence_id": "e1",
+                "resource_handle": "task:1",
+                "excerpt": "보고서 제출",
+            }
+        ],
+        invoke=invoke,
+    )
+
+    assert invoked is False
+    assert result["answer"].endswith("- 보고서 제출")

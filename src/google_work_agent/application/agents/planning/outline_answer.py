@@ -11,6 +11,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     PlanningAnswerConfirmationV1,
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.project_task_read_answer import (
+    project_task_read_answer,
+)
 from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
 PROMPT_ID = "planning.outline_answer"
@@ -100,6 +103,13 @@ def outline_answer(
         prompt_input["work_analysis"] = dict(work_analysis)
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
+    task_projection = project_task_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if task_projection is not None:
+        return task_projection.outline
     candidate = invoke(PROMPT_ID, prompt_input)
     if candidate.get("disposition") == "NEEDS_CONFIRMATION":
         question = candidate.get("question")

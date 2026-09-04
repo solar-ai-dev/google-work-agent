@@ -275,11 +275,19 @@ class PlanningSubgraph:
 
     def _outline_answer_node(self, state: PlanningLocalState) -> PlanningLocalState:
         working = self._project_runtime_inputs(state)
-        if self._llm_runtime is not None:
-            ensure_llm_call_budget(cast(Any, working))
+        semantic_invoke = self._semantic_invoker(state)
+        llm_invoked = False
+
+        def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+            nonlocal llm_invoked
+            if self._llm_runtime is not None:
+                ensure_llm_call_budget(cast(Any, working))
+                llm_invoked = True
+            return semantic_invoke(prompt_id, prompt_input)
+
         patch = outline_answer_node(
             cast(Mapping[str, object], working),
-            invoke=self._semantic_invoker(state),
+            invoke=invoke,
         )
         result = cast(
             PlanningLocalState,
@@ -294,7 +302,7 @@ class PlanningSubgraph:
                 ),
             },
         )
-        if self._llm_runtime is not None:
+        if self._llm_runtime is not None and llm_invoked:
             if not isinstance(state.get(PLANNING_AGENT_LOCAL_KEY), Mapping):
                 assert self._id_factory is not None
                 result[PLANNING_AGENT_LOCAL_KEY] = build_agent_local_state(
@@ -318,11 +326,19 @@ class PlanningSubgraph:
         if isinstance(state.get("planning_confirmation"), Mapping):
             return self._resolve_confirmation(state)
         working = self._project_runtime_inputs(state)
-        if self._llm_runtime is not None:
-            ensure_llm_call_budget(cast(Any, working))
+        semantic_invoke = self._semantic_invoker(state)
+        llm_invoked = False
+
+        def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+            nonlocal llm_invoked
+            if self._llm_runtime is not None:
+                ensure_llm_call_budget(cast(Any, working))
+                llm_invoked = True
+            return semantic_invoke(prompt_id, prompt_input)
+
         patch = compose_answer_node(
             cast(Mapping[str, object], working),
-            invoke=self._semantic_invoker(state),
+            invoke=invoke,
         )
         candidate = cast(dict[str, object], patch["answer_draft"])
         if not self._is_production_integration:
@@ -353,9 +369,15 @@ class PlanningSubgraph:
             GraphStateUpdateV1,
             {
                 "planning_result": answer,
-                "retry_budget": consume_llm_call_budget(cast(Any, state)),
-                "trace_context": self._trace(
-                    state, "compose_answer", self._prompt_refs["planning.compose_answer"]
+                **(
+                    {
+                        "retry_budget": consume_llm_call_budget(cast(Any, state)),
+                        "trace_context": self._trace(
+                            state, "compose_answer", self._prompt_refs["planning.compose_answer"]
+                        ),
+                    }
+                    if llm_invoked
+                    else {}
                 ),
             },
         )

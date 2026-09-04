@@ -100,6 +100,10 @@ def select_evidence(
         return deterministic_selection, retry_budget
     projection = _ranked_segments_projection(eligible_candidates, segments)
     candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
+    candidate_resource_refs = {
+        candidate["segment_id"]: candidate["resource_ref"]
+        for candidate in eligible_candidates
+    }
     result = llm_runtime.infer(
         requested_mode,
         prompt_ref,
@@ -112,6 +116,8 @@ def select_evidence(
                 _validate_selection(
                     result.structured_output,
                     candidate_segment_ids=candidate_ids,
+                    candidate_resource_refs=candidate_resource_refs,
+                    requested_resource_hints=request_intent["requested_resource_hints"],
                     context_budget=context_budget,
                 ),
                 obligations,
@@ -157,6 +163,8 @@ def select_evidence(
                     _validate_selection(
                         revision.structured_output,
                         candidate_segment_ids=candidate_ids,
+                        candidate_resource_refs=candidate_resource_refs,
+                        requested_resource_hints=request_intent["requested_resource_hints"],
                         context_budget=context_budget,
                     ),
                     obligations,
@@ -223,6 +231,8 @@ def _validate_selection(
     value: object,
     *,
     candidate_segment_ids: set[str],
+    candidate_resource_refs: dict[str, str],
+    requested_resource_hints: Collection[str],
     context_budget: ContextBudget,
 ) -> EvidenceSelectionResultV2:
     if not isinstance(value, dict) or set(value) != {
@@ -242,6 +252,11 @@ def _validate_selection(
         raise ValueError("selection references a segment outside ranked candidates")
     if set(selected) & set(excluded):
         raise ValueError("segment cannot be selected and excluded")
+    _validate_requested_resource_coverage(
+        selected_segment_ids=selected,
+        candidate_resource_refs=candidate_resource_refs,
+        requested_resource_hints=requested_resource_hints,
+    )
     raw_drafts = value["evidence_drafts"]
     if not isinstance(raw_drafts, list):
         raise ValueError("evidence_drafts must be list")
@@ -271,6 +286,41 @@ def _validate_selection(
         "selected_segment_ids": selected,
         "excluded_segment_ids": excluded,
     }
+
+
+_RESOURCE_HINT_PREFIXES: dict[str, tuple[str, ...]] = {
+    "GMAIL_THREAD": ("gmail_thread:",),
+    "GMAIL_MESSAGE": ("gmail_message:",),
+    "GMAIL_DRAFT": ("gmail_draft:",),
+    "GMAIL_ATTACHMENT": ("gmail_attachment:",),
+    "TASK_LIST": ("task_list:",),
+    "TASK": ("task:",),
+    "CALENDAR": ("calendar:",),
+    "CALENDAR_EVENT": ("calendar_event:",),
+    "CALENDAR_FREEBUSY": ("calendar_freebusy:",),
+}
+
+
+def _validate_requested_resource_coverage(
+    *,
+    selected_segment_ids: Collection[str],
+    candidate_resource_refs: dict[str, str],
+    requested_resource_hints: Collection[str],
+) -> None:
+    selected_refs = {
+        candidate_resource_refs[segment_id]
+        for segment_id in selected_segment_ids
+        if segment_id in candidate_resource_refs
+    }
+    all_refs = tuple(candidate_resource_refs.values())
+    for resource_hint in requested_resource_hints:
+        prefixes = _RESOURCE_HINT_PREFIXES.get(resource_hint, ())
+        if not prefixes or not any(ref.startswith(prefixes) for ref in all_refs):
+            continue
+        if not any(ref.startswith(prefixes) for ref in selected_refs):
+            raise ValueError(
+                f"selection omits available requested resource evidence: {resource_hint}"
+            )
 
 
 def _string_list(value: object, field: str) -> list[str]:

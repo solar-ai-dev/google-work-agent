@@ -111,3 +111,85 @@ def test_select_evidence__sole_exact_selected_read__skips_llm() -> None:
     assert runtime.calls == []
     assert result["selected_segment_ids"] == ["segment-42"]
     assert result["evidence_drafts"][0]["role"] == "SUPPORTS"
+
+
+def test_select_evidence__repairs_container_only_selection__for_task_read() -> None:
+    container_only = {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": "task-list-segment",
+                "role": "CONTEXT",
+                "relevance_reason": "Task list container",
+            }
+        ],
+        "selected_segment_ids": ["task-list-segment"],
+        "excluded_segment_ids": ["task-segment"],
+    }
+    concrete_task = {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": "task-segment",
+                "role": "SUPPORTS",
+                "relevance_reason": "Concrete requested task",
+            }
+        ],
+        "selected_segment_ids": ["task-segment"],
+        "excluded_segment_ids": ["task-list-segment"],
+    }
+    runtime = FakeLLMRuntime(
+        deque([_llm_result(container_only), _llm_result(concrete_task)])
+    )
+    intent = _intent()
+    intent["requested_resource_hints"] = ["TASK"]
+    segments = [
+        SourceSegment(
+            "task-list-segment",
+            "task_list:list-1",
+            "TASKS",
+            "task_list",
+            "list-1",
+            None,
+            None,
+            {},
+            "내 할 일 목록",
+        ),
+        SourceSegment(
+            "task-segment",
+            "task:task-1",
+            "TASKS",
+            "task",
+            "task-1",
+            "list-1",
+            None,
+            {},
+            "[GWA LIVE SMOKE] Task 20260903-3F7A9C2D",
+        ),
+    ]
+    candidates: list[RagCandidateV1] = [
+        {
+            "segment_id": segment.segment_id,
+            "resource_ref": segment.resource_handle,
+            "retrieval_score": 1.0,
+            "reason_codes": [],
+        }
+        for segment in segments
+    ]
+
+    result, budget = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=replace(
+            SELECT_PROMPT_REF, prompt_id="retrieval.select_evidence.revise"
+        ),
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=candidates,
+        segments=segments,
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert result["selected_segment_ids"] == ["task-segment"]
+    assert len(runtime.calls) == 2
+    assert budget["semantic_revisions_used_by_failure"]
