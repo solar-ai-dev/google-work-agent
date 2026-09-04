@@ -580,7 +580,7 @@ def test_retrieval__main_back_edge__extends_checkpointed_prior_query() -> None:
     assert len(second["__context_query_attempts__"]) == 2
 
 
-def test_retrieval__exhausted_local_followups__return_partial_instead_of_leaking() -> None:
+def test_retrieval__unchanged_local_followup__closes_partial_without_looping() -> None:
     state = _state(initial_target="context_retriever")
     state["request_intent"] = cast(Any, _intent())
     state["tool_route_plan"] = cast(Any, _answer_route_plan(with_input_route=True))
@@ -607,11 +607,12 @@ def test_retrieval__exhausted_local_followups__return_partial_instead_of_leaking
         result = graph.invoke(state)
 
     assert result["retrieval_result"]["coverage"] == "PARTIAL"
-    assert result["retrieval_result"]["retrieval_rounds"] == 3
-    assert result["retry_budget"]["additional_retrieval_rounds_used"] == 2
+    assert result["retrieval_result"]["retrieval_rounds"] == 1
+    assert result["retry_budget"]["additional_retrieval_rounds_used"] == 0
     assert result["__target__"] == "SOLUTION_PLANNING"
-    assert connector.call_count == 3
-    assert llm.calls.count("retrieval.assess_sufficiency") == 3
+    assert connector.call_count == 1
+    assert llm.calls.count("retrieval.plan_query") == 1
+    assert llm.calls.count("retrieval.assess_sufficiency") == 1
 
 
 def test_work_analysis__compiled_normal_path__produces_analysis() -> None:
