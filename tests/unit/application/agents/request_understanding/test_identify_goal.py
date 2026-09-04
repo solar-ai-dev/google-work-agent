@@ -7,7 +7,10 @@ from tests.support.fakes.llm import FakeStructuredInferencePort
 
 from google_work_agent.application.agents.request_understanding.identify_goal import identify_goal
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
-from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
+from google_work_agent.ports.llm.structured_inference_contracts import (
+    OutputSchemaDefinition,
+    PromptReference,
+)
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
     WorkflowCorrelationContext,
@@ -76,6 +79,7 @@ def test_identify_goal__selected_resource__preserves_trusted_read_identity() -> 
     )
 
     assert candidate["requested_effect_hints"] == ["READ"]
+    assert candidate["requested_resource_hints"] == ["GMAIL_THREAD"]
     assert candidate["constraints"] == [
         {
             "kind": "RESOURCE",
@@ -139,7 +143,7 @@ def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hint
                 "completion_conditions": ["할 일을 간단히 답한다"],
                 "constraints": [],
                 "requested_effect_hints": [],
-                "requested_resource_hints": [],
+                "requested_resource_hints": ["TASK"],
                 "analysis_requirement": "NONE",
             }
         ]
@@ -153,6 +157,33 @@ def test_identify_goal__explicit_google_tasks_read__preserves_deterministic_hint
 
     assert candidate["requested_effect_hints"] == ["READ"]
     assert candidate["requested_resource_hints"] == ["TASK"]
+    output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
+    assert "allOf" not in output_schema.json_schema
+
+
+def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "새 할 일 생성",
+                "completion_conditions": ["할 일을 생성한다"],
+                "constraints": [],
+                "requested_effect_hints": [],
+                "requested_resource_hints": [],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="request goal candidate is invalid"):
+        identify_goal(
+            llm_runtime=runtime,
+            request=_request("Google Tasks 목록에 새 할 일을 만들어줘."),
+            prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+        )
+
+    output_schema = cast(OutputSchemaDefinition, runtime.calls[0]["output_schema"])
+    assert "allOf" in output_schema.json_schema
 
 
 def _request(text: str) -> WorkflowStartRequest:

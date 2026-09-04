@@ -171,16 +171,22 @@ def identify_goal(
     }
     if confirmation_response is not None:
         prompt_input["confirmation_response"] = dict(confirmation_response)
+    output_schema = _output_schema_for_request(request)
     result = llm_runtime.infer(
         request.requested_mode,
         resolved_prompt_ref,
         prompt_input,
-        IDENTIFY_GOAL_OUTPUT_SCHEMA,
+        output_schema,
     )
     candidate = _apply_explicit_read_authority(
-        _validate_goal_candidate(result.structured_output), request_text=request.request_text
+        _validate_goal_candidate(
+            result.structured_output,
+            schema=output_schema,
+        ),
+        request_text=request.request_text,
     )
-    return _apply_selected_resource_authority(candidate, request=request)
+    candidate = _apply_selected_resource_authority(candidate, request=request)
+    return _validate_goal_candidate(candidate)
 
 
 _EXPLICIT_READ_RESOURCE_PATTERNS = (
@@ -204,6 +210,50 @@ _EXPLICIT_READ_MARKERS = (
     "analyse",
     "analyze",
 )
+_EXPLICIT_WRITE_MARKERS = (
+    "만들",
+    "생성",
+    "추가",
+    "수정",
+    "변경",
+    "삭제",
+    "보내",
+    "전송",
+    "등록",
+    "create",
+    "add",
+    "update",
+    "modify",
+    "delete",
+    "send",
+)
+
+
+def _output_schema_for_request(request: WorkflowStartRequest) -> OutputSchemaDefinition:
+    """Let deterministic explicit-read authority complete paired hint fields."""
+
+    if not (
+        _has_explicit_read_authority(request.request_text)
+        or _selected_resource_hints(request)
+    ):
+        return IDENTIFY_GOAL_OUTPUT_SCHEMA
+    return OutputSchemaDefinition(
+        schema_version=IDENTIFY_GOAL_OUTPUT_SCHEMA.schema_version,
+        json_schema={
+            key: value
+            for key, value in IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema.items()
+            if key != "allOf"
+        },
+    )
+
+
+def _has_explicit_read_authority(request_text: str) -> bool:
+    normalized = request_text.casefold()
+    return (
+        any(pattern.search(request_text) for pattern, _resource in _EXPLICIT_READ_RESOURCE_PATTERNS)
+        and any(marker in normalized for marker in _EXPLICIT_READ_MARKERS)
+        and not any(marker in normalized for marker in _EXPLICIT_WRITE_MARKERS)
+    )
 
 
 def _apply_explicit_read_authority(
@@ -212,14 +262,13 @@ def _apply_explicit_read_authority(
     request_text: str,
 ) -> RequestGoalCandidateV1:
     """Preserve explicitly named Workspace reads when model hints are empty."""
-    normalized = request_text.casefold()
     resources = list(candidate["requested_resource_hints"])
     for pattern, resource_type in _EXPLICIT_READ_RESOURCE_PATTERNS:
         if pattern.search(request_text) and resource_type not in resources:
             resources.append(resource_type)
     if not resources or candidate["requested_effect_hints"]:
         return {**candidate, "requested_resource_hints": resources}
-    if not any(marker in normalized for marker in _EXPLICIT_READ_MARKERS):
+    if not _has_explicit_read_authority(request_text):
         return {**candidate, "requested_resource_hints": resources}
     return {
         **candidate,
@@ -264,11 +313,52 @@ def _apply_selected_resource_authority(
     effects = list(candidate["requested_effect_hints"])
     if "READ" not in effects:
         effects.insert(0, "READ")
-    return {**candidate, "constraints": constraints, "requested_effect_hints": effects}
+    resource_hints = list(candidate["requested_resource_hints"])
+    for hint in _selected_resource_hints(request):
+        if hint not in resource_hints:
+            resource_hints.append(hint)
+    return {
+        **candidate,
+        "constraints": constraints,
+        "requested_effect_hints": effects,
+        "requested_resource_hints": resource_hints,
+    }
 
 
-def _validate_goal_candidate(value: object) -> RequestGoalCandidateV1:
-    errors = validate_output_schema(value, IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema)
+_SELECTED_RESOURCE_HINTS = {
+    ("GMAIL", "THREAD"): "GMAIL_THREAD",
+    ("GMAIL", "MESSAGE"): "GMAIL_MESSAGE",
+    ("GMAIL", "DRAFT"): "GMAIL_DRAFT",
+    ("GMAIL", "ATTACHMENT"): "GMAIL_ATTACHMENT",
+    ("TASKS", "TASK_LIST"): "TASK_LIST",
+    ("TASKS", "TASK"): "TASK",
+    ("CALENDAR", "CALENDAR"): "CALENDAR",
+    ("CALENDAR", "EVENT"): "CALENDAR_EVENT",
+    ("CALENDAR", "FREEBUSY"): "CALENDAR_FREEBUSY",
+}
+
+
+def _selected_resource_hints(request: WorkflowStartRequest) -> list[str]:
+    return list(
+        dict.fromkeys(
+            hint
+            for ref in request.selected_resources
+            for hint in (
+                _SELECTED_RESOURCE_HINTS.get(
+                    (ref.source.upper(), ref.resource_type.upper())
+                ),
+            )
+            if hint is not None
+        )
+    )
+
+
+def _validate_goal_candidate(
+    value: object,
+    *,
+    schema: OutputSchemaDefinition = IDENTIFY_GOAL_OUTPUT_SCHEMA,
+) -> RequestGoalCandidateV1:
+    errors = validate_output_schema(value, schema.json_schema)
     if errors:
         raise ValueError(f"request goal candidate is invalid: {'; '.join(errors)}")
     return cast(RequestGoalCandidateV1, value)
