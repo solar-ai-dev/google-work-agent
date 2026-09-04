@@ -762,6 +762,7 @@ class RetrievalSubgraph:
             evidence_drafts=state["evidence_drafts"],
             retry_budget=cast(RunBudgetV2, state["retry_budget"]),
             confirmation_response=confirmation_response,
+            attempted_detail_candidate_refs=self._attempted_detail_candidate_refs(state),
         )
         sufficiency_result = cast(SufficiencyResultV2, patch["sufficiency"])
         llm_provider_result: dict[str, object] = {"structured_output_attempts": 1}

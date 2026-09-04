@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Collection
+
 from google_work_agent.application.agents.retrieval.assess_sufficiency import assess_sufficiency
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
@@ -35,6 +37,7 @@ def assess_sufficiency_node(
     evidence_drafts: list[EvidenceDraftV1],
     retry_budget: RunBudgetV2,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
+    attempted_detail_candidate_refs: Collection[str] = (),
 ) -> dict[str, object]:
     projection = project_assess_sufficiency_input(state)
     return {
@@ -48,5 +51,6 @@ def assess_sufficiency_node(
             evidence_drafts=evidence_drafts,
             retry_budget=retry_budget,
             confirmation_response=confirmation_response,
+            attempted_detail_candidate_refs=attempted_detail_candidate_refs,
         )
     }

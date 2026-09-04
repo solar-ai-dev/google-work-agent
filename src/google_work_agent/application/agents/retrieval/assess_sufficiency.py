@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
@@ -61,6 +61,7 @@ def assess_sufficiency(
     evidence_drafts: list[EvidenceDraftV1],
     retry_budget: RunBudgetV2,
     confirmation_response: ConfirmationResponseProjectionV1 | None = None,
+    attempted_detail_candidate_refs: Collection[str] = (),
 ) -> SufficiencyResultV2:
     """Assess evidence completeness, then apply the deterministic insufficient-data guard."""
     if _is_complete_selected_gmail_read(
@@ -105,6 +106,13 @@ def assess_sufficiency(
         tool_route_plan=tool_route_plan,
         acquisition_result=acquisition_result,
         evidence_drafts=evidence_drafts,
+    )
+    validated = _require_gmail_candidate_details(
+        validated,
+        request_intent=request_intent,
+        tool_route_plan=tool_route_plan,
+        evidence_drafts=evidence_drafts,
+        attempted_detail_candidate_refs=attempted_detail_candidate_refs,
     )
     return enforce_sufficiency_guard(
         validated,
@@ -598,6 +606,62 @@ def enforce_sufficiency_guard(
         "schema_version": 2,
         "status": authoritative_status,
         "issues": sufficiency_result["issues"],
+    }
+
+
+def _require_gmail_candidate_details(
+    result: SufficiencyResultV2,
+    *,
+    request_intent: RequestIntentV2,
+    tool_route_plan: ToolRoutePlanV2 | None,
+    evidence_drafts: list[EvidenceDraftV1],
+    attempted_detail_candidate_refs: Collection[str],
+) -> SufficiencyResultV2:
+    """Do not let search metadata satisfy an analysis request that needs message content."""
+
+    if (
+        tool_route_plan is None
+        or request_intent["analysis_requirement"] != "REQUIRED"
+        or set(request_intent["requested_effect_hints"]) != {"READ"}
+        or "GMAIL_THREAD" not in request_intent["requested_resource_hints"]
+    ):
+        return result
+    routes = tool_route_plan["input_plan"]["input_routes"]
+    if not any(
+        route["resource_type"] == "GMAIL_THREAD"
+        and "gmail_get_thread" in route["allowed_read_tool_ids"]
+        and "RESOURCE_SELECTED" not in route["reason_codes"]
+        for route in routes
+    ):
+        return result
+    attempted = set(attempted_detail_candidate_refs)
+    missing_refs = {
+        draft["resource_handle"]
+        for draft in evidence_drafts
+        if draft["resource_handle"].startswith("gmail_thread:")
+        and draft["resource_handle"] not in attempted
+    }
+    if not missing_refs:
+        return result
+    issue: SufficiencyIssueV2 = {
+        "slot": "gmail_candidate_detail",
+        "issue_type": "MISSING",
+        "required": True,
+        "resolution_source": "GOOGLE",
+        "safety_critical": False,
+        "reason_codes": ["CANDIDATE_DETAIL_REQUIRED"],
+    }
+    return {
+        "schema_version": 2,
+        "status": result["status"],
+        "issues": [
+            *[
+                existing
+                for existing in result["issues"]
+                if existing["slot"] != "gmail_candidate_detail"
+            ],
+            issue,
+        ],
     }
 
 

@@ -252,6 +252,101 @@ def test_assess_sufficiency__rejects_required_lookup__without_evidence() -> None
     ]
 
 
+def test_assess_sufficiency__requires_each_selected_gmail_thread_detail_for_analysis() -> None:
+    runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    route_plan = _tool_route_plan(
+        [
+            {
+                "route_id": "route-gmail",
+                "resource_type": "GMAIL_THREAD",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+                "required": True,
+                "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
+            }
+        ]
+    )
+    evidence = [
+        {
+            "schema_version": 1,
+            "evidence_id": f"evidence-{name}",
+            "resource_handle": f"gmail_thread:{name}",
+            "segment_id": f"segment-{name}",
+            "kind": "excerpt",
+            "excerpt": f"KAN-93 {name}",
+            "locator": {},
+            "reason_codes": ["SUPPORTS"],
+        }
+        for name in ("first", "second")
+    ]
+
+    result = assess_sufficiency(
+        llm_runtime=runtime,
+        prompt_ref=SUFFICIENCY_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        tool_route_plan=route_plan,
+        acquisition_result=_acquisition_result(),
+        evidence_drafts=evidence,
+        retry_budget=_run_budget(used=0),
+        attempted_detail_candidate_refs=["gmail_thread:first"],
+    )
+
+    assert result["status"] == "NEEDS_MORE_DATA"
+    assert result["issues"][-1]["reason_codes"] == ["CANDIDATE_DETAIL_REQUIRED"]
+
+
+def test_assess_sufficiency__accepts_analysis_after_all_candidate_details() -> None:
+    runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
+    intent = _intent()
+    intent["analysis_requirement"] = "REQUIRED"
+    intent["requested_effect_hints"] = ["READ"]
+    intent["requested_resource_hints"] = ["GMAIL_THREAD"]
+    route_plan = _tool_route_plan(
+        [
+            {
+                "route_id": "route-gmail",
+                "resource_type": "GMAIL_THREAD",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+                "required": True,
+                "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
+            }
+        ]
+    )
+    evidence = [
+        {
+            "schema_version": 1,
+            "evidence_id": f"evidence-{name}",
+            "resource_handle": f"gmail_thread:{name}",
+            "segment_id": f"segment-{name}",
+            "kind": "excerpt",
+            "excerpt": f"KAN-93 {name}",
+            "locator": {},
+            "reason_codes": ["SUPPORTS"],
+        }
+        for name in ("first", "second")
+    ]
+
+    result = assess_sufficiency(
+        llm_runtime=runtime,
+        prompt_ref=SUFFICIENCY_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        tool_route_plan=route_plan,
+        acquisition_result=_acquisition_result(),
+        evidence_drafts=evidence,
+        retry_budget=_run_budget(used=0),
+        attempted_detail_candidate_refs=["gmail_thread:first", "gmail_thread:second"],
+    )
+
+    assert result == {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
+
+
 def test_assess_sufficiency__read_only_connector_gap__cannot_become_user_confirmation() -> None:
     runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("NEEDS_CONFIRMATION"))]))
     acquisition = _acquisition_result()
