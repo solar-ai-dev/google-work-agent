@@ -39,8 +39,6 @@ _MESSAGE_DETAIL_MARKERS = ("from:", "to:", "date:", "subject:")
 _DECISION_DETAIL_MARKERS = (
     "결정",
     "확정",
-    "담당자",
-    "기한:",
     "다음 할 일",
     "action item",
     "decision",
@@ -48,6 +46,7 @@ _DECISION_DETAIL_MARKERS = (
     "상태:",
     "상태 :",
 )
+_STRUCTURED_WORK_DETAIL_MARKERS = ("담당자", "기한:", "우선 순위", "참석자:", "일시:")
 _LINEAGE_PATTERN = re.compile(r"(?<![A-Z0-9])[A-Z][A-Z0-9]+-\d+(?![A-Z0-9])", re.IGNORECASE)
 
 
@@ -198,7 +197,9 @@ def _materiality_score(text: str, *, requested_lineage_keys: Collection[str] = (
     if sum(marker in normalized for marker in _MESSAGE_DETAIL_MARKERS) >= 2:
         score += 6
     if any(marker in normalized for marker in _DECISION_DETAIL_MARKERS):
-        score += 10
+        score += 20
+    if any(marker in normalized for marker in _STRUCTURED_WORK_DETAIL_MARKERS):
+        score += 4
     if any(marker in normalized for marker in _SYSTEM_NOTIFICATION_MARKERS):
         score -= 5
     return score

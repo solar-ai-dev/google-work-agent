@@ -448,7 +448,8 @@ def test_select_evidence__prefers_detail_content_over_same_thread_search_preview
             None,
             None,
             {},
-            "[Jira] (KAN-93) 0422 회의록",
+            "[Jira] (KAN-93) 0422 회의록\nFrom: 최수진\nDate: 2026-04-22\n"
+            "담당자: bonggyulim0728\n기한: 2026-04-22",
         ),
     ]
     candidates: list[RagCandidateV1] = [
