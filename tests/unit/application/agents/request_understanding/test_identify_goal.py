@@ -258,6 +258,32 @@ def test_identify_goal__vague_mail_read__requires_original_search_semantics() ->
     ] == 1
 
 
+def test_identify_goal__vague_mail_schedule_summary__rejects_invented_calendar_create() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "회의 메일을 분석하고 캘린더 일정을 만든다",
+                "completion_conditions": ["회의 일정을 생성한다"],
+                "constraints": [
+                    {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": "회의"}
+                ],
+                "requested_effect_hints": ["READ", "CREATE"],
+                "requested_resource_hints": ["GMAIL_THREAD", "CALENDAR_EVENT"],
+                "analysis_requirement": "REQUIRED",
+            }
+        ]
+    )
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request("회의 관련 메일이 있는데 그거 분석해서 일정 정리해줘."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    assert candidate["requested_effect_hints"] == ["READ"]
+    assert candidate["requested_resource_hints"] == ["GMAIL_THREAD"]
+
+
 def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[

@@ -358,9 +358,19 @@ def _output_schema_for_request(request: WorkflowStartRequest) -> OutputSchemaDef
 def _has_explicit_read_authority(request_text: str) -> bool:
     normalized = request_text.casefold()
     return (
-        any(pattern.search(request_text) for pattern, _resource in _EXPLICIT_READ_RESOURCE_PATTERNS)
+        bool(_explicit_read_resource_hints(request_text))
         and any(marker in normalized for marker in _EXPLICIT_READ_MARKERS)
         and not any(marker in normalized for marker in _EXPLICIT_WRITE_MARKERS)
+    )
+
+
+def _explicit_read_resource_hints(request_text: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            resource_type
+            for pattern, resource_type in _EXPLICIT_READ_RESOURCE_PATTERNS
+            if pattern.search(request_text)
+        )
     )
 
 
@@ -402,18 +412,20 @@ def _apply_explicit_read_authority(
     *,
     request_text: str,
 ) -> RequestGoalCandidateV1:
-    """Preserve explicitly named Workspace reads when model hints are empty."""
+    """Preserve explicit reads and reject model-invented Workspace effects."""
+    explicit_resources = _explicit_read_resource_hints(request_text)
+    if _has_explicit_read_authority(request_text):
+        return {
+            **candidate,
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": explicit_resources,
+        }
     resources = list(candidate["requested_resource_hints"])
-    for pattern, resource_type in _EXPLICIT_READ_RESOURCE_PATTERNS:
-        if pattern.search(request_text) and resource_type not in resources:
+    for resource_type in explicit_resources:
+        if resource_type not in resources:
             resources.append(resource_type)
-    if not resources or candidate["requested_effect_hints"]:
-        return {**candidate, "requested_resource_hints": resources}
-    if not _has_explicit_read_authority(request_text):
-        return {**candidate, "requested_resource_hints": resources}
     return {
         **candidate,
-        "requested_effect_hints": ["READ"],
         "requested_resource_hints": resources,
     }
 
