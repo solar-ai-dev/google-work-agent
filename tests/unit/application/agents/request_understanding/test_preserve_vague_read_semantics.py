@@ -62,6 +62,27 @@ def test_vague_read_semantics__does_not_use_discussion_verbs_as_search_terms() -
     assert by_field["search_terms"] == ["프로젝트", "일정"]
 
 
+def test_vague_read_semantics__replaces_model_broad_query_with_source_terms() -> None:
+    candidate = _candidate()
+    candidate["constraints"].append(
+        {
+            "kind": "USER_REQUIREMENT",
+            "field": "search_terms",
+            "value": ["최근 회의 메일"],
+        }
+    )
+
+    result = operation.preserve_vague_read_semantics(
+        candidate,
+        request_text="최근 회의 메일 중 아직 후속 작업이 안 된 내용을 정리해줘.",
+        entry_mode="AGENT_SEARCH",
+    )
+
+    by_field = {constraint["field"]: constraint["value"] for constraint in result["constraints"]}
+    assert by_field["search_terms"] == ["회의"]
+    assert by_field["period"] == ["최근"]
+
+
 def test_vague_read_semantics__preserves_answer_information_without_making_it_query_text() -> None:
     result = operation.preserve_vague_read_semantics(
         _candidate(),

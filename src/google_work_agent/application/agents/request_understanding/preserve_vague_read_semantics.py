@@ -95,18 +95,21 @@ def preserve_vague_read_semantics(
         kind="USER_REQUIREMENT",
         field="original_search_request",
         values=[request_text],
+        replace_existing=True,
     )
     _merge_constraint(
         constraints,
         kind="USER_REQUIREMENT",
         field="search_terms",
         values=_search_topics(request_text),
+        replace_existing=True,
     )
     _merge_constraint(
         constraints,
         kind="PERSON",
         field="person",
         values=[match.group(0) for match in _PERSON_PATTERN.finditer(request_text)],
+        replace_existing=True,
     )
     _merge_constraint(
         constraints,
@@ -115,6 +118,7 @@ def preserve_vague_read_semantics(
         values=[
             match.group(0).replace(" ", "") for match in _PERIOD_PATTERN.finditer(request_text)
         ],
+        replace_existing=True,
     )
     _merge_constraint(
         constraints,
@@ -186,6 +190,7 @@ def _merge_constraint(
     kind: ConstraintKindValue,
     field: str,
     values: list[str],
+    replace_existing: bool = False,
 ) -> None:
     values = list(dict.fromkeys(value for value in values if value))
     if not values:
@@ -200,6 +205,11 @@ def _merge_constraint(
     )
     if existing is None:
         constraints.append({"kind": kind, "field": field, "value": values})
+        return
+    if replace_existing:
+        existing["value"] = (
+            values if isinstance(existing["value"], list) or len(values) > 1 else values[0]
+        )
         return
     current = existing["value"]
     current_values = current if isinstance(current, list) else [current]
