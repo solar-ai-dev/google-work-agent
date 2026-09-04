@@ -269,7 +269,7 @@ def test_identify_goal__vague_mail_schedule_summary__rejects_invented_calendar_c
                 ],
                 "requested_effect_hints": ["READ", "CREATE"],
                 "requested_resource_hints": ["GMAIL_THREAD", "CALENDAR_EVENT"],
-                "analysis_requirement": "REQUIRED",
+                "analysis_requirement": "NONE",
             }
         ]
     )
@@ -282,6 +282,7 @@ def test_identify_goal__vague_mail_schedule_summary__rejects_invented_calendar_c
 
     assert candidate["requested_effect_hints"] == ["READ"]
     assert candidate["requested_resource_hints"] == ["GMAIL_THREAD"]
+    assert candidate["analysis_requirement"] == "REQUIRED"
 
 
 def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> None:

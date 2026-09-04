@@ -228,6 +228,18 @@ _EXPLICIT_WRITE_MARKERS = (
     "delete",
     "send",
 )
+_EXPLICIT_ANALYSIS_MARKERS = (
+    "분석",
+    "비교",
+    "영향",
+    "원인",
+    "리스크",
+    "관계",
+    "analy",
+    "compare",
+    "impact",
+    "risk",
+)
 _GENERAL_ANSWER_ONLY_CONTENT_MARKERS = (
     "원칙",
     "방법",
@@ -419,6 +431,11 @@ def _apply_explicit_read_authority(
             **candidate,
             "requested_effect_hints": ["READ"],
             "requested_resource_hints": explicit_resources,
+            "analysis_requirement": (
+                "REQUIRED"
+                if _has_explicit_analysis_request(request_text)
+                else candidate["analysis_requirement"]
+            ),
         }
     resources = list(candidate["requested_resource_hints"])
     for resource_type in explicit_resources:
@@ -428,6 +445,11 @@ def _apply_explicit_read_authority(
         **candidate,
         "requested_resource_hints": resources,
     }
+
+
+def _has_explicit_analysis_request(request_text: str) -> bool:
+    normalized = request_text.casefold()
+    return any(marker in normalized for marker in _EXPLICIT_ANALYSIS_MARKERS)
 
 
 def _apply_selected_resource_authority(
