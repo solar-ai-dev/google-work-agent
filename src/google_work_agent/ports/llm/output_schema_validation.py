@@ -60,6 +60,13 @@ def _validate(
         or "minProperties" in schema
     ):
         _validate_object(value=value, schema=schema, path=path, errors=errors)
+    # Conditional and composed JSON Schema fragments commonly refine an
+    # already-declared array with only minItems/maxItems/uniqueItems. Those
+    # constraints still apply even when the fragment does not repeat type.
+    if isinstance(value, list) and expected_type != "array" and any(
+        keyword in schema for keyword in ("items", "minItems", "maxItems", "uniqueItems")
+    ):
+        _validate_array_constraints(value=value, schema=schema, path=path, errors=errors)
 
     one_of = schema.get("oneOf")
     if isinstance(one_of, list):

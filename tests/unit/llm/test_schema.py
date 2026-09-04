@@ -131,6 +131,30 @@ def test_if_then__applies_then_only__when_if_matches() -> None:
     )
 
 
+def test_if_else__applies_array_bounds__without_repeated_type() -> None:
+    schema = {
+        "type": "object",
+        "required": ["requires_confirmation", "missing_fields"],
+        "properties": {
+            "requires_confirmation": {"type": "boolean"},
+            "missing_fields": {"type": "array", "items": {"type": "string"}},
+        },
+        "if": {
+            "properties": {"requires_confirmation": {"const": False}},
+            "required": ["requires_confirmation"],
+        },
+        "then": {"properties": {"missing_fields": {"maxItems": 0}}},
+        "else": {"properties": {"missing_fields": {"minItems": 1}}},
+    }
+
+    assert validate_output_schema(
+        {"requires_confirmation": False, "missing_fields": []}, schema
+    ) == []
+    assert validate_output_schema(
+        {"requires_confirmation": True, "missing_fields": []}, schema
+    ) == ["$.missing_fields must contain at least 1 items"]
+
+
 def test_min_length__rejects_short__strings() -> None:
     schema = {"type": "string", "minLength": 1}
     assert validate_output_schema("a", schema) == []

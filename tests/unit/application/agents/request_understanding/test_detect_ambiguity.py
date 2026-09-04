@@ -9,10 +9,12 @@ from google_work_agent.application.agents.request_understanding.contracts.reques
     RequestGoalCandidateV1,
 )
 from google_work_agent.application.agents.request_understanding.detect_ambiguity import (
+    DETECT_AMBIGUITY_OUTPUT_SCHEMA,
     _validate_ambiguity,
     detect_ambiguity,
 )
 from google_work_agent.application.use_cases.run.guard_run_budget import build_default_run_budget
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from google_work_agent.ports.system.contracts.workflow_execution import (
     SelectedResourceRef,
@@ -92,6 +94,20 @@ def test_detect_ambiguity__rejects_metadata__without_confirmation() -> None:
                 "missing_fields": ["project_name"],
             }
         )
+
+
+def test_detect_ambiguity_schema__rejects_empty_confirmation_details__before_application() -> None:
+    errors = validate_output_schema(
+        {
+            "requires_confirmation": True,
+            "missing_information_owner": "USER",
+            "reason_codes": [],
+            "missing_fields": ["analysis_scope"],
+        },
+        DETECT_AMBIGUITY_OUTPUT_SCHEMA.json_schema,
+    )
+
+    assert errors == ["$.reason_codes must contain at least 1 items"]
 
 
 def test_selected_gmail_read__with_retrievable_content_gap__does_not_confirm() -> None:
