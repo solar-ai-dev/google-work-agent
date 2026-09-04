@@ -24,6 +24,7 @@ def outline_answer_node(
         evidence=projected["evidence"],
         invoke=invoke,
         confirmation_response=projected.get("confirmation_response"),
+        retrieval_result=projected.get("retrieval_result"),
     )
     if result.get("disposition") == "NEEDS_CONFIRMATION":
         return {"planning_confirmation": result}

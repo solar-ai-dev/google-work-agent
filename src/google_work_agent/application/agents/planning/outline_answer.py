@@ -14,6 +14,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     PlanningAnswerConfirmationV1,
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.project_empty_read_answer import (
+    project_empty_read_answer,
+)
 from google_work_agent.application.agents.planning.project_task_read_answer import (
     project_task_read_answer,
 )
@@ -93,6 +96,7 @@ def outline_answer(
     evidence: Sequence[Mapping[str, object]],
     invoke: PlanningSemanticInvoker,
     confirmation_response: Mapping[str, object] | None = None,
+    retrieval_result: Mapping[str, object] | None = None,
 ) -> AnswerOutlineV1 | PlanningAnswerConfirmationV1:
     """Return an evidence-bounded outline without assuming policy or action authority."""
     if not user_request.strip():
@@ -118,6 +122,14 @@ def outline_answer(
     )
     if task_projection is not None:
         return task_projection.outline
+    empty_projection = project_empty_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        retrieval_result=retrieval_result,
+        evidence=evidence,
+    )
+    if empty_projection is not None:
+        return empty_projection.outline
     candidate = invoke(PROMPT_ID, prompt_input)
     if candidate.get("disposition") == "NEEDS_CONFIRMATION":
         ambiguity = request_intent.get("ambiguity")

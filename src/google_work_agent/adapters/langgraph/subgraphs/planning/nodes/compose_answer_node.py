@@ -26,5 +26,6 @@ def compose_answer_node(
             evidence=projected["evidence"],
             invoke=invoke,
             confirmation_response=projected.get("confirmation_response"),
+            retrieval_result=projected.get("retrieval_result"),
         )
     }

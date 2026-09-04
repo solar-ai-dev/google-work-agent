@@ -67,6 +67,82 @@ def test_compose_normalizes__harmless_surrounding_whitespace() -> None:
     assert result["answer"] == "확인한 메일을 요약했습니다."
 
 
+def test_compose_removes__internal_evidence_refs_and_reason_codes() -> None:
+    result = compose_answer(
+        user_request="메일 근거를 요약해줘.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["핵심"], "evidence_refs": ["evidence-seg_deadbeef"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "evidence-seg_deadbeef"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": (
+                "evidence-seg_deadbeef에서 REQUIRED_SOURCE_RETURNED_NO_RESOURCES를 확인했습니다."
+            ),
+            "evidence_refs": ["evidence-seg_deadbeef"],
+        },
+    )
+
+    assert result["answer"] == "확인한 자료에서 내부 상태를 확인했습니다."
+
+
+def test_compose_internal_reference_labels__preserve_english_request_language() -> None:
+    result = compose_answer(
+        user_request="Summarize the email evidence.",
+        request_intent={"goal": "summary"},
+        answer_outline={"sections": ["Summary"], "evidence_refs": ["evidence-seg_1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "evidence-seg_1"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": "evidence-seg_1 has REQUIRED_SOURCE_EVIDENCE.",
+            "evidence_refs": ["evidence-seg_1"],
+        },
+    )
+
+    assert result["answer"] == "the reviewed material has an internal status."
+
+
+def test_compose_empty_gmail_read__explains_search_result_without_llm() -> None:
+    invoked = False
+
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
+
+    result = compose_answer(
+        user_request="지난주 프로젝트 일정 메일을 찾아줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["GMAIL_THREAD"],
+            "constraints": [
+                {"kind": "DATE", "field": "period", "value": ["지난주"]},
+                {
+                    "kind": "USER_REQUIREMENT",
+                    "field": "search_terms",
+                    "value": ["프로젝트", "일정"],
+                },
+            ],
+        },
+        answer_outline={"sections": ["검색 결과 없음"], "evidence_refs": []},
+        work_analysis=None,
+        evidence=[],
+        retrieval_result={
+            "coverage": "PARTIAL",
+            "source_statuses": [{"status": "COMPLETE", "failure_kind": None}],
+            "missing_information": [{"description": "REQUIRED_SOURCE_RETURNED_NO_RESOURCES"}],
+        },
+        invoke=invoke,
+    )
+
+    assert invoked is False
+    assert result["answer"] == (
+        "'지난주 · 프로젝트 · 일정' 조건으로 Gmail을 검색했지만 관련 자료를 찾지 "
+        "못했습니다. 검색어나 기간을 넓혀 다시 요청해 주세요."
+    )
+
+
 def test_compose_rejects__evidence_not__approved_by_outline() -> None:
     with pytest.raises(ValueError, match="outside"):
         compose_answer(

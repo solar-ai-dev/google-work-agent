@@ -143,6 +143,42 @@ def test_outline_task_read__selects_concrete_task_without_llm() -> None:
     }
 
 
+def test_outline_empty_gmail_read__returns_no_result_without_llm() -> None:
+    invoked = False
+
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
+
+    result = outline_answer(
+        user_request="지난주 프로젝트 일정 메일을 찾아줘.",
+        request_intent={
+            "requested_effect_hints": ["READ"],
+            "requested_resource_hints": ["GMAIL_THREAD"],
+            "constraints": [
+                {"kind": "DATE", "field": "period", "value": ["지난주"]},
+                {
+                    "kind": "USER_REQUIREMENT",
+                    "field": "search_terms",
+                    "value": ["프로젝트", "일정"],
+                },
+            ],
+        },
+        work_analysis=None,
+        evidence=[],
+        retrieval_result={
+            "coverage": "PARTIAL",
+            "source_statuses": [{"status": "COMPLETE", "failure_kind": None}],
+            "missing_information": [{"description": "REQUIRED_SOURCE_RETURNED_NO_RESOURCES"}],
+        },
+        invoke=invoke,
+    )
+
+    assert invoked is False
+    assert result == {"sections": ["검색 결과 없음"], "evidence_refs": []}
+
+
 def test_outline_analysis_read__keeps_all_current_work_facts_for_composition() -> None:
     result = outline_answer(
         user_request="회의 메일을 분석해 일정과 후속 작업을 정리해줘.",

@@ -12,8 +12,14 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     AnswerOutlineV1,
     PlanningSemanticInvoker,
 )
+from google_work_agent.application.agents.planning.project_empty_read_answer import (
+    project_empty_read_answer,
+)
 from google_work_agent.application.agents.planning.project_task_read_answer import (
     project_task_read_answer,
+)
+from google_work_agent.application.agents.planning.sanitize_user_visible_answer import (
+    sanitize_user_visible_answer,
 )
 from google_work_agent.ports.llm.structured_inference_contracts import OutputSchemaDefinition
 
@@ -65,6 +71,7 @@ def compose_answer(
     evidence: Sequence[Mapping[str, object]],
     invoke: PlanningSemanticInvoker,
     confirmation_response: Mapping[str, object] | None = None,
+    retrieval_result: Mapping[str, object] | None = None,
 ) -> AnswerDraftCandidateV2:
     if not user_request.strip():
         raise ValueError("user_request is required")
@@ -88,6 +95,14 @@ def compose_answer(
         if not set(task_projection.draft["evidence_refs"]).issubset(approved_refs):
             raise ValueError("task read answer references evidence outside its approved outline")
         return task_projection.draft
+    empty_projection = project_empty_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        retrieval_result=retrieval_result,
+        evidence=evidence,
+    )
+    if empty_projection is not None:
+        return empty_projection.draft
     candidate = invoke(PROMPT_ID, prompt_input)
     schema_version = candidate.get("schema_version")
     answer = candidate.get("answer")
@@ -106,7 +121,12 @@ def compose_answer(
         raise ValueError("compose_answer referenced evidence outside its projection")
     if len(refs) != len(set(refs)):
         raise ValueError("compose_answer output contains duplicate evidence_refs")
-    return {"schema_version": 2, "answer": normalized_answer, "evidence_refs": list(refs)}
+    visible_answer = sanitize_user_visible_answer(
+        normalized_answer,
+        internal_refs=[*allowed, *refs],
+        user_request=user_request,
+    )
+    return {"schema_version": 2, "answer": visible_answer, "evidence_refs": list(refs)}
 
 
 def _is_serialized_container(answer: str) -> bool:

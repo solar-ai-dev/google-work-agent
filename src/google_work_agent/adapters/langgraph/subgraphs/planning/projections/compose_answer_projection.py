@@ -17,6 +17,7 @@ class ComposeAnswerInputV1(TypedDict):
     evidence: list[dict[str, object]]
     work_analysis: NotRequired[dict[str, object]]
     confirmation_response: NotRequired[dict[str, object]]
+    retrieval_result: NotRequired[dict[str, object]]
 
 
 def project_compose_answer_input(state: Mapping[str, object]) -> ComposeAnswerInputV1:
@@ -26,6 +27,7 @@ def project_compose_answer_input(state: Mapping[str, object]) -> ComposeAnswerIn
     evidence = state.get("evidence", ())
     work_analysis = state.get("work_analysis", state.get("work_analysis_result"))
     confirmation_response = state.get("confirmation_response")
+    retrieval_result = state.get("retrieval_result")
     if not isinstance(user_request, str) or not user_request.strip():
         raise ValueError("user_request is required")
     if not isinstance(request_intent, Mapping):
@@ -40,6 +42,8 @@ def project_compose_answer_input(state: Mapping[str, object]) -> ComposeAnswerIn
         raise ValueError("work_analysis must be an object")
     if confirmation_response is not None and not isinstance(confirmation_response, Mapping):
         raise ValueError("confirmation_response must be an object")
+    if retrieval_result is not None and not isinstance(retrieval_result, Mapping):
+        raise ValueError("retrieval_result must be an object")
     result: ComposeAnswerInputV1 = {
         "user_request": user_request,
         "request_intent": dict(request_intent),
@@ -50,6 +54,8 @@ def project_compose_answer_input(state: Mapping[str, object]) -> ComposeAnswerIn
         result["work_analysis"] = dict(work_analysis)
     if confirmation_response is not None:
         result["confirmation_response"] = dict(confirmation_response)
+    if retrieval_result is not None:
+        result["retrieval_result"] = dict(retrieval_result)
     return result
 
 
