@@ -99,6 +99,7 @@ def select_evidence(
         request_intent=request_intent,
         candidates=eligible_candidates,
         exclusion_obligations=obligations,
+        max_evidence=context_budget.max_evidence,
     )
     if deterministic_selection is not None:
         return deterministic_selection, retry_budget
@@ -243,16 +244,22 @@ def _exact_selected_read_selection(
     request_intent: RequestIntentV2,
     candidates: list[RagCandidateV1],
     exclusion_obligations: Collection[str],
+    max_evidence: int,
 ) -> EvidenceSelectionResultV2 | None:
-    """Select the sole exact selected-resource segment without semantic inference."""
+    """Select bounded segments from one exact selected resource without inference."""
+
+    resource_refs = {candidate["resource_ref"] for candidate in candidates}
     if (
         request_intent["analysis_requirement"] != "NONE"
         or set(request_intent["requested_effect_hints"]) != {"READ"}
-        or len(candidates) != 1
-        or "EXACT_RESOURCE" not in candidates[0]["reason_codes"]
+        or not candidates
+        or len(resource_refs) != 1
+        or any("EXACT_RESOURCE" not in candidate["reason_codes"] for candidate in candidates)
     ):
         return None
-    segment_id = candidates[0]["segment_id"]
+    selected_segment_ids = [
+        candidate["segment_id"] for candidate in candidates[:max_evidence]
+    ]
     return {
         "schema_version": 2,
         "evidence_drafts": [
@@ -261,8 +268,9 @@ def _exact_selected_read_selection(
                 "role": "SUPPORTS",
                 "relevance_reason": "EXACT_SELECTED_RESOURCE",
             }
+            for segment_id in selected_segment_ids
         ],
-        "selected_segment_ids": [segment_id],
+        "selected_segment_ids": selected_segment_ids,
         "excluded_segment_ids": _stable_unique(exclusion_obligations),
     }
 

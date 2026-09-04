@@ -113,6 +113,58 @@ def test_select_evidence__sole_exact_selected_read__skips_llm() -> None:
     assert result["evidence_drafts"][0]["role"] == "SUPPORTS"
 
 
+def test_exact_selected_read__with_multiple_segments__selects_them_without_llm() -> None:
+    runtime = FakeLLMRuntime()
+    intent = _intent()
+    intent["analysis_requirement"] = "NONE"
+    intent["constraints"] = [
+        {"kind": "RESOURCE", "field": "selected_resource_id", "value": ["thread-42"]}
+    ]
+    segments = [
+        SourceSegment(
+            f"segment-{index}",
+            "gmail_thread:thread-42",
+            "GMAIL",
+            "gmail_thread",
+            "thread-42",
+            None,
+            None,
+            {},
+            text,
+        )
+        for index, text in enumerate(
+            ["Subject: 보안 알림", "기기: Windows", "Date: 2026-09-04"], start=1
+        )
+    ]
+    candidates: list[RagCandidateV1] = [
+        {
+            "segment_id": segment.segment_id,
+            "resource_ref": segment.resource_handle,
+            "retrieval_score": 40.0 - index,
+            "reason_codes": ["EXACT_RESOURCE"],
+        }
+        for index, segment in enumerate(segments)
+    ]
+
+    result, _ = select_evidence(
+        llm_runtime=runtime,
+        prompt_ref=SELECT_PROMPT_REF,
+        revision_prompt_ref=SELECT_PROMPT_REF,
+        requested_mode="LOCAL_GPU",
+        request_intent=intent,
+        rag_candidates=candidates,
+        segments=segments,
+        retry_budget=_run_budget(used=0),
+    )
+
+    assert runtime.calls == []
+    assert result["selected_segment_ids"] == [
+        "segment-1",
+        "segment-2",
+        "segment-3",
+    ]
+
+
 def test_select_evidence__repairs_container_only_selection__for_task_read() -> None:
     container_only = {
         "schema_version": 2,
