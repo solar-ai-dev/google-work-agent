@@ -82,6 +82,28 @@ def test_release_gate__receives_only__observed_facts(monkeypatch: pytest.MonkeyP
     assert profile.local_runtime_eligible is True
 
 
+def test_default_gpu_probe_timeout__allows_normal_nvidia_smi_startup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed_timeouts: list[float] = []
+    monkeypatch.setattr(probe_module.os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(probe_module, "_physical_memory_bytes", lambda: 16 * 1024**3)
+    monkeypatch.setattr(
+        probe_module,
+        "_probe_gpu",
+        lambda timeout: observed_timeouts.append(timeout) or ("gpu", 8 * 1024**3),
+    )
+    monkeypatch.setattr(probe_module.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(probe_module.platform, "machine", lambda: "AMD64")
+
+    WindowsHardwareProbeAdapter(
+        runtime_selection=runtime_selection(deployment_profile="LOCAL_CAPABLE"),
+        ollama_probe=_OllamaProbe(),
+    ).probe()
+
+    assert observed_timeouts == [3.0]
+
+
 def test_nvidia_probe__with_large_vram__uses_untruncated_nvidia_smi_value(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

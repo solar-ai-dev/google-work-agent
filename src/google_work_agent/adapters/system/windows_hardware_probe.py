@@ -32,7 +32,7 @@ class WindowsHardwareProbeAdapter:
 
     runtime_selection: LlmRuntimeSelectionV1
     ollama_probe: OllamaRuntimeProbe
-    probe_timeout_seconds: float = 1.0
+    probe_timeout_seconds: float = 3.0
     selected_model_provider: Callable[[], ApprovedModelInfo | None] | None = None
 
     def probe(self) -> HardwareProfileV1:
