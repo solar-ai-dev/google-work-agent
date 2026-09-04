@@ -156,6 +156,85 @@ def test_general_search__with_semantic_choice__keeps_query_planning_llm() -> Non
     assert projected_routes[0]["required_constraint_kinds"] == []
 
 
+def test_initial_next_page__repairs_before_query_materialization() -> None:
+    invalid_initial = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "NEXT_PAGE",
+                "reason_codes": ["USER_REQUEST"],
+                "search_spec": None,
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["current tasks"],
+        "retrieval_order": ["route-1"],
+    }
+    repaired = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "SEARCH",
+                "reason_codes": ["USER_REQUEST"],
+                "search_spec": {
+                    "mode": "INITIAL",
+                    "constraints": [{"kind": "STATUS_SCOPE", "values": ["INCOMPLETE"]}],
+                },
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["current tasks"],
+        "retrieval_order": ["route-1"],
+    }
+    runtime = FakeStructuredInferencePort(outputs=[invalid_initial, repaired])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "TASK",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["tasks_list_tasks"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+
+    result, budget, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input={"request_intent": {}, "input_routes": frozen_routes},
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"STATUS_SCOPE"}))},
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert llm_invoked is True
+    assert result == repaired
+    assert len(runtime.calls) == 2
+    assert sum(budget["semantic_revisions_used_by_failure"].values()) == 1
+    repair_input = cast(dict[str, object], runtime.calls[1]["prompt_input"])
+    failure_record = cast(dict[str, object], repair_input["failure_record"])
+    assert failure_record["failure_reason_code"] == "QUERY_OPERATION_FIELD_MISMATCH"
+    assert failure_record["affected_field_paths"] == ["$.route_queries[].operation"]
+
+
 def test_calendar_route__projects_existing__route_constraint_policy() -> None:
     output = {
         "schema_version": 2,

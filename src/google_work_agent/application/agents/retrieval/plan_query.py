@@ -419,14 +419,18 @@ def plan_query(
         frozen_routes=frozen_routes,
     )
     try:
+        validated = validate_retrieval_query_plan_v2(
+            candidate,
+            frozen_routes=frozen_routes,
+            supported_constraint_kinds=supported_kinds,
+            validated_resource_refs=validated_resource_refs,
+            validated_container_refs=validated_container_refs,
+            detail_candidate_refs=detail_candidate_refs,
+        )
         return (
-            validate_retrieval_query_plan_v2(
-                candidate,
-                frozen_routes=frozen_routes,
-                supported_constraint_kinds=supported_kinds,
-                validated_resource_refs=validated_resource_refs,
-                validated_container_refs=validated_container_refs,
-                detail_candidate_refs=detail_candidate_refs,
+            _validate_query_plan_round(
+                validated,
+                is_followup="current_round_no" in prompt_input,
             ),
             retry_budget,
             True,
@@ -448,8 +452,26 @@ def plan_query(
             affected_field_paths=error.affected_field_paths,
             failure_detail=str(error),
             retry_budget=retry_budget,
+            is_followup="current_round_no" in prompt_input,
         )
     return revised_plan, revised_budget, True
+
+
+def _validate_query_plan_round(
+    plan: RetrievalQueryPlanV2,
+    *,
+    is_followup: bool,
+) -> RetrievalQueryPlanV2:
+    """Reject continuation operations before a validated prior read can exist."""
+    if not is_followup and any(
+        query["operation"] == "NEXT_PAGE" for query in plan["route_queries"]
+    ):
+        raise RetrievalV2ValidationError(
+            "initial retrieval cannot request NEXT_PAGE without a validated prior read result",
+            reason_code="QUERY_OPERATION_FIELD_MISMATCH",
+            affected_field_paths=("$.route_queries[].operation",),
+        )
+    return plan
 
 
 def _project_route_constraint_policies(
@@ -514,6 +536,7 @@ def _revise_plan_once(
     affected_field_paths: tuple[str, ...],
     failure_detail: str,
     retry_budget: RunBudgetV2,
+    is_followup: bool,
 ) -> tuple[RetrievalQueryPlanV2, RunBudgetV2]:
     signature = build_semantic_failure_signature_v1(
         node_id="retrieval.plan_query",
@@ -552,15 +575,16 @@ def _revise_plan_once(
         prompt_input=prompt_input,
         frozen_routes=frozen_routes,
     )
+    validated = validate_retrieval_query_plan_v2(
+        candidate,
+        frozen_routes=frozen_routes,
+        supported_constraint_kinds=supported_kinds,
+        validated_resource_refs=validated_resource_refs,
+        validated_container_refs=validated_container_refs,
+        detail_candidate_refs=detail_candidate_refs,
+    )
     return (
-        validate_retrieval_query_plan_v2(
-            candidate,
-            frozen_routes=frozen_routes,
-            supported_constraint_kinds=supported_kinds,
-            validated_resource_refs=validated_resource_refs,
-            validated_container_refs=validated_container_refs,
-            detail_candidate_refs=detail_candidate_refs,
-        ),
+        _validate_query_plan_round(validated, is_followup=is_followup),
         decision["run_budget"],
     )
 
