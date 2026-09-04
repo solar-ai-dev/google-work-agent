@@ -258,6 +258,40 @@ def test_identify_goal__vague_mail_read__requires_original_search_semantics() ->
     ] == 1
 
 
+def test_identify_goal__restores_vague_search_semantics_omitted_by_inference() -> None:
+    runtime = FakeStructuredInferencePort(
+        outputs=[
+            {
+                "goal": "Find and analyze meeting-related emails",
+                "completion_conditions": ["Summarize schedule information"],
+                "constraints": [
+                    {"kind": "DATE", "field": "start", "value": "N/A"},
+                    {"kind": "DATE", "field": "end", "value": "N/A"},
+                    {"kind": "TIME", "field": "timezone", "value": "Asia/Seoul"},
+                ],
+                "requested_effect_hints": ["READ"],
+                "requested_resource_hints": ["GMAIL_THREAD"],
+                "analysis_requirement": "NONE",
+            }
+        ]
+    )
+    request_text = "회의 관련 메일이 있는데 그거 분석해서 일정 정리해줘."
+
+    candidate = identify_goal(
+        llm_runtime=runtime,
+        request=_request(request_text),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+
+    by_field = {item["field"]: item["value"] for item in candidate["constraints"]}
+    assert "start" not in by_field
+    assert "end" not in by_field
+    assert by_field["original_search_request"] == [request_text]
+    assert by_field["search_terms"] == ["회의"]
+    assert by_field["required_information"] == ["일정"]
+    assert candidate["analysis_requirement"] == "REQUIRED"
+
+
 def test_identify_goal__vague_mail_schedule_summary__rejects_invented_calendar_create() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[

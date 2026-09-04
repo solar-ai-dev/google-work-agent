@@ -1014,6 +1014,96 @@ def test_general_gmail_search__preserves_explicit__sender_subject_values() -> No
     ]
 
 
+def test_general_gmail_search__uses_preserved_person_and_search_terms() -> None:
+    output = {
+        "schema_version": 2,
+        "route_queries": [
+            {
+                "route_id": "route-1",
+                "operation": "SEARCH",
+                "reason_codes": ["USER_REQUEST"],
+                "search_spec": {
+                    "mode": "INITIAL",
+                    "constraints": [
+                        {"kind": "KEYWORD", "terms": ["wrong"], "match_mode": "PHRASE"}
+                    ],
+                },
+                "detail_candidate_ref": None,
+            }
+        ],
+        "required_information": ["matching threads"],
+        "retrieval_order": ["route-1"],
+    }
+    runtime = FakeStructuredInferencePort(outputs=[output])
+    prompt_ref = PromptReference(
+        prompt_bundle_version="test",
+        prompt_id="retrieval.plan_query",
+        prompt_version="1",
+        content_hash="hash",
+        agent_role="retrieval",
+        subgraph_name="retrieval",
+        node_name="plan_query",
+        node_state="INITIAL",
+        purpose="plan_query",
+        input_schema_version="v2",
+        output_schema_version="v2",
+    )
+    frozen_routes = [
+        {
+            "route_id": "route-1",
+            "resource_type": "GMAIL_THREAD",
+            "connector_id": "google_workspace",
+            "allowed_read_tool_ids": ["gmail_search_threads", "gmail_get_thread"],
+            "required": True,
+            "reason_codes": ["USER_REQUEST"],
+        }
+    ]
+    prompt_input = {
+        "request_intent": {
+            "constraints": [
+                {"kind": "PERSON", "field": "person", "value": ["김대리"]},
+                {
+                    "kind": "USER_REQUIREMENT",
+                    "field": "original_search_request",
+                    "value": ["김대리와 이야기한 프로젝트 일정 메일을 찾아봐"],
+                },
+                {
+                    "kind": "USER_REQUIREMENT",
+                    "field": "search_terms",
+                    "value": ["프로젝트", "일정"],
+                },
+            ]
+        },
+        "input_routes": frozen_routes,
+    }
+
+    result, _, llm_invoked = plan_query(
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref,
+        revision_prompt_ref=prompt_ref,
+        output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
+        prompt_input=prompt_input,
+        requested_mode="LOCAL_GPU",
+        frozen_routes=cast(list[InputToolRouteV1], frozen_routes),
+        route_policies={
+            "route-1": RouteConstraintPolicy(frozenset({"PARTICIPANT", "KEYWORD"}))
+        },
+        retry_budget=build_default_run_budget(),
+    )
+
+    assert llm_invoked is True
+    search_spec = result["route_queries"][0]["search_spec"]
+    assert search_spec is not None
+    assert search_spec["constraints"] == [
+        {
+            "kind": "PARTICIPANT",
+            "participants": [{"role": "ANY", "identity": "김대리"}],
+            "match_mode": "ALL",
+        },
+        {"kind": "KEYWORD", "terms": ["프로젝트", "일정"], "match_mode": "ALL"},
+    ]
+
+
 def test_selected_exact_resource__invalid_route_binding__fails_without_llm_fallback() -> None:
     runtime = FakeStructuredInferencePort(outputs=[])
     prompt_ref = PromptReference(

@@ -93,7 +93,10 @@ def _selected_resource_ids(intent: RequestIntentV2) -> frozenset[str]:
 def _query_terms(intent: RequestIntentV2) -> frozenset[str]:
     terms = set(_clean_terms(intent["goal"]))
     for constraint in intent["constraints"]:
-        if constraint["kind"] in _QUERY_TERM_CONSTRAINT_KINDS:
+        if (
+            constraint["kind"] in _QUERY_TERM_CONSTRAINT_KINDS
+            and constraint["field"] != "original_search_request"
+        ):
             value = constraint["value"]
             for item in value if isinstance(value, list) else [value]:
                 terms.update(_clean_terms(str(item)))

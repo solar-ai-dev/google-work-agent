@@ -690,6 +690,7 @@ def _explicit_gmail_constraints(value: object) -> list[dict[str, object]]:
         return []
     participants: list[dict[str, str]] = []
     subjects: list[str] = []
+    search_terms: list[str] = []
     participant_fields = {
         "sender": "SENDER",
         "sender_email": "SENDER",
@@ -699,6 +700,7 @@ def _explicit_gmail_constraints(value: object) -> list[dict[str, object]]:
         "to": "RECIPIENT",
         "search_criteria_sender": "SENDER",
         "search_criteria_recipient": "RECIPIENT",
+        "person": "ANY",
     }
     for item in value:
         if not isinstance(item, Mapping):
@@ -720,12 +722,22 @@ def _explicit_gmail_constraints(value: object) -> list[dict[str, object]]:
             "search_criteria_subject",
         }:
             subjects.extend(exact_values)
+        elif kind == "USER_REQUIREMENT" and field == "search_terms":
+            search_terms.extend(exact_values)
 
     result: list[dict[str, object]] = []
     if participants:
         result.append({"kind": "PARTICIPANT", "participants": participants, "match_mode": "ALL"})
     if subjects:
         result.append({"kind": "KEYWORD", "terms": subjects, "match_mode": "PHRASE"})
+    elif search_terms:
+        result.append(
+            {
+                "kind": "KEYWORD",
+                "terms": search_terms,
+                "match_mode": "ALL" if len(search_terms) > 1 else "PHRASE",
+            }
+        )
     return result
 
 

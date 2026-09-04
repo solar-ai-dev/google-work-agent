@@ -23,6 +23,8 @@ from google_work_agent.ports.system.contracts.confirmation import (
 )
 from google_work_agent.ports.system.contracts.workflow_execution import WorkflowStartRequest
 
+from .preserve_vague_read_semantics import preserve_vague_read_semantics
+
 IDENTIFY_GOAL_OUTPUT_SCHEMA = OutputSchemaDefinition(
     schema_version="request-goal-candidate-v1",
     json_schema={
@@ -184,6 +186,11 @@ def identify_goal(
         request_text=request.request_text,
     )
     candidate = _apply_explicit_read_authority(candidate, request_text=request.request_text)
+    candidate = preserve_vague_read_semantics(
+        candidate,
+        request_text=request.request_text,
+        entry_mode=request.entry_mode,
+    )
     candidate = _apply_general_answer_only_authority(candidate, request=request)
     candidate = _apply_selected_resource_authority(candidate, request=request)
     return _validate_goal_candidate(candidate)
