@@ -260,6 +260,35 @@ def test_compose_rejects__serialized_internal_object__as_user_answer() -> None:
         )
 
 
+def test_compose_answer__with_nested_section_string__projects_natural_markdown() -> None:
+    result = compose_answer(
+        user_request="최신 결정을 알려줘.",
+        request_intent={"goal": "latest decision"},
+        answer_outline={"sections": ["최신 결정"], "evidence_refs": ["e1"]},
+        work_analysis=None,
+        evidence=[{"evidence_id": "e1"}],
+        invoke=lambda _prompt_id, _prompt_input: {
+            "schema_version": 2,
+            "answer": """{
+  \"sections\": [
+    {
+      \"section_title\": \"최신 결정\",
+      \"content\": \"네비게이션바로 확정되었습니다.\n* 좌측: 로고\n* 우측: 알림\"
+    }
+  ],
+  \"evidence_refs\": [\"e1\"]
+}""",
+            "evidence_refs": ["e1"],
+        },
+    )
+
+    assert result["answer"] == (
+        "## 최신 결정\n\n네비게이션바로 확정되었습니다.\n"
+        "* 좌측: 로고\n* 우측: 알림"
+    )
+    assert "evidence_refs" not in result["answer"]
+
+
 def test_compose_rejects__answer_over_user_visible_limit() -> None:
     with pytest.raises(ValueError, match="user-visible answer limit"):
         compose_answer(

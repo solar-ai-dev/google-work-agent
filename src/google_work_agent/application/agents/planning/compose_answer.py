@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from typing import cast
@@ -11,6 +10,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
     AnswerDraftCandidateV2,
     AnswerOutlineV1,
     PlanningSemanticInvoker,
+)
+from google_work_agent.application.agents.planning.normalize_generated_answer_prose import (
+    normalize_generated_answer_prose,
 )
 from google_work_agent.application.agents.planning.project_empty_read_answer import (
     project_empty_read_answer,
@@ -125,11 +127,9 @@ def compose_answer(
         raise ValueError("compose_answer output requires schema_version 2")
     if not isinstance(answer, str) or not answer.strip():
         raise ValueError("compose_answer output requires answer")
-    normalized_answer = answer.strip()
+    normalized_answer = normalize_generated_answer_prose(answer)
     if len(normalized_answer) > MAX_USER_VISIBLE_ANSWER_CHARS:
         raise ValueError("compose_answer output exceeds the user-visible answer limit")
-    if _is_serialized_container(normalized_answer):
-        raise ValueError("compose_answer answer must be user-visible prose")
     if not isinstance(refs, list) or not all(isinstance(item, str) for item in refs):
         raise ValueError("compose_answer output requires evidence_refs")
     allowed = set(answer_outline["evidence_refs"])
@@ -143,17 +143,6 @@ def compose_answer(
         user_request=user_request,
     )
     return {"schema_version": 2, "answer": visible_answer, "evidence_refs": list(refs)}
-
-
-def _is_serialized_container(answer: str) -> bool:
-    stripped = answer.strip()
-    if not stripped.startswith(("{", "[")):
-        return False
-    try:
-        parsed = json.loads(stripped)
-    except json.JSONDecodeError:
-        return False
-    return isinstance(parsed, (dict, list))
 
 
 def _evidence_ref(item: Mapping[str, object]) -> str | None:
