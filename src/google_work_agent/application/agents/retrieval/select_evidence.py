@@ -21,6 +21,7 @@ from google_work_agent.application.agents.retrieval.normalize_segments import (
 )
 from google_work_agent.application.agents.retrieval.prioritize_material_gmail_evidence import (
     prioritize_material_gmail_evidence,
+    select_explicit_lineage_gmail_evidence,
 )
 from google_work_agent.application.agents.retrieval.rag_retrieve_rerank import RagCandidateV1
 from google_work_agent.application.prompt_runtime.contracts.failure_record import (
@@ -101,6 +102,16 @@ def select_evidence(
     )
     if deterministic_selection is not None:
         return deterministic_selection, retry_budget
+    lineage_selection = select_explicit_lineage_gmail_evidence(
+        request_intent=request_intent,
+        rag_candidates=eligible_candidates,
+        segments=segments,
+        max_evidence=context_budget.max_evidence,
+    )
+    if lineage_selection is not None:
+        bounded_selection = _apply_exclusions(lineage_selection, obligations)
+        if bounded_selection["selected_segment_ids"]:
+            return bounded_selection, retry_budget
     projection = _ranked_segments_projection(eligible_candidates, segments)
     candidate_ids = {candidate["segment_id"] for candidate in eligible_candidates}
     candidate_resource_refs = {

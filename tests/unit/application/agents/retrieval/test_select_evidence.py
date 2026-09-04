@@ -486,3 +486,4 @@ def test_select_evidence__prefers_detail_content_over_same_thread_search_preview
 
     assert set(result["selected_segment_ids"][:2]) == {"detail", "second-status"}
     assert result["selected_segment_ids"][2] == "decision-without-lineage-in-chunk"
+    assert runtime.calls == []

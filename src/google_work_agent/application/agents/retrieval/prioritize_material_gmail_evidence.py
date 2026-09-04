@@ -135,6 +135,32 @@ def prioritize_material_gmail_evidence(
     }
 
 
+def select_explicit_lineage_gmail_evidence(
+    *,
+    request_intent: RequestIntentV2,
+    rag_candidates: list[RagCandidateV1],
+    segments: list[SourceSegment],
+    max_evidence: int,
+) -> EvidenceSelectionResultV2 | None:
+    """Select bounded evidence when the requested work lineage is explicit."""
+
+    if not _requested_lineage_keys(request_intent):
+        return None
+    selected = prioritize_material_gmail_evidence(
+        {
+            "schema_version": 2,
+            "evidence_drafts": [],
+            "selected_segment_ids": [],
+            "excluded_segment_ids": [],
+        },
+        request_intent=request_intent,
+        rag_candidates=rag_candidates,
+        segments=segments,
+        max_evidence=max_evidence,
+    )
+    return selected if selected["selected_segment_ids"] else None
+
+
 def _requires_vague_gmail_analysis(request_intent: RequestIntentV2) -> bool:
     return (
         request_intent["analysis_requirement"] == "REQUIRED"
@@ -242,4 +268,7 @@ def _stable_unique(values: Collection[str]) -> list[str]:
     return list(dict.fromkeys(values))
 
 
-__all__ = ["prioritize_material_gmail_evidence"]
+__all__ = [
+    "prioritize_material_gmail_evidence",
+    "select_explicit_lineage_gmail_evidence",
+]
