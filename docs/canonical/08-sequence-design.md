@@ -447,8 +447,14 @@ sequenceDiagram
         APP->>DB: UoW commit · Run ANALYZING 또는 PLANNING → RETRIEVING
         DB-->>APP: COMMIT 또는 already RETRIEVING
         SUP->>RET: User Request + Intent + ToolRoutePlanV2.input_plan.input_routes + budget
-        RET->>LLM: plan_query PromptRef
-        LLM-->>RET: RetrievalQueryPlanV2
+        alt exact RESOURCE_SELECTED detail이 current typed state에서 하나로 결정됨
+            RET->>RET: deterministic DETAIL_FETCH materialization + validation
+        else exact TASK CREATE duplicate pre-read가 default Task List로 하나로 결정됨
+            RET->>RET: deterministic TASK SEARCH materialization + validation
+        else query semantic 판단 필요
+            RET->>LLM: plan_query PromptRef
+            LLM-->>RET: RetrievalQueryPlanV2
+        end
         RET->>RET: deterministic Query Builder
         loop 필요한 Input Route/페이지/상세만
             RET->>APP: retrieval.execute_read<br>validated query + allowed_read_tool_ids
@@ -588,6 +594,7 @@ sequenceDiagram
     ROUTE-->>SUP: ToolRoutePlanV2<br>선택 Resource를 IN Route에 고정
 
     SUP->>RET: Intent + fixed input route + selected resource IDs
+    RET->>RET: deterministic DETAIL_FETCH materialization + validation<br>plan_query LLM 0
     loop Source별 선택 ID
         RET->>APP: retrieval.execute_read<br>validated ID GET
         APP->>MCP: ConnectorReadPort call
@@ -662,7 +669,7 @@ sequenceDiagram
     else Budget 소진
         SUP->>SUP: PARTIAL 또는 BLOCKED Guard
         opt PARTIAL + usable Evidence
-            SUP->>SUP: analysis_requirement에 따라 Work Analysis 또는 Planning으로 계속
+            SUP->>SUP: request analysis + Policy precondition의 effective analysis에 따라 Work Analysis 또는 Planning으로 계속
         end
     end
 

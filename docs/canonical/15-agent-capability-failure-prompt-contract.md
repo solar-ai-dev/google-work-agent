@@ -139,7 +139,7 @@ Review:
 
 공통 Runtime Envelope는 invocation metadata와 failure/repair counter만 보존한다. 업무 데이터는 Subgraph별 Typed Local State에 둔다. Local candidate·Query candidate·RAG score·Prompt 원문은 invocation 종료 후 다른 Agent 호출로 자동 승계하지 않는다. 제품의 장기 사실과 승인·실행·검증은 Main Graph Typed State와 Domain Store 계약을 따른다.
 
-각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. **Conversation history나 previous-run artifact는 이 Projection의 암묵적 공통 필드가 아니다.** `conversation_id`는 Trace/상관관계 식별에 사용할 수 있지만 과거 Message 또는 이전 Run State를 Product Prompt에 직렬화할 권한을 만들지 않는다. 공식 Main State Artifact는 단일 Owner만 새 revision을 만들며 downstream은 upstream Artifact를 read-only로 소비한다. Subgraph 반환은 owner field와 허용된 workflow signal만 patch merge하고 다른 Main State field를 `None` 또는 누락 값으로 초기화하지 않는다. **Confirmation으로 재개된 invocation에 한해**, Confirmation Controller가 검증·정규화한 `ConfirmationResponseProjectionV1`을 `confirmation_response`라는 optional Root Field로 **originating owner의 해당 Product Prompt에만** 추가할 수 있다. Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV2`은 Product Prompt 입력이 아니다. 다른 Agent 호출로 이 응답을 자동 승계하지 않는다. 응답이 upstream Intent 의미를 바꿔야 하면 현재 owner가 Typed Back-edge를 반환하고, Prompt가 다른 Agent 책임을 직접 수행하지 않는다. 예를 들어 Retrieval **초기 Round** Query Planner는 `request_intent + input_routes + retrieval_budget`만 받고, follow-up Round에서는 여기에 `current_round_no + prior QueryAttemptV1 + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가로 받을 수 있다. Retrieval Product Prompt는 raw `user_request`를 별도 권위 입력으로 재주입하지 않는다. Raw Page Token·Provider-native Query·RFC3339·MCP Arguments는 어느 Round의 Product Prompt에도 전달하지 않는다. Evidence Selector는 `request_intent + ranked_segments`만 받는다. Work Analysis atomic node는 각자 필요한 최소 Projection만 받으며 facts/entity-relations/temporal-dependencies/duplicate-conflict-candidates/gaps/risks를 한 번에 요구하지 않는다. Planning `draft_action_objective_per_output_route`는 `user_request + OutputToolRouteV1 1개 + optional work_analysis + evidence_refs`를 받고 Tool Schema serialization을 하지 않는다. `compose_arguments_per_output_route`는 같은 frozen Output Route + validated action objective + 해당 Tool Schema만 받아 Arguments 표현만 작성한다.
+각 Node는 Parent/Main State 전체를 받지 않고 자기 작업에 필요한 Typed Projection만 받는다. **Conversation history나 previous-run artifact는 이 Projection의 암묵적 공통 필드가 아니다.** `conversation_id`는 Trace/상관관계 식별에 사용할 수 있지만 과거 Message 또는 이전 Run State를 Product Prompt에 직렬화할 권한을 만들지 않는다. 공식 Main State Artifact는 단일 Owner만 새 revision을 만들며 downstream은 upstream Artifact를 read-only로 소비한다. Subgraph 반환은 owner field와 허용된 workflow signal만 patch merge하고 다른 Main State field를 `None` 또는 누락 값으로 초기화하지 않는다. `RESOURCE_SELECTED`의 Request Understanding Projection에는 current Run에서 이미 검증된 `selected_resource_refs`를 포함해 retrievable Resource fact를 user-owned missing choice로 오인하지 않게 한다. `detect_ambiguity` candidate는 `missing_information_owner=NONE | USER | CONNECTOR`를 출력하고 USER branch만 Confirmation을 허용한다. **Confirmation으로 재개된 invocation에 한해**, Confirmation Controller가 검증·정규화한 `ConfirmationResponseProjectionV1`을 `confirmation_response`라는 optional Root Field로 **originating owner의 해당 Product Prompt에만** 추가할 수 있다. Raw resume payload, `interrupt_id`, checkpoint metadata, `RegisteredResumeTargetRefV2`은 Product Prompt 입력이 아니다. 다른 Agent 호출로 이 응답을 자동 승계하지 않는다. 응답이 upstream Intent 의미를 바꿔야 하면 현재 owner가 Typed Back-edge를 반환하고, Prompt가 다른 Agent 책임을 직접 수행하지 않는다. 예를 들어 Retrieval **초기 Round** Query Planner는 `request_intent + input_routes + retrieval_budget`만 받고, follow-up Round에서는 여기에 `current_round_no + prior QueryAttemptV1 + unresolved SufficiencyIssueV2 + bounded read-result summary`만 추가로 받을 수 있다. Retrieval Product Prompt는 raw `user_request`를 별도 권위 입력으로 재주입하지 않는다. Raw Page Token·Provider-native Query·RFC3339·MCP Arguments는 어느 Round의 Product Prompt에도 전달하지 않는다. Evidence Selector는 `request_intent + ranked_segments`만 받는다. Work Analysis atomic node는 각자 필요한 최소 Projection만 받으며 facts/entity-relations/temporal-dependencies/duplicate-conflict-candidates/gaps/risks를 한 번에 요구하지 않는다. Planning `draft_action_objective_per_output_route`는 `user_request + OutputToolRouteV1 1개 + optional work_analysis + evidence_refs`를 받고 Tool Schema serialization을 하지 않는다. `compose_arguments_per_output_route`는 같은 frozen Output Route + validated action objective + 해당 Tool Schema만 받아 Arguments 표현만 작성한다.
 
 외부 READ는 Retrieval Subgraph의 결정적 Application Node가 `connector_id`에 맞는 Query Builder와 `ConnectorReadPort`를 호출한다. Retrieval LLM Node는 Raw Query·MCP Arguments를 직접 실행하지 않으며 `ToolRoutePlanV2.input_plan.input_routes` 밖의 Tool을 선택하거나 호출하지 않는다. Release Retrieval planner output은 `05 Retrieval`의 current `RetrievalQueryPlanV2 / RouteQueryIntentV2`를 사용한다. `SEARCH`에서는 Provider query 대신 typed `SemanticRetrievalConstraintV1`을 출력하고, follow-up changed SEARCH는 값이 포함된 `ConstraintDeltaV2`를 반환해야 한다. constraint 이름만 있는 delta, Provider-native Query 문자열, raw continuation, MCP Arguments를 planner authority로 반환하면 contract invalid다. 결정적 `SourceFetchPlanBuilder`만 prior effective constraints와 delta를 merge하고 `SourceFetchPlanV1` 및 query identity를 materialize한다.
 
@@ -296,6 +296,8 @@ planning.validate_plan                              deterministic
 ```
 
 `draft_action_objective_per_output_route`는 사용자 목표와 frozen Output Route의 target semantics만 작성한다. Tool identity/effect/arguments를 변경하지 않는다. `compose_arguments_per_output_route`는 확정 objective와 selected Tool Schema를 받아 business arguments만 직렬화한다. dependency 생성은 계속 deterministic authority다.
+
+Arguments Projection에는 현재 검증된 `request_intent` 제약도 포함한다. 정확한 Task/Calendar CREATE가 이 Projection과 frozen Route로 하나로 결정되면 동일 Typed Candidate를 결정적으로 만들 수 있지만, 추가 semantic 판단이 남으면 Product Prompt 호출을 유지한다. 결정적 materialization도 assemble/validate, Review, Domain Validation, Approval, Verification을 우회하지 않는다.
 
 ## 2. Agent Registry
 
@@ -475,6 +477,7 @@ TOOL_ROUTE_EFFECT_MISMATCH
 TOOL_ROUTE_OUTPUT_MODE_WRONG
 TOOL_ROUTE_READ_IN_OUTPUT
 TOOL_ROUTE_OVERCONFIRMATION
+TOOL_ROUTE_CONTRACT_INVALID
 SLLM_TOOL_CANDIDATE_AMBIGUITY
 ```
 
@@ -482,6 +485,8 @@ SLLM_TOOL_CANDIDATE_AMBIGUITY
 
 ```
 RETRIEVAL_ROUTE_SCOPE_VIOLATION
+RETRIEVAL_QUERY_PLAN_SEMANTIC_INVALID
+QUERY_OPERATION_FIELD_MISMATCH
 QUERY_USER_CONSTRAINT_MISSING
 QUERY_TOO_BROAD
 QUERY_TOO_NARROW

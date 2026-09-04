@@ -220,12 +220,24 @@ class RetrievalQueryPlanV2:
     retrieval_order: list[str]
 ```
 
+`RouteQueryIntentV2`는 `operation`이 유효 branch를 결정하는 closed discriminated union이다.
+
+- `SEARCH | FREEBUSY`: `search_spec` 필수, `detail_candidate_ref=None`
+- `DETAIL_FETCH`: `search_spec=None`, current Run에서 검증된 exact selected-resource ref 또는 bounded candidate ref인 non-empty `detail_candidate_ref` 필수
+- `NEXT_PAGE`: `search_spec=None`, `detail_candidate_ref=None`; raw continuation은 Run Retrieval Cache가 소유
+
+서로 다른 branch의 필드를 섞은 출력은 Provider 호출 전에 `QUERY_OPERATION_FIELD_MISMATCH`로 차단하거나 bounded revision한다.
+
 책임:
 
 - 이미 허용된 IN Route 안에서 무엇을 어떤 순서로 찾을지 제안
 - 사용자 날짜·사람·선택 Resource·업무 제약을 구조화
 - Policy Precondition으로 추가된 필수 Route에서는 해당 검사 목적을 충족할 후보를 수집한다. `TASK + CREATE`의 Tasks Route는 기존 미완료 Task 중복 후보를, `CALENDAR + CREATE`의 Calendar Route는 대상 시간대의 Event/FreeBusy 충돌 근거를 확보한다.
 - Page·후보·상세 조회 Budget 제안
+
+초기 `RESOURCE_SELECTED`에서 frozen IN Route가 1개이고 Registry의 exact detail READ Tool과 current-Run 검증 Resource ref가 각각 하나로 결정되면 `plan_query` LLM은 호출하지 않는다. Retrieval owner의 deterministic materialization이 `DETAIL_FETCH` plan을 만들고 동일 validator를 통과시킨다. 복수 Route·복수 ref·일반 검색·follow-up에서는 이 branch를 사용하지 않는다.
+
+정확한 `TASK + CREATE` 요청에서 제목, Policy-required `TASK | TASK_LIST` Route, 검증된 기본 Task List ref가 각각 하나로 고정되면 중복 검사 목적의 초기 Query Plan은 결정적 `SEARCH + CONTAINER_REF`로 materialize하고 동일 validator를 통과시킨다. 실제 Tasks Connector READ와 Work Analysis 중복 판정은 유지한다. 복수 Task List, 일반 Task 검색, 추가 사용자 제약 또는 follow-up Retrieval에는 이 branch를 사용하지 않는다.
 
 금지:
 
@@ -495,6 +507,7 @@ class RetrievalResultV1:
 
 - Tool Route의 IN Resource를 사용자 선택 Resource에 고정
 - 선택 ID를 검색 Query로 다시 추측하지 않고 최신 상세 GET
+- exact direct-read Tool이 Registry에 있으면 선택 Resource의 detail route만 유지하며 같은 Resource 내부 검색을 위한 추측성 dependency route를 추가하지 않는다.
 - 후보 점수와 무관하게 강제 포함
 - 추가 Resource Route가 필요하면 Tool Route 재검토 또는 사용자 확인
 

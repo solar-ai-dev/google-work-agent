@@ -132,6 +132,7 @@ REASONING   = qwen3.5:9b
 - Tool Route exact/allowed route, Retrieval query/sufficiency, Work Analysis, Action objective/arguments, Review false PASS/REVISE
 - Gmail actual READ reachability와 approval-gated WRITE/Verification E2E
 - cold load overhead, same-Run model swap count 0, peak VRAM/RAM, token throughput, p50/p95 latency, total Run latency, fallback rate
+- representative Answer/READ/ACTION별 Main stage invocation sequence와 불필요한 Retrieval/Work Analysis invocation 수
 - provisioning download size/time, cold-start readiness, interrupted-download recovery
 
 Inference-class rules:

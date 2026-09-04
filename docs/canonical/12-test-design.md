@@ -282,8 +282,12 @@ Open Run 1, Active Approval 1, Active Attempt 1, Version Conflict, DAG Cycle, Un
 - Tool Calling 단독, Structured Output 단독, Tool Calling+별도 constrained JSON 조합은 서로 다른 Runtime Candidate로 Contract Test
 - `ORACLE` Node Run과 `LIVE` Handoff Run 분리
 - `RESOURCE_SELECTED`에서 불필요한 Workspace Search 금지
+- exact selected Resource 1개 + exact detail READ Tool 1개인 초기 Retrieval은 `plan_query` LLM 0, deterministic `DETAIL_FETCH` validator 통과, Connector detail READ 1회를 검증한다. 복수 후보·일반 Agent Search·follow-up은 query-planning LLM을 유지한다.
+- 제목 하나와 검증된 기본 Task List 하나로 고정된 `TASK + CREATE`는 중복 검사 Query Planning LLM 0, deterministic `SEARCH + CONTAINER_REF` validator 통과, 실제 Task READ와 중복 Work Analysis 유지를 검증한다. 복수 Task List·추가 검색 제약·follow-up에서는 Query Planning LLM을 유지한다.
 - `output_mode=ANSWER`에서 Action Argument/Plan Node 미호출
 - 단순 ACTION은 Arguments가 사용자 입력으로 충분하고 관계·충돌·중복 해석이 불필요하면 Work Analysis skip 가능; ACTION 자체만으로 Analysis 강제 금지. 단 `TASK + CREATE` 중복 검사와 `CALENDAR + CREATE` 충돌 검사는 `01-B`의 P0 필수 Policy Precondition이므로 이 skip 조건에 포함하지 않는다.
+- Policy-only Task/Calendar CREATE는 entity/temporal LLM을 호출하지 않고 guarded duplicate/conflict 책임으로 직행한다. fact operand 2개 미만은 deterministic empty candidate + relation validation, 2개 이상은 duplicate/conflict LLM candidate + relation validation을 검증한다. 명시적 Analysis 요청의 전체 relation 경로를 이 최적화로 축소하면 실패다.
+- 정확한 Task/Calendar CREATE는 검증된 Intent·Route·Policy-required Work Analysis가 모두 일치할 때만 objective/arguments 및 빈 Review Finding을 결정적으로 materialize할 수 있다. duplicate/conflict·risk·ambiguity·relation·추가 제약이 있는 fixture에서 LLM Review 또는 Confirmation을 잘못 생략하는 `FALSE_SKIP`은 실패다.
 - Work Analysis의 `DUPLICATES`·`CONFLICTS_WITH` 확정과 `action_necessity=NOT_REQUIRED`는 LLM 출력만으로 허용하지 않는다. `relation_candidates`는 결정적 relation validator를 거쳐 `validated_relations`로 승격되어야 하며, 검증 전 후보가 `WorkAnalysisResultV2.relations`에 직접 포함되면 실패다. 정규화된 Source 데이터·Calendar availability·현재 Task 상태로 검증되지 않은 유사 후보 또는 불확실 관계는 `relation_validation_ambiguities`/위험·확인 경로로 남긴다.
 - 정확 Task 중복의 기본 경로는 `action_necessity=NOT_REQUIRED → 새 Action 0`이다. 사용자가 중복 사실을 인지한 상태에서 추가 생성을 요구하면 `DUPLICATE_OVERRIDE_REQUIRED` 2차 Confirmation 전에는 Planning/Approval로 진행할 수 없다.
 - 검증된 Calendar 충돌은 `CONFLICT_OVERRIDE_REQUIRED` 2차 Confirmation 전에는 충돌 Event Action Plan을 만들 수 없다. Confirmation 응답은 Work Analysis owner checkpoint로 resume하며 Request Understanding부터 재시작하지 않는다.
@@ -669,7 +673,7 @@ Gate는 고정 Sampling 조건에서 Item당 1회 평가한다. Temperature는 G
 | `TST-AGT-222` | Artifact/Signal separation | 미완결 confirmation·route reconsideration candidate의 공식 Artifact 저장 0 |
 | `TST-AGT-223` | Request revision invalidation | RequestIntent revision 변경 시 Route 이하 stale State 재사용 0 |
 | `TST-AGT-224` | Tool Route internal responsibility | Resource·Effect 판단과 Registry binding 분리, unregistered Tool 생성 0 |
-| `TST-AGT-225` | Analysis conditional routing | `analysis_requirement=NONE` Answer의 불필요 Analysis 0, 단순 ACTION의 허용된 Analysis skip 성공, `analysis_requirement=REQUIRED` ACTION의 Analysis 우회 0 |
+| `TST-AGT-225` | Analysis conditional routing | `analysis_requirement=NONE` Answer의 불필요 Analysis 0, 단순 ACTION의 허용된 Analysis skip 성공, `analysis_requirement=REQUIRED` 또는 Task CREATE/Calendar CREATE Policy precondition의 Analysis 우회 0 |
 | `TST-AGT-226` | Review discriminated union | `PASS+confirmation`, `CONFIRM` without confirmation, `BLOCK` without blockers 표현 가능 상태 0 |
 
 ### 20.2 LangGraph State·Edge 회귀

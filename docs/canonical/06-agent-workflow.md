@@ -716,6 +716,9 @@ class RequestIntentV2:
 
 - `requested_*_hints`는 사용자 요청에 나타난 의미적 힌트다. Registry Tool 이름이 아니다.
 - 사용자 목표·완료조건·제약을 벗어나 Tool Route나 Action Argument를 생성하지 않는다.
+- `detect_ambiguity`의 LLM candidate는 `missing_information_owner: NONE | USER | CONNECTOR` discriminator를 함께 반환한다. `CONNECTOR`는 Retrieval로 해소하고 `USER`만 Confirmation으로 전환하며, 확정된 `AmbiguityV1`에는 이 candidate-only 분류 필드를 보존하지 않는다.
+- `RESOURCE_SELECTED`의 검증된 `selected_resource_refs`는 `identify_goal`과 `detect_ambiguity`에 동일한 current-Run 입력으로 전달한다. 선택 Resource의 본문·제목·발신자처럼 Connector READ로 얻을 수 있는 사실은 user-owned missing choice가 아니므로 Confirmation 사유가 될 수 없다.
+- 사용자만 결정할 수 있는 recipient·시간·범위 같은 값은 선택 Resource가 존재해도 자동 보완하지 않는다. 특히 Write intent의 실제 사용자 선택 누락은 기존 Confirmation 경계를 유지한다.
 - `analysis_requirement`은 사용자 의미상 Evidence 또는 사용자 입력을 별도 업무 사실/관계로 해석해야 하는지를 나타낸다. 단순 조회·요약뿐 아니라 사용자가 Action Arguments를 직접 충분히 제공한 단순 ACTION도 `NONE`일 수 있다. 다만 Supervisor의 실제 Analysis 호출 여부는 이 값만 보지 않고 현재 Output Route에 적용되는 Policy Precondition도 결정적으로 평가한다. `TASK + CREATE`의 중복 검사와 `CALENDAR + CREATE`의 충돌 검사는 P0 필수이므로 사용자 의미상 `analysis_requirement=NONE`이어도 Retrieval 후 Work Analysis를 건너뛰지 않는다. `output_mode=ACTION` 자체만으로 Analysis를 강제하지는 않는다.
 
 ### 3.2 ToolRoutePlanV2
@@ -771,6 +774,8 @@ class OutputToolRouteV1:
 규칙:
 
 - Tool 이름·Effect는 Signed Tool Registry의 실제 Entry에서만 선택한다.
+- Tool Route의 output effect는 `RequestIntentV2.requested_effect_hints`의 Write subset을 초과할 수 없다. READ-only intent에 LLM이 CREATE/UPDATE/SEND/DELETE 후보를 반환하면 결정적 경계가 `ANSWER`로 축소하며 Write Route는 0이어야 한다.
+- `RESOURCE_SELECTED`의 exact resource type은 semantic candidate보다 우선하는 current-Run scope다. 후보가 다른 resource family를 제안하면 bounded semantic revision 또는 fail-closed하며 선택 identity를 새 값으로 교체하지 않는다.
 - `input_routes`는 Retrieval이 사용할 허용 Read Tool 범위를 보존한다. Retrieval LLM이 다시 Tool 종류를 고르지 않는다.
 - `output_routes`의 실제 Action Tool은 여기서 확정한다. Planning은 Tool을 다시 선택하지 않고 Arguments·내용만 작성한다.
 - 후보 수를 임의 shortlisting하여 필요한 Tool을 제거하지 않는다. Main State에는 확정된 Route와 Registry binding을 온전히 보존한다.
@@ -1189,6 +1194,7 @@ START
 - `resolve_entity_relations`는 사람·업무·Resource 사이의 의미 관계 후보만 만든다.
 - `resolve_temporal_dependencies`는 날짜·시간·선후행·업무 dependency 후보만 만든다. Calendar interval 산술이나 deterministic DAG 검증을 소유하지 않는다.
 - `detect_duplicate_conflict_candidates`는 Task 중복·Calendar 충돌 후보만 제안하며 최종 `DUPLICATES`·`CONFLICTS_WITH` authority가 아니다.
+- Policy precondition만으로 Work Analysis에 진입한 Task/Calendar CREATE는 entity/temporal 책임을 우회하고 guarded duplicate/conflict 책임으로 직행한다. 서로 다른 fact operand가 2개 미만이면 relation schema상 후보가 존재할 수 없으므로 빈 candidate를 결정적으로 materialize하되 `validate_relations`와 이후 Policy 판단은 생략하지 않는다. 명시적 `analysis_requirement=REQUIRED`는 전체 semantic relation 책임을 유지한다.
 - `validate_relations`가 정규화된 Source 데이터와 현재 상태로 relation을 확정한다. LLM relation 후보는 그대로 final authority가 될 수 없다.
 - `assess_information_gaps`는 현재 목표를 판단하는 데 아직 부족한 정보와 해결 가능한 retrieval need만 만들고 `ambiguity_candidates + retrieval_needs`만 갱신한다.
 - `assess_operational_risks`는 실행 필요성·과잉 실행 가능성·일정/업무 위험을 `operational_risk_candidates`에만 기록하되 Policy allow/deny, Approval, duplicate/conflict 최종 판정을 하지 않는다.
@@ -1291,7 +1297,8 @@ class PlanningStateV2:
 
 - `OutputPlanV1`은 사용자가 요구한 **출력 capability와 허용 Tool 경로**를 고정하지만 실제 Action 생성이 항상 필요하다는 보장은 아니다. Retrieval/Analysis에서 현재 상태가 이미 목표를 충족함이 확인되면 Planning은 Route를 변경하지 않고 Evidence 기반 Answer로 종료할 수 있다.
 - `draft_action_objective_per_output_route`는 frozen Output Route 하나에 대해 `ActionObjectiveCandidateV1`을 만들고 해당 `route_id`의 `action_objective_candidates`만 갱신한다. 사용자 목표·target semantics·scope constraint만 작성하며 Tool identity/effect/arguments를 바꾸지 않는다.
-- `compose_arguments_per_output_route`는 같은 `route_id`의 검증된 `ActionObjectiveCandidateV1` + 현재 Route의 `selected_tool_id` + 해당 Tool Schema만 보고 `ToolArgumentCandidateV1`의 business arguments를 직렬화한다. objective가 없거나 route_id가 맞지 않으면 fail closed한다.
+- `compose_arguments_per_output_route`는 같은 `route_id`의 검증된 `ActionObjectiveCandidateV1` + 현재 Route의 `selected_tool_id` + 해당 Tool Schema + 현재 검증된 Request Intent 제약만 보고 `ToolArgumentCandidateV1`의 business arguments를 직렬화한다. objective가 없거나 route_id가 맞지 않으면 fail closed한다.
+- 제목만 지정된 정확한 Task CREATE와 제목·날짜·시작·종료·Timezone이 모두 지정된 정확한 Calendar CREATE는 frozen Output Route와 검증된 Request Intent가 각각 하나로 일치할 때 동일 candidate schema를 결정적으로 materialize할 수 있다. 필드가 부족하거나 복수 제약·추가 의미 판단이 남아 있으면 기존 LLM Node를 유지하며, 결정적 결과도 기존 assemble/validate 경계를 우회하지 않는다.
 - current registered Tool catalog 전체를 Planning Node에 다시 노출해 Tool을 재선택하게 하지 않는다. Tool 수는 Registry closed set에서 파생되며 Planning 문서가 별도 numeric authority를 갖지 않는다.
 - Tool Candidate shortlisting을 Planning에서 수행하지 않는다. Tool 선택 책임은 Tool Route가 이미 소유한다.
 - 각 Action의 Business Arguments 작성만 LLM이 수행한다. 다중 Action Dependency의 생성·정규화·cycle 검증은 frozen `OutputPlanV1`의 route 관계와 검증된 Action 후보를 입력으로 받는 결정적 Planning Application Node가 소유한다. P0 resolver는 Business Arguments에 이미 고정된 안정적 외부 Resource identity가 같은 Action들에 한해 frozen route 순서에서 후속 Action을 직전 동일 Resource Action에 연결한다. CREATE처럼 실행 전 Provider-generated resource ID를 알 수 없는 Action에는 dependency를 추정하지 않고, 서로 다른 Resource Action은 병렬로 유지한다.
@@ -1341,6 +1348,7 @@ class ReviewInspectorResultV1:
 - `inspect_goal_and_evidence`는 goal fit, evidence adequacy, unsupported claim/contradiction만 검사한다.
 - `inspect_action_scope_and_route`는 ACTION plan에서 action necessity, frozen Tool Route 일치, scope expansion 여부만 검사한다.
 - `inspect_constraints_and_policy_summary`는 사용자 제약과 **supplied policy summary**의 위반 여부만 검사하며 새 정책을 만들지 않는다.
+- 정확한 Task/Calendar CREATE Plan이 검증된 Intent·frozen Route와 일치하고 필요한 중복/충돌 Work Analysis가 완료됐으며 ambiguity·risk·relation·override가 모두 비어 있으면 inspector 결과를 빈 Finding으로 결정적으로 materialize할 수 있다. 조건 하나라도 충족하지 않거나 Confirmation/Policy 판단이 남아 있으면 해당 inspector LLM을 유지한다. 이 최적화는 Domain Validation·Approval·Verification을 생략할 권한이 아니다.
 - `aggregate_review_findings`는 세 결과의 severity/disposition을 deterministic precedence로 합성한다. LLM이 최종 routing authority를 소유하지 않는다.
 - `recheck_affected_dimensions`는 REVISE가 표시한 `affected_dimensions`만 재검사한다. `affected_action_ids`와 `affected_route_ids`가 있으면 해당 dimension의 bounded context로만 사용하며, action/route ID가 `null`이어도 dimension-only RECHECK가 가능해야 한다. Finding 문자열이나 전체 Plan은 recheck selector가 아니다. RECHECK 결과도 `aggregate_review_findings → validate_review`를 다시 통과한 뒤에만 최종 disposition이 유효하다.
 - Function/Tool Calling을 사용할 수 있으나 Adapter는 `name + arguments`의 일반 계약만 알고 Domain Result 매핑은 Application Layer가 수행한다.
@@ -1392,7 +1400,8 @@ Request COMPLETE → Tool Route
 Tool Route ROUTE_READY + IN 있음 → Retrieval
 Tool Route ROUTE_READY + IN 없음 + `analysis_requirement=NONE` + ANSWER → Planning
 Tool Route ROUTE_READY + IN 없음 + `analysis_requirement=REQUIRED` → Work Analysis
-Tool Route NO_TOOL_NEEDED → Planning(answer)
+Tool Route NO_TOOL_NEEDED + effective analysis not required → Planning(answer)
+Tool Route NO_TOOL_NEEDED + effective analysis required → Work Analysis
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + `analysis_requirement=REQUIRED` → Work Analysis
 Retrieval SUFFICIENT/NO_FETCH_NEEDED + `analysis_requirement=NONE` + ANSWER → Planning
 Retrieval NEEDS_MORE_DATA + local budget → Retrieval local loop
@@ -1441,7 +1450,7 @@ Request → Tool Route(IN only) → Retrieval/RAG → [필요할 때만 Work Ana
 ### 9.3 WRITE
 
 ```
-Request → Tool Route(IN/OUT) → Retrieval → Work Analysis → Planning(arguments only)
+Request → Tool Route(IN/OUT) → Retrieval → [effective analysis가 필요할 때 Work Analysis] → Planning(arguments only)
 → Review → Domain Validation → Approval → ClaimExecution COMMIT → ClaimContext 구성 → BeginExecutionAttempt COMMIT(applied=true) → MCP Write → Verification
 ```
 
@@ -1643,7 +1652,7 @@ Repository placement는 16/06의 `NodeRegistry`와 `ResumeTargetRegistry`가 단
 | `route.select_tool` | tool_route | LLM/conditional | route candidate + registered candidates | selected candidate |
 | `route.finalize` | tool_route | deterministic | selected candidate + Registry | `ToolRoutePlanV2` |
 | `route.validate` | tool_route | deterministic | final route | validated route |
-| `retrieval.plan_query` | retrieval | LLM | intent + input routes | `RetrievalQueryPlanV2` |
+| `retrieval.plan_query` | retrieval | LLM/conditional | intent + input routes; exact selected detail은 deterministic materialization | `RetrievalQueryPlanV2` |
 | `retrieval.build_query` | retrieval | deterministic | query plan + route | validated query |
 | `retrieval.execute_read` | retrieval | deterministic | query + allowed read tools | read handles |
 | `retrieval.normalize_segments` | retrieval | deterministic | read handles | segment handles |
