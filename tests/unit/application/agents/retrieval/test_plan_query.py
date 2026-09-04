@@ -420,7 +420,16 @@ def test_no_result_vague_phrase__relaxes_once__without_llm() -> None:
         revision_prompt_ref=prompt_ref,
         output_schema=RETRIEVAL_QUERY_PLAN_V2_OUTPUT_SCHEMA,
         prompt_input={
-            "request_intent": {"constraints": []},
+            "request_intent": {
+                "constraints": [
+                    {"kind": "RESOURCE", "field": "subject", "value": "meeting_email"},
+                    {
+                        "kind": "USER_REQUIREMENT",
+                        "field": "original_search_request",
+                        "value": ["회의 관련 메일을 찾아줘"],
+                    },
+                ]
+            },
             "current_round_no": 0,
             "prior_query_attempts": [prior_attempt],
             "unresolved_sufficiency_issues": [{"required": True, "resolution_source": "GOOGLE"}],
@@ -1061,6 +1070,7 @@ def test_general_gmail_search__uses_preserved_person_and_search_terms() -> None:
     prompt_input = {
         "request_intent": {
             "constraints": [
+                {"kind": "RESOURCE", "field": "subject", "value": "project_schedule"},
                 {"kind": "PERSON", "field": "person", "value": ["김대리"]},
                 {
                     "kind": "USER_REQUIREMENT",

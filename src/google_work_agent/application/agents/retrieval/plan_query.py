@@ -25,6 +25,9 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan import 
 from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
     bind_retrieval_query_plan_output_schema,
 )
+from google_work_agent.application.agents.retrieval.has_explicit_gmail_subject import (
+    has_explicit_gmail_subject,
+)
 from google_work_agent.application.agents.retrieval.plan_candidate_detail import (
     deterministic_candidate_detail_plan,
 )
@@ -752,7 +755,7 @@ def _explicit_gmail_constraints(
     result: list[dict[str, object]] = []
     if participants:
         result.append({"kind": "PARTICIPANT", "participants": participants, "match_mode": "ALL"})
-    if subjects:
+    if subjects and (not search_terms or has_explicit_gmail_subject(value)):
         result.append({"kind": "KEYWORD", "terms": subjects, "match_mode": "PHRASE"})
     elif search_terms:
         result.append(

@@ -13,6 +13,9 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan import 
     RetrievalQueryPlanV2,
     SemanticRetrievalConstraintV1,
 )
+from google_work_agent.application.agents.retrieval.has_explicit_gmail_subject import (
+    has_explicit_gmail_subject,
+)
 from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan import (
     InputToolRouteV1,
 )
@@ -170,12 +173,7 @@ def _needs_google_evidence(prompt_input: Mapping[str, object]) -> bool:
 def _has_exact_subject_constraint(prompt_input: Mapping[str, object]) -> bool:
     intent = prompt_input.get("request_intent")
     constraints = intent.get("constraints") if isinstance(intent, Mapping) else None
-    return isinstance(constraints, list) and any(
-        isinstance(item, Mapping)
-        and item.get("field") in {"subject", "search_criteria_subject"}
-        and (isinstance(item.get("value"), str) or isinstance(item.get("exact_values"), list))
-        for item in constraints
-    )
+    return has_explicit_gmail_subject(constraints)
 
 
 __all__ = ["deterministic_followup_query_plan"]
