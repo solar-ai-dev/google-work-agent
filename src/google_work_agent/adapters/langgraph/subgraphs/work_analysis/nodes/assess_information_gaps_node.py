@@ -5,9 +5,7 @@ from typing import cast
 from google_work_agent.adapters.langgraph.subgraphs.work_analysis.state import WorkAnalysisStateV2
 from google_work_agent.application.agents.work_analysis.assess_information_gaps import (
     assess_information_gaps,
-)
-from google_work_agent.application.agents.work_analysis.contracts.work_analysis_candidates import (
-    InformationGapAssessmentV1,
+    combine_information_gap_assessment,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
     WorkAmbiguityV1,
@@ -34,37 +32,18 @@ def assess_information_gaps_node(
         prompt_ref=prompt_ref,
         requested_mode=requested_mode,
     )
-    relation_ambiguities = [
-        cast(
-            WorkAmbiguityV1,
-            {
-                **item,
-                "requires_confirmation": False
-                if state.get("confirmation_response") is not None
-                else item["requires_confirmation"],
-            },
-        )
-        for item in cast(list[WorkAmbiguityV1], state.get("relation_validation_ambiguities", []))
-    ]
-    ambiguities = [*relation_ambiguities, *assessment["ambiguities"]]
-    if assessment["disposition"] == "COMPLETE" and any(
-        item["requires_confirmation"] for item in ambiguities
-    ):
-        requiring = next(item for item in ambiguities if item["requires_confirmation"])
-        assessment = cast(
-            InformationGapAssessmentV1,
-            {
-                **assessment,
-                "disposition": "NEEDS_CONFIRMATION",
-                "question": requiring["description"],
-                "options": [],
-                "reason_codes": [requiring["code"]],
-            },
-        )
+    assessment = combine_information_gap_assessment(
+        assessment=assessment,
+        relation_ambiguities=cast(
+            list[WorkAmbiguityV1], state.get("relation_validation_ambiguities", [])
+        ),
+        request_intent=cast(WorkAnalysisStateV2, state)["request_intent"],
+        has_confirmation_response=state.get("confirmation_response") is not None,
+    )
     return cast(
         WorkAnalysisStateV2,
         {
-            "ambiguity_candidates": ambiguities,
+            "ambiguity_candidates": list(assessment["ambiguities"]),
             "retrieval_needs": list(assessment["retrieval_needs"]),
             "__analysis_information_gap_assessment__": assessment,
         },

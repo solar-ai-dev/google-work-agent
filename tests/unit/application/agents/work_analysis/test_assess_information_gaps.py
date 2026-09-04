@@ -4,6 +4,7 @@ import pytest
 
 from google_work_agent.application.agents.work_analysis.assess_information_gaps import (
     assess_information_gaps,
+    combine_information_gap_assessment,
 )
 from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, fact, intent, prompt_ref
@@ -94,3 +95,67 @@ def test_assess_information__gaps_exposes_disposition_invariants__to_repair() ->
     assert branches["COMPLETE"]["properties"]["retrieval_needs"]["maxItems"] == 0
     assert branches["NEEDS_MORE_DATA"]["properties"]["retrieval_needs"]["minItems"] == 1
     assert "question" in branches["NEEDS_CONFIRMATION"]["required"]
+
+
+def test_read_only_missing_evidence__does_not_interrupt_for_user_confirmation() -> None:
+    request_intent = intent()
+    request_intent["requested_effect_hints"] = ["READ"]
+    result = combine_information_gap_assessment(
+        assessment={
+            "disposition": "NEEDS_CONFIRMATION",
+            "ambiguities": [
+                {
+                    "code": "MISSING_APPROVED_BUDGET",
+                    "description": "The evidence does not include an approved budget.",
+                    "requires_confirmation": True,
+                    "evidence_refs": ["ev-1"],
+                }
+            ],
+            "retrieval_needs": [],
+            "evidence_refs": ["ev-1"],
+            "question": "Please provide the approved budget.",
+            "options": [],
+            "reason_codes": ["MISSING_APPROVED_BUDGET"],
+        },
+        relation_ambiguities=[],
+        request_intent=request_intent,
+        has_confirmation_response=False,
+    )
+
+    assert result == {
+        "disposition": "COMPLETE",
+        "ambiguities": [
+            {
+                "code": "MISSING_APPROVED_BUDGET",
+                "description": "The evidence does not include an approved budget.",
+                "requires_confirmation": False,
+                "evidence_refs": ["ev-1"],
+            }
+        ],
+        "retrieval_needs": [],
+        "evidence_refs": ["ev-1"],
+    }
+
+
+def test_write_user_owned_choice__preserves_confirmation() -> None:
+    request_intent = intent()
+    request_intent["requested_effect_hints"] = ["CREATE"]
+    assessment = {
+        "disposition": "NEEDS_CONFIRMATION",
+        "ambiguities": [],
+        "retrieval_needs": [],
+        "evidence_refs": ["ev-1"],
+        "question": "Which calendar should receive the event?",
+        "options": ["primary", "team"],
+        "reason_codes": ["MISSING_CALENDAR_CHOICE"],
+    }
+
+    assert (
+        combine_information_gap_assessment(
+            assessment=assessment,
+            relation_ambiguities=[],
+            request_intent=request_intent,
+            has_confirmation_response=False,
+        )
+        == assessment
+    )

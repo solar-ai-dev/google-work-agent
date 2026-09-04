@@ -13,6 +13,7 @@ from google_work_agent.application.agents.work_analysis.contracts.work_analysis_
     InformationGapAssessmentV1,
 )
 from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkAmbiguityV1,
     WorkFactV1,
 )
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
@@ -151,6 +152,54 @@ def assess_information_gaps(
     return cast(InformationGapAssessmentV1, dict(validated))
 
 
+def combine_information_gap_assessment(
+    *,
+    assessment: InformationGapAssessmentV1,
+    relation_ambiguities: Sequence[WorkAmbiguityV1],
+    request_intent: RequestIntentV2,
+    has_confirmation_response: bool,
+) -> InformationGapAssessmentV1:
+    """Combine gap candidates while keeping READ uncertainty non-interrupting."""
+
+    requested_effects = set(request_intent["requested_effect_hints"])
+    is_read_only = bool(requested_effects) and requested_effects == {"READ"}
+    ambiguities = [
+        cast(
+            WorkAmbiguityV1,
+            {
+                **item,
+                "requires_confirmation": False
+                if has_confirmation_response or is_read_only
+                else item["requires_confirmation"],
+            },
+        )
+        for item in [*relation_ambiguities, *assessment["ambiguities"]]
+    ]
+    if is_read_only and assessment["disposition"] == "NEEDS_CONFIRMATION":
+        return {
+            "disposition": "COMPLETE",
+            "ambiguities": ambiguities,
+            "retrieval_needs": [],
+            "evidence_refs": list(assessment["evidence_refs"]),
+        }
+    if assessment["disposition"] == "COMPLETE" and any(
+        item["requires_confirmation"] for item in ambiguities
+    ):
+        requiring = next(item for item in ambiguities if item["requires_confirmation"])
+        return cast(
+            InformationGapAssessmentV1,
+            {
+                **assessment,
+                "ambiguities": ambiguities,
+                "disposition": "NEEDS_CONFIRMATION",
+                "question": requiring["description"],
+                "options": [],
+                "reason_codes": [requiring["code"]],
+            },
+        )
+    return cast(InformationGapAssessmentV1, {**assessment, "ambiguities": ambiguities})
+
+
 def _bound_output_schema(allowed_evidence_refs: set[str]) -> OutputSchemaDefinition:
     """Express current evidence and disposition invariants at the repair boundary."""
 
@@ -203,4 +252,8 @@ def _disposition_schema(
     return branch
 
 
-__all__ = ["ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA", "assess_information_gaps"]
+__all__ = [
+    "ASSESS_INFORMATION_GAPS_OUTPUT_SCHEMA",
+    "assess_information_gaps",
+    "combine_information_gap_assessment",
+]
