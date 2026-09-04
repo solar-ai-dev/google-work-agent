@@ -96,6 +96,7 @@ from google_work_agent.application.agents.retrieval.contracts.query_attempt impo
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     RetrievalConstraintKindV1,
     RetrievalQueryPlanV2,
+    RetrievalV2ValidationError,
     SourceFetchPlanV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_plan_schema import (
@@ -770,6 +771,9 @@ class RetrievalSubgraph:
             evidence_supported_partial_possible=bool(state["evidence_drafts"]),
             can_acquire_new_information=has_retrieval_followup_path(
                 tool_route_plan=tool_route_plan,
+                route_policies=_runtime_route_constraint_policies(
+                    tool_route_plan["input_plan"]["input_routes"]
+                ),
                 read_result_summaries=self._bounded_read_result_summaries(state),
                 query_attempts=cast(
                     list[QueryAttemptV1], state.get(CONTEXT_QUERY_ATTEMPTS_KEY, [])
@@ -1260,8 +1264,8 @@ class RetrievalSubgraph:
                 )
             )
             canonical_plans = cast(list[SourceFetchPlanV1], patch["source_fetch_plans"])
-        except Exception:
-            return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
+        except RetrievalV2ValidationError:
+            return self._close_unmaterializable_followup(state)
         operations = {plan["operation_kind"] for plan in canonical_plans}
         if operations == {"NEXT_PAGE"}:
             return {
@@ -1298,7 +1302,28 @@ class RetrievalSubgraph:
                     for plan in canonical_plans
                 },
             }
-        return {**state, CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE"}
+        return self._close_unmaterializable_followup(state)
+
+    @staticmethod
+    def _close_unmaterializable_followup(
+        state: ContextRetrievalLocalState,
+    ) -> ContextRetrievalLocalState:
+        """Close a planned follow-up that cannot produce a distinct read."""
+
+        sufficiency, retry_budget, _ = authorize_retrieval_followup(
+            cast(SufficiencyResultV2, state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]),
+            request_intent=_require_state_value(state["request_intent"], "request_intent"),
+            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
+            evidence_supported_partial_possible=bool(state["evidence_drafts"]),
+            can_acquire_new_information=False,
+        )
+        return {
+            **state,
+            CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency,
+            "sufficiency": sufficiency,
+            "retry_budget": retry_budget,
+            CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE",
+        }
 
     @staticmethod
     def _route_after_followup_plan(state: ContextRetrievalLocalState) -> str:

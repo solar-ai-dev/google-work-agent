@@ -58,6 +58,7 @@ def _tool_route_plan(*, allowed_read_tool_ids: list[str]) -> ToolRoutePlanV2:
 def test_retrieval_followup_path__rejects_exhausted_direct_selected_read() -> None:
     assert not has_retrieval_followup_path(
         tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
         read_result_summaries=[],
         query_attempts=[],
     )
@@ -68,6 +69,7 @@ def test_retrieval_followup_path__allows_search_or_unread_page() -> None:
         tool_route_plan=_tool_route_plan(
             allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
         ),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
         read_result_summaries=[],
         query_attempts=[
             cast(
@@ -78,6 +80,7 @@ def test_retrieval_followup_path__allows_search_or_unread_page() -> None:
     )
     assert has_retrieval_followup_path(
         tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["gmail_get_thread"]),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
         read_result_summaries=[{"has_next_page": True, "exhausted": False}],
         query_attempts=[],
     )
@@ -88,12 +91,28 @@ def test_retrieval_followup_path__does_not_expand_selected_detail_into_search() 
         tool_route_plan=_tool_route_plan(
             allowed_read_tool_ids=["gmail_search_threads", "gmail_get_thread"]
         ),
+        route_policies={"route-1": RouteConstraintPolicy(frozenset({"KEYWORD"}))},
         read_result_summaries=[],
         query_attempts=[
             cast(
                 QueryAttemptV1,
                 {"route_id": "route-1", "operation_kind": "DETAIL_FETCH"},
             )
+        ],
+    )
+
+
+def test_retrieval_followup_path__rejects_exhausted_identity_only_search() -> None:
+    assert not has_retrieval_followup_path(
+        tool_route_plan=_tool_route_plan(allowed_read_tool_ids=["tasks_list_tasks"]),
+        route_policies={
+            "route-1": RouteConstraintPolicy(
+                frozenset({"CONTAINER_REF"}), frozenset({"CONTAINER_REF"})
+            )
+        },
+        read_result_summaries=[{"has_next_page": False, "exhausted": True}],
+        query_attempts=[
+            cast(QueryAttemptV1, {"route_id": "route-1", "operation_kind": "SEARCH"})
         ],
     )
 

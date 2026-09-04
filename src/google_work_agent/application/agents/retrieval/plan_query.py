@@ -730,11 +730,15 @@ _FOLLOWUP_SEARCH_TOOLS = frozenset(
         "calendar_query_freebusy",
     }
 )
+_SEMANTIC_EXPANSION_KINDS = frozenset(
+    {"TEMPORAL_RANGE", "PARTICIPANT", "KEYWORD", "STATUS_SCOPE"}
+)
 
 
 def has_retrieval_followup_path(
     *,
     tool_route_plan: ToolRoutePlanV2,
+    route_policies: Mapping[str, RouteConstraintPolicy],
     read_result_summaries: Sequence[Mapping[str, object]],
     query_attempts: Sequence[QueryAttemptV1],
 ) -> bool:
@@ -749,6 +753,11 @@ def has_retrieval_followup_path(
         route["route_id"]
         for route in tool_route_plan["input_plan"]["input_routes"]
         if _FOLLOWUP_SEARCH_TOOLS.intersection(route["allowed_read_tool_ids"])
+        and bool(
+            route_policies.get(
+                route["route_id"], RouteConstraintPolicy(frozenset())
+            ).supported_kinds.intersection(_SEMANTIC_EXPANSION_KINDS)
+        )
     }
     return any(
         attempt["route_id"] in search_route_ids
