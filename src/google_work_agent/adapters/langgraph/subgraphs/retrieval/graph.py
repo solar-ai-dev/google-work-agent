@@ -119,6 +119,9 @@ from google_work_agent.application.agents.retrieval.plan_query import (
     has_retrieval_followup_path,
     initial_retrieval_planner_input,
 )
+from google_work_agent.application.agents.retrieval.project_attempted_detail_refs import (
+    project_attempted_detail_refs,
+)
 from google_work_agent.application.agents.retrieval.resolve_availability import (
     AvailableIntervalV1,
     BusyIntervalV1,
@@ -1024,15 +1027,9 @@ class RetrievalSubgraph:
 
     @staticmethod
     def _attempted_detail_candidate_refs(state: ContextRetrievalLocalState) -> list[str]:
-        plans = cast(
-            Mapping[str, SourceFetchPlanV1],
-            state.get(CONTEXT_CANONICAL_PLANS_KEY, {}),
+        return project_attempted_detail_refs(
+            cast(list[QueryAttemptV1], state.get(CONTEXT_QUERY_ATTEMPTS_KEY, []))
         )
-        return [
-            candidate
-            for plan in plans.values()
-            if isinstance((candidate := plan.get("detail_candidate_ref")), str)
-        ]
 
     def _execute_read_node(self, state: ContextRetrievalLocalState) -> ContextRetrievalLocalState:
         round_no = (
