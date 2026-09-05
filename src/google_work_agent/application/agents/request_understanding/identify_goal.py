@@ -374,13 +374,25 @@ def _date_value_appears_in_text(value: object, text: str) -> bool:
 
 
 def _output_schema_for_request(request: WorkflowStartRequest) -> OutputSchemaDefinition:
-    """Let deterministic explicit-read authority complete paired hint fields."""
+    """Constrain explicit effects without granting execution authority."""
 
     has_explicit_read = _has_explicit_read_authority(request.request_text)
-    if not (has_explicit_read or _selected_resource_hints(request)):
+    outside_literals = request.request_text
+    for pattern in _QUOTED_LITERAL_PATTERNS:
+        outside_literals = pattern.sub(" ", outside_literals)
+    has_explicit_create = re.search(
+        r"(?is)(?:Google\s+Tasks|태스크|Google\s+Calendar|캘린더)"
+        r"[^.!?]{0,300}(?:등록|생성|추가|만들어)\s*해?\s*(?:줘|주세요)[.!?\s]*$",
+        outside_literals,
+    ) is not None
+    if not (has_explicit_read or has_explicit_create or _selected_resource_hints(request)):
         return IDENTIFY_GOAL_OUTPUT_SCHEMA
     schema = cast(dict[str, object], deepcopy(IDENTIFY_GOAL_OUTPUT_SCHEMA.json_schema))
-    schema.pop("allOf", None)
+    if has_explicit_read or _selected_resource_hints(request):
+        schema.pop("allOf", None)
+    if has_explicit_create:
+        effects = cast(dict[str, object], schema["properties"])["requested_effect_hints"]
+        cast(dict[str, object], effects)["contains"] = {"const": "CREATE"}
     if request.entry_mode == "AGENT_SEARCH" and has_explicit_read:
         constraints = cast(dict[str, object], schema["properties"])["constraints"]
         cast(dict[str, object], constraints)["minItems"] = 1

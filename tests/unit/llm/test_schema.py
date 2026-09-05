@@ -11,6 +11,22 @@ from __future__ import annotations
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 
+def test_contains__requires_a_matching_item__including_untyped_fragments() -> None:
+    for schema in ({"contains": {"const": "CREATE"}},
+                   {"type": "array", "contains": {"const": "CREATE"}}):
+        assert validate_output_schema(["READ", "CREATE"], schema) == []
+        assert validate_output_schema(["CREATE", "READ"], schema) == []
+        assert validate_output_schema([], schema)
+        assert validate_output_schema(["READ"], schema)
+
+
+def test_contains__conditional_effect_rule__only_applies_to_matching_branch() -> None:
+    schema = {"if": {"properties": {"write_requested": {"const": True}}},
+              "then": {"properties": {"effects": {"contains": {"const": "CREATE"}}}}}
+    assert validate_output_schema({"write_requested": True, "effects": ["READ"]}, schema)
+    assert validate_output_schema({"write_requested": False, "effects": ["READ"]}, schema) == []
+
+
 def test_type_union__accepts_either__listed_type() -> None:
     schema = {
         "type": "object",

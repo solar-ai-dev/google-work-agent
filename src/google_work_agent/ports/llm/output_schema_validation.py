@@ -5,7 +5,7 @@ Prompt Output Schemas actually declare (``type`` incl. type unions,
 ``enum``, ``const``, ``oneOf``, ``allOf``, ``if``/``then``/``else``,
 object ``properties``/``required``/``additionalProperties``/
 ``minProperties``, array ``items``/``minItems``/``maxItems``/
-``uniqueItems``, string ``minLength``/``pattern``/``format: date``, and
+``uniqueItems``/``contains``, string ``minLength``/``pattern``/``format: date``, and
 numeric ``minimum``) -- not the full JSON Schema standard. Extending this
 should be usage-driven: add a keyword only once an active schema in this
 repository actually declares it.
@@ -64,7 +64,8 @@ def _validate(
     # already-declared array with only minItems/maxItems/uniqueItems. Those
     # constraints still apply even when the fragment does not repeat type.
     if isinstance(value, list) and expected_type != "array" and any(
-        keyword in schema for keyword in ("items", "minItems", "maxItems", "uniqueItems")
+        keyword in schema
+        for keyword in ("items", "minItems", "maxItems", "uniqueItems", "contains")
     ):
         _validate_array_constraints(value=value, schema=schema, path=path, errors=errors)
 
@@ -228,6 +229,12 @@ def _validate_array_constraints(
         for index, item in enumerate(value):
             _validate(value=item, schema=item_schema, path=f"{path}[{index}]", errors=errors)
     min_items = schema.get("minItems")
+    contains = schema.get("contains")
+    if isinstance(contains, Mapping) and not any(
+        not _errors_for(value=item, schema=contains, path=f"{path}[{index}]")
+        for index, item in enumerate(value)
+    ):
+        errors.append(f"{path} must contain an item matching contains")
     if isinstance(min_items, int) and len(value) < min_items:
         errors.append(f"{path} must contain at least {min_items} items")
     max_items = schema.get("maxItems")

@@ -416,17 +416,53 @@ def test_identify_goal__explicit_google_tasks_write__does_not_infer_read() -> No
     assert "allOf" in output_schema.json_schema
 
 
+@pytest.mark.parametrize("effects, valid", [(["READ"], False), (["READ", "CREATE"], True)])
+def test_identify_goal__mail_derived_task_registration__cannot_be_read_only(
+    effects: list[str], valid: bool,
+) -> None:
+    runtime = FakeStructuredInferencePort(outputs=[{
+        "goal": "메일 후속 업무 등록", "completion_conditions": ["태스크 등록"],
+        "constraints": [{"kind": "RESOURCE", "field": "search_terms", "value": "회의"}],
+        "requested_effect_hints": effects,
+        "requested_resource_hints": ["GMAIL_THREAD", "TASK"],
+        "analysis_requirement": "NONE",
+    }])
+    request = _request("회의 관련 메일을 찾아서 후속 업무를 내 기본 Google Tasks 목록에 등록해줘.")
+    prompt_ref = _prompt_ref("request_understanding.identify_goal", "identify_goal")
+    if not valid:
+        with pytest.raises(ValueError, match="contains"):
+            identify_goal(llm_runtime=runtime, request=request, prompt_ref=prompt_ref)
+    else:
+        result = identify_goal(llm_runtime=runtime, request=request, prompt_ref=prompt_ref)
+        assert result["requested_effect_hints"] == effects
+
+
+@pytest.mark.parametrize("request_text", [
+    "Google Tasks에 등록하지 말고 회의 메일만 찾아줘.",
+    "'Google Tasks에 등록해줘'라는 제목의 메일을 읽어줘.",
+])
+def test_identify_goal__forbidden_or_quoted_registration__does_not_require_create(
+    request_text: str,
+) -> None:
+    runtime = FakeStructuredInferencePort(outputs=[{
+        "goal": "메일 읽기", "completion_conditions": ["메일 확인"],
+        "constraints": [{"kind": "RESOURCE", "field": "search_terms", "value": "회의"}],
+        "requested_effect_hints": ["READ"], "requested_resource_hints": ["GMAIL_THREAD"],
+        "analysis_requirement": "NONE",
+    }])
+    result = identify_goal(
+        llm_runtime=runtime, request=_request(request_text),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+    assert result["requested_effect_hints"] == ["READ"]
+
+
 @pytest.mark.parametrize(
     ("request_text", "expected_dates"),
     [
-        (
-            "Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 만들어줘.",
-            [],
-        ),
-        (
-            "Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 2026-09-05까지 만들어줘.",
-            ["2026-09-05"],
-        ),
+        ("Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 만들어줘.", []),
+        ("Google Tasks에 '2/8 Supervisor 승인 테스트' 태스크를 2026-09-05까지 만들어줘.",
+         ["2026-09-05"]),
     ],
 )
 def test_identify_goal__quoted_task_title__does_not_become_an_unstated_date(
