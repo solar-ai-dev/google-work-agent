@@ -116,7 +116,10 @@ def test_argument_candidate__cannot_override__bound_container() -> None:
         )
 
 
-def test_exact_calendar_create__materializes_arguments__without_llm() -> None:
+@pytest.mark.parametrize("description", [None, "검증 결과 공유"])
+def test_exact_calendar_create__preserves_all_constraints__in_arguments(
+    description: str | None,
+) -> None:
     route = {
         "route_id": "calendar-route",
         "resource_type": "CALENDAR_EVENT",
@@ -149,6 +152,28 @@ def test_exact_calendar_create__materializes_arguments__without_llm() -> None:
         ],
     }
 
+    expected_payload = {
+        "title": "[GWA OPT] Calendar 42",
+        "start": "2026-09-08T15:00:00+09:00",
+        "end": "2026-09-08T15:30:00+09:00",
+    }
+    calls: list[str] = []
+    if description is not None:
+        cast(list[dict[str, str]], request_intent["constraints"]).append(
+            {"kind": "RESOURCE", "field": "description", "value": description}
+        )
+        expected_payload["description"] = description
+
+    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        assert description is not None, "exact supported constraints need no inference"
+        assert prompt_input["request_intent"] == request_intent
+        calls.append(prompt_id)
+        return {
+            "schema_version": 1, "route_id": "calendar-route",
+            "arguments": {"payload": expected_payload},
+            "evidence_refs": ["user-message-1"],
+        }
+
     result = compose_arguments_per_output_route(
         [route],
         objectives=[objective],  # type: ignore[list-item]
@@ -161,20 +186,16 @@ def test_exact_calendar_create__materializes_arguments__without_llm() -> None:
                 "kind": "USER_REQUEST",
             }
         ],
-        invoke=lambda *_: (_ for _ in ()).throw(AssertionError("LLM must be skipped")),
+        invoke=invoke,
     )
-
+    assert len(calls) == (1 if description is not None else 0)
     assert result == (
         {
             "schema_version": 1,
             "route_id": "calendar-route",
             "arguments": {
                 "calendar_id": "primary",
-                "payload": {
-                    "title": "[GWA OPT] Calendar 42",
-                    "start": "2026-09-08T15:00:00+09:00",
-                    "end": "2026-09-08T15:30:00+09:00",
-                },
+                "payload": expected_payload,
             },
             "evidence_refs": ["user-message-1"],
         },

@@ -239,12 +239,15 @@ def _calendar_create_payload(
         kind, field, value = item.get("kind"), item.get("field"), item.get("value")
         if kind in {"PERSON", "EMAIL"}:
             return None
-        if not isinstance(field, str) or not isinstance(value, str):
-            continue
-        if field in {"title", "date", "start_time", "end_time", "timezone"}:
-            if field in values and values[field] != value:
-                return None
-            values[field] = value
+        if (
+            not isinstance(field, str)
+            or field not in {"title", "date", "start_time", "end_time", "timezone"}
+            or not isinstance(value, str)
+        ):
+            return None
+        if field in values and values[field] != value:
+            return None
+        values[field] = value
     required = {"title", "date", "start_time", "end_time", "timezone"}
     if not required.issubset(values):
         return None
