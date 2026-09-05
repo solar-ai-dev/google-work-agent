@@ -18,9 +18,9 @@ export function ExecutionStatusCard({ snapshot }: { snapshot: RunSnapshot }): JS
 }
 
 function agentLabel(toolName: string): string {
-  if (toolName.startsWith("gmail_")) return "Gmail 실행 에이전트";
-  if (toolName.startsWith("tasks_")) return "Tasks 실행 에이전트";
-  if (toolName.startsWith("calendar_")) return "Calendar 실행 에이전트";
+  if (toolName.startsWith("gmail_")) return "메일 실행 에이전트";
+  if (toolName.startsWith("tasks_")) return "태스크 실행 에이전트";
+  if (toolName.startsWith("calendar_")) return "캘린더 실행 에이전트";
   return "실행 에이전트";
 }
 

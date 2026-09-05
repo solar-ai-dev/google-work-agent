@@ -73,7 +73,7 @@ def aggregate_review_findings(
                 "status": "CONFIRM",
                 "confirmation": {
                     "question": finding["description"],
-                    "options": list(finding["required_information"]),
+                    "options": [],
                 },
             },
         )

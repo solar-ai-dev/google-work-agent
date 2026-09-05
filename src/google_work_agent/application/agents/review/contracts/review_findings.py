@@ -93,7 +93,7 @@ def review_inspector_output_schema(
                                     "BLOCKER",
                                 ]
                             },
-                            "description": {"type": "string", "minLength": 1},
+                            "description": {"type": "string", "minLength": 1, "pattern": "[가-힣]"},
                             "evidence_refs": string_array,
                             "affected_action_ids": string_array,
                             "affected_route_ids": string_array,
@@ -155,7 +155,7 @@ def review_recheck_output_schema(
                                     "BLOCKER",
                                 ]
                             },
-                            "description": {"type": "string", "minLength": 1},
+                            "description": {"type": "string", "minLength": 1, "pattern": "[가-힣]"},
                             "evidence_refs": string_array,
                             "affected_action_ids": string_array,
                             "affected_route_ids": string_array,
