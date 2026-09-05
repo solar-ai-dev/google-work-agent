@@ -96,10 +96,12 @@ class _ComponentInferencePort:
         request_confirmation: bool = False,
         work_fact_count: int = 0,
         retrieval_needs_more: bool = False,
+        retrieval_followup_changes_query: bool = True,
     ) -> None:
         self.request_confirmation = request_confirmation
         self.work_fact_count = work_fact_count
         self.retrieval_needs_more = retrieval_needs_more
+        self.retrieval_followup_changes_query = retrieval_followup_changes_query
         self.calls: list[str] = []
 
     def infer(
@@ -163,7 +165,11 @@ class _ComponentInferencePort:
                         "upsert_constraints": [
                             {
                                 "kind": "KEYWORD",
-                                "terms": [f"status-{current_round_no}"],
+                                "terms": [
+                                    f"status-{current_round_no}"
+                                    if self.retrieval_followup_changes_query
+                                    else "status"
+                                ],
                                 "match_mode": "ANY",
                             }
                         ],
@@ -577,6 +583,55 @@ def test_retrieval__main_back_edge__extends_checkpointed_prior_query() -> None:
         "terms"
     ] == ["status-1"]
     assert len(second["__context_query_attempts__"]) == 2
+
+
+def test_retrieval__unchanged_main_back_edge__closes_partial_without_a_second_read() -> None:
+    state = _state(initial_target="context_retriever")
+    state["request_intent"] = cast(Any, _intent())
+    state["tool_route_plan"] = cast(Any, _answer_route_plan(with_input_route=True))
+    llm = _ComponentInferencePort(retrieval_followup_changes_query=False)
+    connector = _ComponentConnectorReadPort()
+    graph = RetrievalSubgraph(
+        now_ms=lambda: 1_000,
+        timezone_provider=lambda: "Asia/Seoul",
+        llm_runtime=llm,
+        prompt_manifest_path=None,
+        prompt_execution_scope=DEVELOPMENT_SMOKE,
+        id_factory=_IdFactory(),
+        graph_profile=GraphProfile.SIX_ROLE_BASELINE,
+        transition_run=lambda _run_id, _transition: None,
+        merge_decision=cast(Any, _merge_decision),
+        evidence_store=RunScopedEvidenceStore(),
+        connector_reader=connector,
+        tool_catalog=load_development_tool_registry(),
+        read_result_cache=InMemoryRunRetrievalCache(),
+        confirm_inline=cast(Any, _confirm_early),
+    ).build()
+
+    with provider_dispatch_execution_scope():
+        first = graph.invoke(state)
+        second = graph.invoke(
+            {
+                **first,
+                "workflow_signal": {
+                    "kind": "RETRIEVAL_REQUIRED",
+                    "reason_codes": ["EVIDENCE_GAP"],
+                    "needs": [
+                        {
+                            "required_information": "new status evidence",
+                            "reason_codes": ["EVIDENCE_GAP"],
+                        }
+                    ],
+                },
+            }
+        )
+
+    assert second["retrieval_result"]["coverage"] == "PARTIAL"
+    assert second["retrieval_result"]["meta"]["revision"] == 2
+    assert second["retrieval_result"]["retrieval_rounds"] == 1
+    assert second["__target__"] == "SOLUTION_PLANNING"
+    assert connector.call_count == 1
+    assert llm.calls.count("retrieval.plan_query") == 2
 
 
 def test_retrieval__unchanged_local_followup__closes_partial_without_looping() -> None:

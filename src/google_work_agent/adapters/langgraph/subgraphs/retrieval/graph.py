@@ -77,6 +77,7 @@ from google_work_agent.adapters.langgraph.subgraphs.retrieval.state import (
 )
 from google_work_agent.adapters.system.memory.retrieval_evidence_store import (
     RunScopedEvidenceStore,
+    resolve_evidence_projection,
 )
 from google_work_agent.application.agents.request_understanding.contracts import (
     request_understanding_output,
@@ -105,6 +106,8 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan_schema 
 )
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
+    RetrievalResultV1,
+    SufficiencyIssueV2,
     SufficiencyResultV2,
 )
 from google_work_agent.application.agents.retrieval.execute_read import RetrievalReadBindingError
@@ -171,6 +174,7 @@ from .projections.execute_read_projection import (
     sanitize_acquisition_result,
 )
 from .projections.retrieval_continuation_projection import (
+    restore_prior_evidence_selection,
     restore_retrieval_continuation,
 )
 from .routing.route_after_assess_sufficiency import (
@@ -534,6 +538,32 @@ class RetrievalSubgraph:
                 else [cast(RetrievalNeedV1, pending_need)]
             )
             if continuation["canonical_plans"]:
+                sufficiency: SufficiencyResultV2 = {
+                    "schema_version": 2,
+                    "status": "NEEDS_MORE_DATA",
+                    "issues": _needs_as_sufficiency_issues(needs),
+                }
+                prior_result = cast(RetrievalResultV1, state.get("retrieval_result"))
+                if prior_result is None:
+                    raise ValueError("retrieval continuation requires its prior result")
+                evidence_drafts = resolve_evidence_projection(
+                    store=self._evidence_store,
+                    run_id=state["run_id"],
+                    retrieval_result=prior_result,
+                )
+                selection = restore_prior_evidence_selection(
+                    prior_result=prior_result,
+                    evidence_drafts=evidence_drafts,
+                )
+                next_state[CONTEXT_SUFFICIENCY_OUTPUT_KEY] = sufficiency
+                next_state["sufficiency"] = sufficiency
+                next_state[CONTEXT_SELECTION_OUTPUT_KEY] = selection
+                next_state["evidence_selection"] = selection
+                next_state["evidence_drafts"] = evidence_drafts
+                next_state["availability_results"] = cast(
+                    list[AvailableIntervalV1],
+                    list(prior_result["availability_results"]),
+                )
                 next_state[CONTEXT_FOLLOWUP_PLANNER_INPUT_KEY] = followup_planner_projection(
                     current_round_no=current_round_no,
                     prior_query_attempts=list(continuation["query_attempts"]),
@@ -1355,24 +1385,31 @@ class RetrievalSubgraph:
             }
         return self._close_unmaterializable_followup(state)
 
-    @staticmethod
     def _close_unmaterializable_followup(
+        self,
         state: ContextRetrievalLocalState,
     ) -> ContextRetrievalLocalState:
         """Close a planned follow-up that cannot produce a distinct read."""
 
+        working_state = self._ephemeral_raw_state(state)
         sufficiency, retry_budget, _ = authorize_retrieval_followup(
-            cast(SufficiencyResultV2, state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]),
-            request_intent=_require_state_value(state["request_intent"], "request_intent"),
-            retry_budget=cast(RunBudgetV2, state["retry_budget"]),
-            evidence_supported_partial_possible=bool(state["evidence_drafts"]),
+            cast(SufficiencyResultV2, working_state[CONTEXT_SUFFICIENCY_OUTPUT_KEY]),
+            request_intent=_require_state_value(
+                working_state["request_intent"], "request_intent"
+            ),
+            retry_budget=cast(RunBudgetV2, working_state["retry_budget"]),
+            evidence_supported_partial_possible=bool(working_state["evidence_drafts"]),
             can_acquire_new_information=False,
         )
+        current_round_no = working_state[CONTEXT_CURRENT_ROUND_NO_KEY]
+        if working_state.get(CONTEXT_ROUND_PREADVANCED_KEY) is True:
+            current_round_no = max(0, current_round_no - 1)
         return {
-            **state,
+            **working_state,
             CONTEXT_SUFFICIENCY_OUTPUT_KEY: sufficiency,
             "sufficiency": sufficiency,
             "retry_budget": retry_budget,
+            CONTEXT_CURRENT_ROUND_NO_KEY: current_round_no,
             CONTEXT_FOLLOWUP_OPERATION_KEY: "FINALIZE",
         }
 
@@ -1700,7 +1737,7 @@ def _pending_retrieval_need(value: object) -> RetrievalNeedV1 | None:
     }
 
 
-def _needs_as_sufficiency_issues(needs: list[RetrievalNeedV1]) -> list[dict[str, object]]:
+def _needs_as_sufficiency_issues(needs: list[RetrievalNeedV1]) -> list[SufficiencyIssueV2]:
     """Project an incoming WorkAnalysis/Review need into the same bounded,
     Retrieval-local ``unresolved_sufficiency_issues`` shape the internal
     local loop already feeds ``retrieval.plan_query`` with (SufficiencyIssue,

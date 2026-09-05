@@ -242,14 +242,14 @@ def followup_planner_projection(
     *,
     current_round_no: int,
     prior_query_attempts: list[QueryAttemptV1],
-    unresolved_sufficiency_issues: list[dict[str, object]],
+    unresolved_sufficiency_issues: Collection[Mapping[str, object]],
     read_result_summaries: list[dict[str, object]],
 ) -> dict[str, object]:
     """Bounded local-only follow-up input; raw cache contents are excluded."""
     return {
         "current_round_no": current_round_no,
         "prior_query_attempts": cast(list[dict[str, object]], prior_query_attempts),
-        "unresolved_sufficiency_issues": unresolved_sufficiency_issues,
+        "unresolved_sufficiency_issues": [dict(issue) for issue in unresolved_sufficiency_issues],
         "read_result_summaries": read_result_summaries,
     }
 

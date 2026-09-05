@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 from google_work_agent.application.agents.retrieval.contracts.query_attempt import (
     QueryAttemptV1,
 )
 from google_work_agent.application.agents.retrieval.contracts.query_plan import (
     SourceFetchPlanV1,
+)
+from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
+    EvidenceDraftV1,
+    EvidenceSelectionResultV2,
+    RetrievalResultV1,
 )
 
 
@@ -109,4 +114,43 @@ def restore_retrieval_continuation(
     )
 
 
-__all__ = ["RetrievalContinuationProjectionV1", "restore_retrieval_continuation"]
+def restore_prior_evidence_selection(
+    *,
+    prior_result: RetrievalResultV1,
+    evidence_drafts: list[EvidenceDraftV1],
+) -> EvidenceSelectionResultV2:
+    """Restore the local selection needed to close a no-op Main back-edge."""
+
+    drafts_by_id = {draft["evidence_id"]: draft for draft in evidence_drafts}
+    if set(drafts_by_id) != set(prior_result["evidence_refs"]):
+        raise ValueError("prior retrieval evidence does not match the run evidence store")
+    selected_segment_ids = list(prior_result["selected_segment_ids"])
+    selected = set(selected_segment_ids)
+    if any(draft["segment_id"] not in selected for draft in evidence_drafts):
+        raise ValueError("prior retrieval selection does not contain its evidence segments")
+    return {
+        "schema_version": 2,
+        "evidence_drafts": [
+            {
+                "segment_id": draft["segment_id"],
+                "role": cast(
+                    Literal["SUPPORTS", "CONTRADICTS", "CONTEXT"],
+                    draft["reason_codes"][0]
+                    if draft["reason_codes"]
+                    and draft["reason_codes"][0] in {"SUPPORTS", "CONTRADICTS", "CONTEXT"}
+                    else "CONTEXT",
+                ),
+                "relevance_reason": "previously selected evidence",
+            }
+            for draft in evidence_drafts
+        ],
+        "selected_segment_ids": selected_segment_ids,
+        "excluded_segment_ids": list(prior_result["excluded_segment_ids"]),
+    }
+
+
+__all__ = [
+    "RetrievalContinuationProjectionV1",
+    "restore_prior_evidence_selection",
+    "restore_retrieval_continuation",
+]
