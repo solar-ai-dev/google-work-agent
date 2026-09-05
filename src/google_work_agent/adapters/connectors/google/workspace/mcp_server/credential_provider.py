@@ -15,6 +15,7 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from datetime import date
 from email import policy
 from email.header import decode_header, make_header
 from email.message import EmailMessage
@@ -600,7 +601,13 @@ def _task_write_body(payload: dict[str, object], *, title_required: bool) -> dic
     if "scheduled_date" in payload:
         scheduled_date = _optional_text(payload.get("scheduled_date"))
         if scheduled_date:
-            body["due"] = scheduled_date
+            try:
+                parsed_date = date.fromisoformat(scheduled_date)
+            except ValueError as error:
+                raise _WorkspaceToolError("INVALID_ARGUMENT") from error
+            if parsed_date.isoformat() != scheduled_date:
+                raise _WorkspaceToolError("INVALID_ARGUMENT")
+            body["due"] = f"{scheduled_date}T00:00:00Z"
         elif not title_required:
             # An approved update may intentionally remove a prior scheduled date.
             body["due"] = None

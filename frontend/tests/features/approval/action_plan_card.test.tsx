@@ -15,6 +15,8 @@ test("ActionPlanCard presents user-facing arguments and sends only explicit ackn
   expect(screen.getByText("분기 보고서 제출")).toBeInTheDocument();
   expect(screen.getByText("내 할 일 목록")).toBeInTheDocument();
   expect(screen.getByText("2026-09-05")).toBeInTheDocument();
+  expect(screen.getByText("예정일")).toBeInTheDocument();
+  expect(screen.queryByText("마감")).not.toBeInTheDocument();
   expect(screen.queryByText("@default")).not.toBeInTheDocument();
   expect(screen.queryByText("tasks_create_task")).not.toBeInTheDocument();
   expect(approve).toBeDisabled();

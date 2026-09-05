@@ -107,7 +107,7 @@ const ARGUMENT_LABELS: Record<string, string> = {
   start: "시작",
   end: "종료",
   timezone: "시간대",
-  due: "마감",
+  due: "예정일",
   notes: "메모",
   description: "설명",
   attendees: "참석자",

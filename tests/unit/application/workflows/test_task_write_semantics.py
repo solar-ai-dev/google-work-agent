@@ -39,8 +39,14 @@ def test_scheduled_date_maps__to_google_due__at_provider_boundary() -> None:
 
     assert server._task_write_body(result["payload"], title_required=True) == {  # type: ignore[arg-type]
         "title": "보고서 정리",
-        "due": "2026-08-11",
+        "due": "2026-08-11T00:00:00Z",
     }
+
+
+@pytest.mark.parametrize("value", ["2026-02-30", "20260907", "2026-09-07T14:00:00+09:00"])
+def test_invalid_scheduled_date_is_rejected_before_provider_write(value: str) -> None:
+    with pytest.raises(server._WorkspaceToolError, match="INVALID_ARGUMENT"):
+        server._task_write_body({"title": "Report", "scheduled_date": value}, title_required=True)
 
 
 def test_scheduled_date__and_deadline_keep__their_separate_meanings() -> None:
@@ -59,7 +65,7 @@ def test_scheduled_date__and_deadline_keep__their_separate_meanings() -> None:
     assert isinstance(payload, dict)
     assert payload["scheduled_date"] == "2026-08-11"
     assert payload["business_deadline"] == "2026-08-12"
-    assert server._task_write_body(payload, title_required=True)["due"] == "2026-08-11"
+    assert server._task_write_body(payload, title_required=True)["due"] == "2026-08-11T00:00:00Z"
     assert payload["notes"] == "업무 마감: 2026년 8월 12일"
 
 
