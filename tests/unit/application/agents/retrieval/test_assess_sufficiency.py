@@ -285,6 +285,29 @@ def test_assess_sufficiency__rejects_required_lookup__without_evidence() -> None
     ]
 
 
+def test_mail_to_task__does_not_replace_empty_mail_with_task_policy_evidence() -> None:
+    runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
+    acquisition = _acquisition_result()
+    acquisition["source_summaries"][0]["resource_count"] = 0
+    acquisition["source_summaries"][0]["resource_handles"] = []
+    acquisition["resource_handles"] = ["task:existing"]
+    intent = _intent()
+    intent["requested_effect_hints"] = ["READ", "CREATE"]
+    result = assess_sufficiency(
+        llm_runtime=runtime, prompt_ref=SUFFICIENCY_PROMPT_REF, requested_mode="LOCAL_GPU",
+        request_intent=intent, tool_route_plan=_tool_route_plan(),
+        acquisition_result=acquisition,
+        evidence_drafts=[{
+            "schema_version": 1, "evidence_id": "e-task", "resource_handle": "task:existing",
+            "segment_id": "s-task", "kind": "excerpt", "excerpt": "기존 태스크",
+            "locator": {}, "reason_codes": ["SUPPORTS"],
+        }],
+        retry_budget=_run_budget(used=0),
+    )
+    assert result["status"] == "NEEDS_MORE_DATA"
+    assert result["issues"][-1]["reason_codes"] == ["REQUIRED_SOURCE_RETURNED_NO_RESOURCES"]
+
+
 def test_assess_sufficiency__requires_each_selected_gmail_thread_detail_for_analysis() -> None:
     runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
     intent = _intent()
