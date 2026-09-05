@@ -1,3 +1,5 @@
+import { AssistantMarkdown } from "./AssistantMarkdown";
+
 export function DateSeparator({ label }: { label: string }): JSX.Element {
   return (
     <div className="date-separator" role="separator" aria-label={label}>
@@ -32,7 +34,9 @@ export function AssistantMessageBubble({
 }): JSX.Element {
   return (
     <article className="message-row message-row--assistant" aria-label="에이전트 응답">
-      <p className="message-bubble message-bubble--assistant">{content}</p>
+      <div className="message-bubble message-bubble--assistant">
+        <AssistantMarkdown content={content} />
+      </div>
       <span className="message-timestamp">{formatMessageTime(createdAtMs)}</span>
     </article>
   );
