@@ -340,6 +340,18 @@ def _bind_constraint_ref_values(
     if isinstance(properties, dict):
         kind_schema = properties.get("kind")
         kind = kind_schema.get("const") if isinstance(kind_schema, dict) else None
+        if kind == "PARTICIPANT":
+            participants = cast(dict[str, object], properties["participants"])
+            item = cast(dict[str, object], participants["items"])
+            fields = cast(dict[str, object], item["properties"])
+            fields["identity"] = {
+                "type": "string", "minLength": 1,
+                "pattern": r"^(?!@default$|primary$).+",
+                "description": (
+                    "A person name or email from the request, never a container alias. "
+                    "@default and primary identify destination containers, not senders."
+                ),
+            }
         if kind == "RESOURCE_REF" and allowed_resource_refs:
             refs = properties.get("resource_refs")
             if isinstance(refs, dict):

@@ -7,6 +7,29 @@ from google_work_agent.application.agents.retrieval.contracts.query_plan_schema 
 from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 
+@pytest.mark.parametrize("identity, valid", [
+    ("@default", False), ("primary", False), ("김대리", True),
+    ("bonggyulim0728@gmail.com", True),
+])
+def test_bound_query_schema__container_alias_is_not__a_participant(
+    identity: str, valid: bool,
+) -> None:
+    schema = bind_retrieval_query_plan_output_schema(
+        route_ids=["gmail"], supported_constraint_kinds={"gmail": ["PARTICIPANT"]},
+    )
+    candidate = {
+        "schema_version": 2,
+        "route_queries": [{
+            "route_id": "gmail", "operation": "SEARCH", "reason_codes": ["USER_REQUEST"],
+            "search_spec": {"mode": "INITIAL", "constraints": [{
+                "kind": "PARTICIPANT", "match_mode": "ALL",
+                "participants": [{"role": "SENDER", "identity": identity}],
+            }]}, "detail_candidate_ref": None,
+        }], "required_information": ["메일 내용"], "retrieval_order": ["gmail"],
+    }
+    assert (not validate_output_schema(candidate, schema.json_schema)) is valid
+
+
 def test_v2_output__schema_rejects_legacy__v1_planner_shape() -> None:
     errors = validate_output_schema(
         {
