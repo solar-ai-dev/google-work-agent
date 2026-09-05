@@ -3,6 +3,7 @@ from typing import cast
 import pytest
 
 from google_work_agent.application.agents.work_analysis.extract_work_facts import extract_work_facts
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 from google_work_agent.ports.llm.structured_inference_contracts import PromptReference
 from tests.support.work_analysis import WorkAnalysisRuntimeFake, prompt_ref
 
@@ -84,3 +85,24 @@ def test_extract_work__facts_rejects_old__or_stale_schema() -> None:
             allowed_evidence_refs={"ev-1"},
             requested_mode="AUTO",
         )
+
+
+def test_extract_work_facts__empty_evidence_cannot_prove_requested_creation() -> None:
+    runtime = WorkAnalysisRuntimeFake({"fact_candidates": []})
+    result = extract_work_facts(
+        semantic_input={
+            "user_request": "보고서 태스크를 만들어줘",
+            "request_intent": {"completion_conditions": ["보고서 태스크가 존재함"]},
+            "evidence": [],
+        },
+        llm_runtime=runtime,
+        prompt_ref=prompt_ref("work_analysis.extract_work_facts", "extract_work_facts"),
+        allowed_evidence_refs=set(), requested_mode="LOCAL_GPU",
+    )
+    assert result == []
+    schema = runtime.calls[0]["output_schema"].json_schema
+    assert not validate_output_schema({"fact_candidates": []}, schema)
+    assert validate_output_schema({"fact_candidates": [{
+        "kind": "TASK", "subject": "보고서", "value": "태스크가 존재함",
+        "derivation": "EXPLICIT", "evidence_refs": [],
+    }]}, schema)

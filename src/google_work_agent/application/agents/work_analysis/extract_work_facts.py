@@ -60,6 +60,7 @@ EXTRACT_WORK_FACTS_OUTPUT_SCHEMA = OutputSchemaDefinition(
                         "derivation": {"enum": ["EXPLICIT", "DERIVED"]},
                         "evidence_refs": {
                             "type": "array",
+                            "minItems": 1,
                             "uniqueItems": True,
                             "items": {"type": "string", "minLength": 1},
                         },
@@ -149,6 +150,8 @@ def _bind_allowed_evidence_refs(allowed_evidence_refs: set[str]) -> OutputSchema
     schema = deepcopy(EXTRACT_WORK_FACTS_OUTPUT_SCHEMA.json_schema)
     properties = cast(dict[str, object], schema["properties"])
     candidates = cast(dict[str, object], properties["fact_candidates"])
+    if not allowed_evidence_refs:
+        candidates["maxItems"] = 0
     candidate = cast(dict[str, object], candidates["items"])
     candidate_properties = cast(dict[str, object], candidate["properties"])
     evidence_refs = cast(dict[str, object], candidate_properties["evidence_refs"])

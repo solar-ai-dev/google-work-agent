@@ -243,7 +243,10 @@ class _ComponentInferencePort:
                         "subject": f"task-{index}",
                         "value": f"task-{index}",
                         "derivation": "EXPLICIT",
-                        "evidence_refs": [],
+                        "evidence_refs": [
+                            item["evidence_id"]
+                            for item in cast(list[dict[str, object]], projection["evidence"])
+                        ],
                     }
                     for index in range(self.work_fact_count)
                 ]
@@ -703,7 +706,17 @@ def test_work_analysis__policy_only__skips_unrelated_relation_llms() -> None:
     intent["requested_resource_hints"] = ["TASK"]
     state["request_intent"] = cast(Any, intent)
     state["tool_route_plan"] = cast(Any, _task_create_route_plan())
-    state["retrieval_result"] = cast(Any, _retrieval_result())
+    retrieval = _retrieval_result()
+    retrieval["coverage"] = "SUFFICIENT"
+    retrieval["evidence_refs"] = ["task-evidence"]
+    state["retrieval_result"] = cast(Any, retrieval)
+    evidence_store = RunScopedEvidenceStore()
+    evidence_store.put(run_id=state["run_id"], evidence_drafts=[{
+        "schema_version": 1, "evidence_id": "task-evidence",
+        "resource_handle": "task:existing", "segment_id": "task-segment",
+        "kind": "excerpt", "excerpt": "task-0 and task-1 are existing tasks",
+        "locator": {}, "reason_codes": ["POLICY_TASK_DUPLICATE_CHECK"],
+    }])
     llm = _ComponentInferencePort(work_fact_count=2)
     graph = WorkAnalysisSubgraph(
         llm_runtime=llm,
@@ -713,7 +726,7 @@ def test_work_analysis__policy_only__skips_unrelated_relation_llms() -> None:
         graph_profile=GraphProfile.SIX_ROLE_BASELINE,
         transition_run=lambda _run_id, _transition: None,
         merge_decision=cast(Any, _merge_decision),
-        evidence_store=RunScopedEvidenceStore(),
+        evidence_store=evidence_store,
         confirm_inline=cast(Any, _confirm_early),
     ).build()
 
