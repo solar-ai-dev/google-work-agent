@@ -43,6 +43,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.agents.tool_routing.determine_io_resources import (
     requires_io_resource_inference,
 )
+from google_work_agent.application.agents.tool_routing.format_route_confirmation import (
+    format_route_confirmation,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PRODUCT_RELEASE,
     PromptExecutionScope,
@@ -352,7 +355,10 @@ class ToolRoutingSubgraph:
             question = {
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
-                "question": "Please clarify the target resource or action type.",
+                "question": format_route_confirmation(
+                    user_request=request_from_state(state).request_text,
+                    goal=request_intent["goal"],
+                ),
                 "affected_field_paths": [
                     "requested_resource_hints",
                     "requested_effect_hints",
