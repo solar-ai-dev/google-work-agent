@@ -18,6 +18,35 @@ from google_work_agent.ports.system.contracts.workflow_execution import (
 )
 
 
+@pytest.mark.parametrize("request_text, expected_resources", [
+    (
+        "Google Calendar에 'Gmail Google Tasks 검증' 일정을 만들어줘. "
+        "설명은 '메일을 읽어줘'이고 참석자는 reviewer@gmail.com이야.",
+        ["CALENDAR_EVENT"],
+    ),
+    (
+        "reviewer@gmail.com의 메일을 찾아서 Google Calendar에 일정을 만들어줘.",
+        ["CALENDAR_EVENT", "GMAIL_THREAD"],
+    ),
+])
+def test_identify_goal__payload_literals_do_not__add_unrequested_resources(
+    request_text: str, expected_resources: list[str],
+) -> None:
+    runtime = FakeStructuredInferencePort(outputs=[{
+        "goal": "일정 생성", "completion_conditions": ["일정을 생성한다"],
+        "constraints": [{"kind": "RESOURCE", "field": "title", "value": "검증"}],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["CALENDAR_EVENT"],
+        "analysis_requirement": "NONE",
+    }])
+    candidate = identify_goal(
+        llm_runtime=runtime, request=_request(request_text),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+    assert candidate["requested_resource_hints"] == expected_resources
+    assert candidate["requested_effect_hints"] == ["CREATE"]
+
+
 def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[

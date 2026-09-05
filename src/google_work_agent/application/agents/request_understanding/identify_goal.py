@@ -388,6 +388,10 @@ def _has_explicit_read_authority(request_text: str) -> bool:
 
 
 def _explicit_read_resource_hints(request_text: str) -> list[str]:
+    # Payload literals and email domains are values, not resource requests.
+    for pattern in _QUOTED_LITERAL_PATTERNS:
+        request_text = pattern.sub(" ", request_text)
+    request_text = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", " ", request_text)
     return list(
         dict.fromkeys(
             resource_type
