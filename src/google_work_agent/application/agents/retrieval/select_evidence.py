@@ -8,6 +8,10 @@ from typing import Literal, cast
 from google_work_agent.application.agents.request_understanding.contracts.request_intent import (
     RequestIntentV2,
 )
+from google_work_agent.application.agents.retrieval.contracts.evidence_selection_schema import (
+    bind_evidence_selection_schema,
+    required_resource_segments,
+)
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     EvidenceDraftV1,
     EvidenceRoleDraftV2,
@@ -34,46 +38,10 @@ from google_work_agent.application.use_cases.run.guard_run_budget import (
     build_semantic_failure_signature_v1,
 )
 from google_work_agent.ports.llm.structured_inference_contracts import (
-    OutputSchemaDefinition,
     PromptReference,
 )
 from google_work_agent.ports.llm.structured_inference_port import StructuredInferencePort
 from google_work_agent.ports.system.contracts.workflow_handoff import RequestedModeV1
-
-EVIDENCE_SELECTION_OUTPUT_SCHEMA = OutputSchemaDefinition(
-    schema_version="evidence-selection-v2",
-    json_schema={
-        "type": "object",
-        "required": [
-            "schema_version",
-            "evidence_drafts",
-            "selected_segment_ids",
-            "excluded_segment_ids",
-        ],
-        "additionalProperties": False,
-        "properties": {
-            "schema_version": {"type": "integer", "enum": [2]},
-            "evidence_drafts": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["segment_id", "role", "relevance_reason"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "segment_id": {"type": "string"},
-                        "role": {
-                            "type": "string",
-                            "enum": ["SUPPORTS", "CONTRADICTS", "CONTEXT"],
-                        },
-                        "relevance_reason": {"type": "string"},
-                    },
-                },
-            },
-            "selected_segment_ids": {"type": "array", "items": {"type": "string"}},
-            "excluded_segment_ids": {"type": "array", "items": {"type": "string"}},
-        },
-    },
-)
 
 
 def select_evidence(
@@ -117,11 +85,16 @@ def select_evidence(
     candidate_resource_refs = {
         candidate["segment_id"]: candidate["resource_ref"] for candidate in eligible_candidates
     }
+    output_schema = bind_evidence_selection_schema(
+        candidate_resource_refs=candidate_resource_refs,
+        requested_resource_hints=request_intent["requested_resource_hints"],
+        max_evidence=context_budget.max_evidence,
+    )
     result = llm_runtime.infer(
         requested_mode,
         prompt_ref,
         {"request_intent": request_intent, "ranked_segments": projection},
-        EVIDENCE_SELECTION_OUTPUT_SCHEMA,
+        output_schema,
     )
     try:
         return (
@@ -183,7 +156,7 @@ def select_evidence(
                     failure_context_ids=[str(error)],
                 ),
             },
-            EVIDENCE_SELECTION_OUTPUT_SCHEMA,
+            output_schema,
         )
         try:
             return (
@@ -355,36 +328,15 @@ def _validate_selection(
     }
 
 
-_RESOURCE_HINT_PREFIXES: dict[str, tuple[str, ...]] = {
-    "GMAIL_THREAD": ("gmail_thread:",),
-    "GMAIL_MESSAGE": ("gmail_message:",),
-    "GMAIL_DRAFT": ("gmail_draft:",),
-    "GMAIL_ATTACHMENT": ("gmail_attachment:",),
-    "TASK_LIST": ("task_list:",),
-    "TASK": ("task:",),
-    "CALENDAR": ("calendar:",),
-    "CALENDAR_EVENT": ("calendar_event:",),
-    "CALENDAR_FREEBUSY": ("calendar_freebusy:",),
-}
-
-
 def _validate_requested_resource_coverage(
     *,
     selected_segment_ids: Collection[str],
     candidate_resource_refs: dict[str, str],
     requested_resource_hints: Collection[str],
 ) -> None:
-    selected_refs = {
-        candidate_resource_refs[segment_id]
-        for segment_id in selected_segment_ids
-        if segment_id in candidate_resource_refs
-    }
-    all_refs = tuple(candidate_resource_refs.values())
-    for resource_hint in requested_resource_hints:
-        prefixes = _RESOURCE_HINT_PREFIXES.get(resource_hint, ())
-        if not prefixes or not any(ref.startswith(prefixes) for ref in all_refs):
-            continue
-        if not any(ref.startswith(prefixes) for ref in selected_refs):
+    groups = required_resource_segments(candidate_resource_refs, requested_resource_hints)
+    for resource_hint, segment_ids in groups.items():
+        if not set(selected_segment_ids).intersection(segment_ids):
             raise ValueError(
                 f"selection omits available requested resource evidence: {resource_hint}"
             )
@@ -472,7 +424,6 @@ def materialize_evidence_drafts(
 
 
 __all__ = [
-    "EVIDENCE_SELECTION_OUTPUT_SCHEMA",
     "materialize_evidence_drafts",
     "select_evidence",
 ]
