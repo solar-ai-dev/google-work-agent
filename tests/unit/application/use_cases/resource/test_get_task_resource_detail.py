@@ -1,5 +1,7 @@
 """Task resource-detail contract tests."""
 
+import pytest
+
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
@@ -23,6 +25,9 @@ from google_work_agent.ports.connector.contracts.validated_connector_tool_bindin
 class _TaskRead:
     arguments: dict[str, JsonValue] | None = None
 
+    def __init__(self, notes: str) -> None:
+        self.notes = notes
+
     def execute_read(
         self,
         _binding: ValidatedConnectorToolBindingV1,
@@ -41,7 +46,7 @@ class _TaskRead:
                         "title": "Follow up",
                         "status": "needsAction",
                         "due": "2026-09-01T00:00:00Z",
-                        "notes": "Call customer",
+                        "notes": self.notes,
                     },
                 }
             },
@@ -50,7 +55,13 @@ class _TaskRead:
         )
 
 
-def test_task_detail_projects__closed_contract_and__uses_canonical_connector_arguments() -> None:
+@pytest.mark.parametrize("notes", [
+    "Call customer", "Call customer\n\n\u200bgwa-recovery-fingerprint:abc123",
+    "Call customer\u200bgwa-recovery-fingerprint:abc123",
+])
+def test_task_detail_projects__closed_contract_and__uses_canonical_connector_arguments(
+    notes: str,
+) -> None:
     signing_secret = b"s" * 32
     issuer = IssueSelectionHandle(
         signing_secret=signing_secret,
@@ -69,7 +80,7 @@ def test_task_detail_projects__closed_contract_and__uses_canonical_connector_arg
             version_token="1",
         )
     )
-    read = _TaskRead()
+    read = _TaskRead(notes)
     result = GetTaskResourceDetailHandler(
         resolve_handle=ResolveSelectionHandle(
             signing_secret=signing_secret,
@@ -90,4 +101,6 @@ def test_task_detail_projects__closed_contract_and__uses_canonical_connector_arg
     assert result.task_status == "incomplete"
     assert result.tasklist_id == "list-1"
     assert result.notes == "Call customer"
+    assert result.scheduled_date == "2026-09-01"
+    assert read.notes == notes
     assert read.arguments == {"task_list_id": "list-1", "task_id": "task-1"}

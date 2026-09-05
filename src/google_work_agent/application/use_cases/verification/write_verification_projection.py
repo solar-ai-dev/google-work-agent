@@ -12,7 +12,9 @@ from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast
 
-_RECOVERY_MARKER_PREFIX = "\u200bgwa-recovery-fingerprint:"
+from google_work_agent.application.use_cases.resource.strip_resource_recovery_marker import (
+    strip_resource_recovery_marker,
+)
 
 
 def build_expected_verification_projection(
@@ -142,7 +144,7 @@ def normalize_actual_verification_projection(
             payload["due"] = due[:10]
         notes = payload.get("notes")
         if isinstance(notes, str):
-            payload["notes"] = _strip_recovery_marker(notes)
+            payload["notes"] = strip_resource_recovery_marker(notes)
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
         for field_name in ("start", "end"):
             value = payload.get(field_name)
@@ -150,7 +152,7 @@ def normalize_actual_verification_projection(
                 payload[field_name] = _canonical_calendar_instant(value)
         description = payload.get("description")
         if isinstance(description, str):
-            payload["description"] = _strip_recovery_marker(description)
+            payload["description"] = strip_resource_recovery_marker(description)
         attendees = payload.get("attendees")
         if isinstance(attendees, list):
             payload["attendees"] = sorted(str(item) for item in attendees)
@@ -171,19 +173,6 @@ def _canonical_calendar_instant(value: str) -> str:
         .isoformat()
         .replace("+00:00", "Z")
     )
-
-
-def _strip_recovery_marker(value: str) -> str:
-    """Remove only the server-generated recovery suffix, preserving business text."""
-
-    marker_index = value.find(_RECOVERY_MARKER_PREFIX)
-    if marker_index < 0:
-        return value
-    visible = value[:marker_index]
-    # CREATE appends the marker with two newlines.  Remove those separator
-    # characters as execution metadata too, without trimming user whitespace
-    # in the no-marker case.
-    return visible[:-2] if visible.endswith("\n\n") else visible
 
 
 def _mapping(value: object, path: str) -> dict[str, object]:

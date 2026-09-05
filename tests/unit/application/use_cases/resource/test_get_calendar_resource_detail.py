@@ -1,5 +1,7 @@
 """Calendar resource-detail contract tests."""
 
+import pytest
+
 from google_work_agent.application.tool_registry.load_signed_tool_registry import (
     load_signed_tool_registry,
 )
@@ -21,6 +23,9 @@ from google_work_agent.ports.connector.contracts.validated_connector_tool_bindin
 
 
 class _CalendarRead:
+    def __init__(self, description: str) -> None:
+        self.description = description
+
     def execute_read(
         self,
         _binding: ValidatedConnectorToolBindingV1,
@@ -41,7 +46,7 @@ class _CalendarRead:
                         "timezone": "Asia/Seoul",
                         "attendees": ["reviewer@example.com"],
                         "location": "Room 1",
-                        "description": "Weekly review",
+                        "description": self.description,
                     },
                 }
             },
@@ -50,7 +55,10 @@ class _CalendarRead:
         )
 
 
-def test_calendar_detail__projects_closed__contract() -> None:
+@pytest.mark.parametrize("description", [
+    "Weekly review", "Weekly review\n\n\u200bgwa-recovery-fingerprint:abc123",
+])
+def test_calendar_detail__projects_closed__contract(description: str) -> None:
     signing_secret = b"s" * 32
     handle = IssueSelectionHandle(
         signing_secret=signing_secret,
@@ -74,7 +82,7 @@ def test_calendar_detail__projects_closed__contract() -> None:
             service_instance_id="svc-1",
             now_ms=lambda: 1_000,
         ),
-        connector_read=_CalendarRead(),
+        connector_read=_CalendarRead(description),
         registry=load_signed_tool_registry(),
     )(
         GetCalendarResourceDetailQuery(
@@ -88,3 +96,4 @@ def test_calendar_detail__projects_closed__contract() -> None:
     assert result.calendar_id == "primary"
     assert result.timezone == "Asia/Seoul"
     assert result.attendees == ("reviewer@example.com",)
+    assert result.description == "Weekly review"

@@ -3,9 +3,15 @@
 from dataclasses import dataclass
 
 from google_work_agent.application.tool_registry.signed_tool_registry import SignedToolRegistry
+from google_work_agent.application.use_cases.action.task_duplicate_policy import (
+    normalize_scheduled_date,
+)
 from google_work_agent.application.use_cases.resource.resolve_selection_handle import (
     ResolveSelectionHandle,
     ResolveSelectionHandleQuery,
+)
+from google_work_agent.application.use_cases.resource.strip_resource_recovery_marker import (
+    strip_resource_recovery_marker,
 )
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
@@ -84,10 +90,10 @@ def _project_task_detail(output: dict[str, JsonValue]) -> GetTaskResourceDetailR
         resource_id=resource_id,
         title=_required_text(payload, "title"),
         task_status=task_status,
-        scheduled_date=_optional_text(payload.get("due")),
+        scheduled_date=normalize_scheduled_date(payload.get("due")),
         completed_at=_optional_text(payload.get("completed")),
         tasklist_id=tasklist_id,
-        notes=_optional_text(payload.get("notes")),
+        notes=strip_resource_recovery_marker(_optional_text(payload.get("notes"))),
     )
 
 

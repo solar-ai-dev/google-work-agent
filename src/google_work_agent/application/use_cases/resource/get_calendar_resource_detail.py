@@ -8,6 +8,9 @@ from google_work_agent.application.use_cases.resource.resolve_selection_handle i
     ResolveSelectionHandle,
     ResolveSelectionHandleQuery,
 )
+from google_work_agent.application.use_cases.resource.strip_resource_recovery_marker import (
+    strip_resource_recovery_marker,
+)
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
@@ -91,7 +94,7 @@ def _project_calendar_detail(output: dict[str, JsonValue]) -> GetCalendarResourc
         calendar_id=_required_text(item, "parent_id"),
         attendees=tuple(cast(list[str], attendees)),
         location=_optional_text(payload.get("location")),
-        description=_optional_text(payload.get("description")),
+        description=strip_resource_recovery_marker(_optional_text(payload.get("description"))),
     )
 
 

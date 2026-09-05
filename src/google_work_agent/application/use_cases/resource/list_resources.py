@@ -8,6 +8,9 @@ from typing import Protocol
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
+from google_work_agent.application.use_cases.resource.strip_resource_recovery_marker import (
+    strip_resource_recovery_marker,
+)
 from google_work_agent.ports.connector.connector_failure import (
     ConnectorFailureCode,
     ConnectorOperationFailure,
@@ -364,7 +367,9 @@ def _display_text(snapshot: ResourceSnapshot) -> tuple[str, str | None]:
             payload.get("snippet")
         )
     if snapshot.resource_type is ResourceType.TASK_LIST:
-        return str(payload.get("title", snapshot.resource_id)), _optional_text(payload.get("notes"))
+        return str(payload.get("title", snapshot.resource_id)), strip_resource_recovery_marker(
+            _optional_text(payload.get("notes"))
+        )
     if snapshot.resource_type is ResourceType.TASK:
         return str(payload.get("title", snapshot.resource_id)), None
     if snapshot.resource_type is ResourceType.CALENDAR:
