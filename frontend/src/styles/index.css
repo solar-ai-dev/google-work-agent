@@ -1059,12 +1059,24 @@ input, select {
 }
 
 @media (max-width: 1080px) {
-  .shell-grid {
+  .shell-grid,
+  .shell-grid.conversation-panel-closed {
     grid-template-columns: minmax(22rem, 34%) minmax(0, 1fr);
   }
 
-  .conversation-panel {
-    display: none;
+  .shell-grid.resource-panel-closed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .shell-grid > .conversation-panel {
+    position: fixed;
+    top: 4.25rem;
+    right: 0;
+    bottom: 0;
+    width: min(24rem, 100vw);
+    z-index: 6;
+    border-left: 1px solid var(--border);
+    box-shadow: -0.5rem 0 1.5rem rgb(0 0 0 / 12%);
   }
 }
 
@@ -1074,7 +1086,8 @@ input, select {
   .topbar { grid-template-columns: 1fr auto; min-height: 4.25rem; padding: 0 1rem; }
   .topbar-connection { display: none; }
   .topbar-actions .muted { display: none; }
-  .shell-grid {
+  .shell-grid,
+  .shell-grid.conversation-panel-closed {
     grid-template-columns: 1fr;
   }
 
