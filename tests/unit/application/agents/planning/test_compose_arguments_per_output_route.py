@@ -5,6 +5,7 @@ import pytest
 
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     compose_arguments_per_output_route,
+    tool_argument_candidate_output_schema,
 )
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
@@ -16,6 +17,7 @@ from google_work_agent.application.agents.planning.resolve_default_container imp
     PlanningArgumentBindingError,
     resolve_default_container,
 )
+from google_work_agent.ports.llm.output_schema_validation import validate_output_schema
 
 ROUTE = {
     "route_id": "r1",
@@ -33,6 +35,37 @@ OBJECTIVE = {
     "scope_constraints": ["create only"],
     "evidence_refs": ["e1"],
 }
+
+
+@pytest.mark.parametrize("invalid_field", ["description", "route", "container", "evidence"])
+def test_inference_schema__rejects_invalid_arguments__inside_repair_boundary(
+    invalid_field: str,
+) -> None:
+    bound = resolve_default_container(
+        route=ROUTE,  # type: ignore[arg-type]
+        selected_tool_schema=planning_tool_argument_schema("tasks_create_task"),
+        explicit_container_id="list-1",
+    )
+    schema = tool_argument_candidate_output_schema({
+        "output_route": ROUTE, "tool_schema": bound["argument_schema"],
+        "evidence": [{"evidence_ref": "e1"}],
+    })
+    payload = {"title": "Report", "notes": "Review", "scheduled_date": "2026-09-07"}
+    arguments: dict[str, object] = {"task_list_id": "list-1", "payload": payload}
+    candidate: dict[str, object] = {
+        "schema_version": 1, "route_id": "r1", "arguments": arguments,
+        "evidence_refs": ["e1"],
+    }
+    assert validate_output_schema(candidate, schema.json_schema) == []
+    if invalid_field == "description":
+        payload["description"] = payload.pop("notes")
+    elif invalid_field == "route":
+        candidate["route_id"] = "other-route"
+    elif invalid_field == "container":
+        arguments["task_list_id"] = "other-list"
+    else:
+        candidate["evidence_refs"] = ["unavailable"]
+    assert validate_output_schema(candidate, schema.json_schema)
 
 
 def test_argument_prompt__receives_only_selected__bound_tool_schema() -> None:

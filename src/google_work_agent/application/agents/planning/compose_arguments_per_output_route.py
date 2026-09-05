@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from datetime import datetime
 from typing import cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -41,6 +42,40 @@ TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA = OutputSchemaDefinition(
         },
     },
 )
+
+
+def tool_argument_candidate_output_schema(
+    prompt_input: Mapping[str, object],
+) -> OutputSchemaDefinition:
+    """Bind inference and its repair to the same frozen Tool and evidence scope."""
+    route = prompt_input.get("output_route")
+    schema = prompt_input.get("tool_schema")
+    evidence = prompt_input.get("evidence")
+    if not isinstance(route, Mapping) or not isinstance(route.get("route_id"), str):
+        raise ValueError("argument composition requires a frozen output route")
+    if not isinstance(schema, Mapping) or schema.get("type") != "object":
+        raise ValueError("argument composition requires a bound Tool schema")
+    if not isinstance(evidence, list):
+        raise ValueError("argument composition requires current evidence")
+    refs = sorted({
+        ref
+        for item in evidence if isinstance(item, Mapping)
+        for ref in (item.get("evidence_ref") or item.get("evidence_id") or item.get("id"),)
+        if isinstance(ref, str) and ref
+    })
+    output = deepcopy(TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA.json_schema)
+    properties = cast(dict[str, object], output["properties"])
+    properties["route_id"] = {"const": route["route_id"]}
+    properties["arguments"] = deepcopy(dict(schema))
+    properties["evidence_refs"] = {
+        "type": "array", "uniqueItems": True,
+        "items": {"type": "string", "enum": refs} if refs else {"type": "string"},
+        **({} if refs else {"maxItems": 0}),
+    }
+    return OutputSchemaDefinition(
+        schema_version=TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA.schema_version,
+        json_schema=output,
+    )
 
 
 def compose_arguments_per_output_route(
@@ -274,4 +309,5 @@ __all__ = [
     "TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA",
     "compose_arguments_per_output_route",
     "requires_argument_inference",
+    "tool_argument_candidate_output_schema",
 ]

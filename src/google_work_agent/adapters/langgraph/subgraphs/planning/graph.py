@@ -89,6 +89,7 @@ from google_work_agent.application.agents.planning.compose_answer import (
 from google_work_agent.application.agents.planning.compose_arguments_per_output_route import (
     TOOL_ARGUMENT_CANDIDATE_OUTPUT_SCHEMA,
     requires_argument_inference,
+    tool_argument_candidate_output_schema,
 )
 from google_work_agent.application.agents.planning.contracts.planning_semantics import (
     PlanningSemanticInvoker,
@@ -704,6 +705,8 @@ class PlanningSubgraph:
                 )
                 self._prompt_refs[prompt_id] = prompt_ref
             output_schema = schemas.get(prompt_id)
+            if prompt_id == "planning.compose_arguments_per_output_route":
+                output_schema = tool_argument_candidate_output_schema(prompt_input)
             if prompt_id == "planning.outline_answer":
                 evidence = prompt_input.get("evidence")
                 if not isinstance(evidence, list):
