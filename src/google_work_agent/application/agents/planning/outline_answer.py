@@ -17,6 +17,9 @@ from google_work_agent.application.agents.planning.contracts.planning_semantics 
 from google_work_agent.application.agents.planning.project_empty_read_answer import (
     project_empty_read_answer,
 )
+from google_work_agent.application.agents.planning.project_gmail_decision_read_answer import (
+    project_gmail_decision_read_answer,
+)
 from google_work_agent.application.agents.planning.project_gmail_read_planning import (
     project_gmail_read_planning,
 )
@@ -128,6 +131,13 @@ def outline_answer(
     )
     if task_projection is not None:
         return task_projection.outline
+    decision_projection = project_gmail_decision_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if decision_projection is not None:
+        return decision_projection.outline
     security_projection = project_gmail_security_read_answer(
         user_request=user_request,
         request_intent=request_intent,

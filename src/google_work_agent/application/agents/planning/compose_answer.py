@@ -17,6 +17,9 @@ from google_work_agent.application.agents.planning.normalize_generated_answer_pr
 from google_work_agent.application.agents.planning.project_empty_read_answer import (
     project_empty_read_answer,
 )
+from google_work_agent.application.agents.planning.project_gmail_decision_read_answer import (
+    project_gmail_decision_read_answer,
+)
 from google_work_agent.application.agents.planning.project_gmail_read_planning import (
     project_gmail_read_planning,
 )
@@ -114,6 +117,15 @@ def compose_answer(
         if not set(task_projection.draft["evidence_refs"]).issubset(approved_refs):
             raise ValueError("task read answer references evidence outside its approved outline")
         return task_projection.draft
+    decision_projection = project_gmail_decision_read_answer(
+        user_request=user_request,
+        request_intent=request_intent,
+        evidence=evidence,
+    )
+    if decision_projection is not None:
+        if not set(decision_projection.draft["evidence_refs"]).issubset(approved_refs):
+            raise ValueError("Gmail decision answer references evidence outside its outline")
+        return decision_projection.draft
     security_projection = project_gmail_security_read_answer(
         user_request=user_request,
         request_intent=request_intent,

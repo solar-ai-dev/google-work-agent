@@ -138,15 +138,12 @@ def test_compose_internal_reference_labels__preserve_english_request_language() 
 
 
 def test_gmail_read__with_intermediate_analysis__omits_it_from_final_prompt() -> None:
-    captured: dict[str, object] = {}
+    invoked = False
 
-    def invoke(prompt_id: str, prompt_input: Mapping[str, object]) -> Mapping[str, object]:
-        captured.update({"prompt_id": prompt_id, "prompt_input": dict(prompt_input)})
-        return {
-            "schema_version": 2,
-            "answer": "네비게이션바 사용이 최신 결정입니다.",
-            "evidence_refs": ["e-decision"],
-        }
+    def invoke(_prompt_id: str, _prompt_input: Mapping[str, object]) -> Mapping[str, object]:
+        nonlocal invoked
+        invoked = True
+        return {}
 
     result = compose_answer(
         user_request="KAN-93 관련 메일 중 최신 결정을 알려줘.",
@@ -165,8 +162,11 @@ def test_gmail_read__with_intermediate_analysis__omits_it_from_final_prompt() ->
         invoke=invoke,
     )
 
-    assert "work_analysis" not in captured["prompt_input"]
-    assert result["answer"] == "네비게이션바 사용이 최신 결정입니다."
+    assert invoked is False
+    assert result["answer"] == (
+        "관련 Gmail 자료에서 결정 또는 확정으로 명시된 내용은 다음과 같습니다.\n\n"
+        "- 네비게이션바로 확정"
+    )
 
 
 def test_compose_answer__with_internal_fact_terms__removes_them_from_prose() -> None:

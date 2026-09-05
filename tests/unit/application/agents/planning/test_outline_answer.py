@@ -253,10 +253,6 @@ def test_gmail_read__with_required_information__uses_evidence_without_llm() -> N
 
     assert invoked is False
     assert result == {
-        "sections": [
-            "요청한 Gmail 자료에 근거한 직접 답변",
-            "확인할 내용: 최신 결정",
-            "명시적으로 결정 또는 확정된 내용과 남은 불확실성",
-        ],
+        "sections": ["Gmail 자료에 명시된 결정 사항"],
         "evidence_refs": ["e-decision"],
     }
