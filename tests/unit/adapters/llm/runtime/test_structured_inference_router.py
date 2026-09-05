@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from unittest.mock import Mock
 
 import pytest
 from tests.support.external_llm_scope import ExternalScopeCheckpoint
@@ -11,6 +12,7 @@ from google_work_agent.adapters.llm.runtime.structured_inference_router import (
 )
 from google_work_agent.ports.llm.llm_credential_port import LlmCredentialStatus
 from google_work_agent.ports.llm.llm_runtime_status_port import LlmProviderRuntimeStatus
+from google_work_agent.ports.llm.local_model_profile import LocalInferenceClass, LocalModelProfileV1
 from google_work_agent.ports.llm.structured_inference_contracts import (
     ActualRuntime,
     ApprovedModelInfo,
@@ -197,6 +199,28 @@ def test_local_request__uses_profile__model_for_prompt() -> None:
 
     assert selected == ["qwen3.5:4b"]
     assert local.calls == 1
+
+
+def test_local_inference_trace_includes_class_profile_and_actual_provider_model() -> None:
+    router = _router(checkpoint=ExternalScopeCheckpoint(scope=_scope()), api=_Provider())
+    router.runtime_selection = replace(
+        router.runtime_selection,
+        local_model_profile=LocalModelProfileV1(
+            1, "single-9b", "OLLAMA", "qwen3.5:9b", "qwen3.5:9b",
+            LocalInferenceClass.REASONING, (),
+        ),
+    )
+    recorder = Mock()
+    router.event_recorder = recorder
+    result = router.infer("LOCAL_GPU", PROMPT, {"user_request": "hello"}, SCHEMA)
+    calls = [call.kwargs for call in recorder.record.call_args_list]
+    started = next(call["attributes"] for call in calls if call["event_name"] == "LLM_CALL_STARTED")
+    completed = next(
+        call["attributes"] for call in calls if call["event_name"] == "LLM_CALL_COMPLETED"
+    )
+    assert started["inference_class"] == completed["inference_class"] == "REASONING"
+    assert started["local_model_profile_id"] == completed["local_model_profile_id"] == "single-9b"
+    assert completed["model"] == result.model
 
 
 @pytest.mark.parametrize("published", [None, _scope(scope_hash="different")])

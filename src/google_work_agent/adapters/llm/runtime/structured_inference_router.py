@@ -409,6 +409,17 @@ class StructuredInferenceRuntimeRouter:
         if provider.runtime is ActualRuntime.API_LLM:
             self._require_external_call(external_transfer_scope)
         started = time.perf_counter()
+        local_profile = self.runtime_selection.local_model_profile
+        profile_attributes = (
+            {
+                "local_model_profile_id": local_profile.profile_id,
+                "inference_class": local_profile.inference_class_for_prompt(
+                    prompt_ref.prompt_id
+                ).value,
+            }
+            if provider.runtime is ActualRuntime.LOCAL_GPU and local_profile is not None
+            else {}
+        )
         self.event_recorder.record(
             event_name="LLM_CALL_STARTED",
             severity=Severity.INFO,
@@ -420,6 +431,7 @@ class StructuredInferenceRuntimeRouter:
                 "requested_mode": requested_mode.value,
                 "actual_runtime": provider.runtime.value,
                 "provider": provider.provider_name,
+                **profile_attributes,
             },
             result_code="STARTED",
             status="STARTED",
@@ -491,6 +503,7 @@ class StructuredInferenceRuntimeRouter:
                 "estimated_cost_usd": result.estimated_cost_usd,
                 "fallback_reason": result.fallback_reason,
                 "structured_output_attempts": result.structured_output_attempts,
+                **profile_attributes,
             },
             result_code="COMPLETED",
             status="COMPLETED",
