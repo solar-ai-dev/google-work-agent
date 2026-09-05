@@ -119,3 +119,24 @@ def test_vague_read_semantics__preserves_answer_information_without_making_it_qu
     assert by_field["period"] == ["최근"]
     assert by_field["search_terms"] == ["회의"]
     assert by_field["required_information"] == ["후속 작업", "최신 결정"]
+
+
+def test_mail_to_task__preserves_source_search_without_changing_write_intent() -> None:
+    candidate = _candidate()
+    candidate["requested_effect_hints"] = ["READ", "CREATE"]
+    candidate["requested_resource_hints"] = ["GMAIL_THREAD", "TASK"]
+    candidate["constraints"] = [
+        {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": "깨진 검색어"},
+        {"kind": "RESOURCE", "field": "task_list", "value": "기본 목록"},
+    ]
+    request = "런타임 검증 회의 관련 메일을 찾아서 후속 업무를 Google Tasks에 등록해줘."
+    result = operation.preserve_vague_read_semantics(
+        candidate, request_text=request, entry_mode="AGENT_SEARCH",
+    )
+    by_field = {item["field"]: item["value"] for item in result["constraints"]}
+    assert by_field["original_search_request"] == [request]
+    assert by_field["search_terms"] == "회의"
+    assert by_field["required_information"] == ["후속 작업"]
+    assert by_field["task_list"] == "기본 목록"
+    assert result["requested_effect_hints"] == ["READ", "CREATE"]
+    assert result["requested_resource_hints"] == ["GMAIL_THREAD", "TASK"]

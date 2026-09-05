@@ -90,7 +90,7 @@ def preserve_vague_read_semantics(
 
     if (
         entry_mode != "AGENT_SEARCH"
-        or candidate["requested_effect_hints"] != ["READ"]
+        or "READ" not in candidate["requested_effect_hints"]
         or "GMAIL_THREAD" not in candidate["requested_resource_hints"]
     ):
         return candidate
@@ -210,7 +210,7 @@ def _required_information(request_text: str) -> list[str]:
         required.append("일정")
     if re.search(r"해야\s*할\s*일|할\s*일(?:을|은|이)?\s*(?:정리|요약|알려)", request_text):
         required.append("해야 할 일")
-    if re.search(r"후속\s*(?:작업|조치)", request_text):
+    if re.search(r"후속\s*(?:작업|조치|업무)", request_text):
         required.append("후속 작업")
     if re.search(r"최신\s*(?:결정|결론)", request_text):
         required.append("최신 결정")
