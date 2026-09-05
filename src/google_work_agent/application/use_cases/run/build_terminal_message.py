@@ -141,148 +141,86 @@ def _validate_query(query: BuildTerminalMessageQueryV1) -> None:
 
 
 def _format_terminal_content(query: BuildTerminalMessageQueryV1) -> str:
-    korean = _uses_korean(query.request_text)
     has_verified_action = any(outcome.status == "VERIFIED" for outcome in query.action_outcomes)
     action_lines = tuple(
-        _format_action_outcome(outcome, korean=korean) for outcome in query.action_outcomes[:8]
+        _format_action_outcome(outcome) for outcome in query.action_outcomes[:8]
     )
     if len(query.action_outcomes) > 8:
         remaining = len(query.action_outcomes) - 8
         action_lines += (
-            f"- 그 밖의 {remaining}개 작업도 같은 실행 결과에 포함됩니다."
-            if korean
-            else f"- {remaining} additional actions are included in this result.",
+            f"- 그 밖의 {remaining}개 작업도 같은 실행 결과에 포함됩니다.",
         )
 
-    if korean:
-        heading = {
-            "SUCCESS": "요청하신 작업을 완료했습니다.",
-            "PARTIAL": (
-                "요청하신 작업 중 일부만 완료했습니다."
-                if has_verified_action
-                else "요청하신 작업을 완료하지 않았습니다."
-            ),
-            "BLOCKED": (
-                "요청을 처리하는 데 필요한 조건을 충족하지 못해 안전하게 중단했습니다."
-                if query.source_kind == "INVALID_REQUEST"
-                else "안전 정책 또는 필수 조건 때문에 요청하신 작업을 실행하지 않았습니다."
-            ),
-            "FAILED": "요청하신 작업을 완료하지 못했습니다.",
-            "CANCELLED": "요청하신 작업을 취소했습니다.",
-        }[query.result_kind]
-        if action_lines:
-            return f"{heading}\n\n" + "\n".join(action_lines)
-        if query.result_kind == "BLOCKED":
-            return format_blocked_terminal_message(
-                korean=True,
-                source_kind=query.source_kind,
-                reason_codes=query.reason_codes,
-            )
-        ending = {
-            "SUCCESS": "확인 가능한 결과를 반영했습니다.",
-            "PARTIAL": "완료된 변경과 완료되지 않은 항목을 구분해 반영했습니다.",
-            "BLOCKED": "Google 변경은 실행하지 않았습니다.",
-            "FAILED": "완료되지 않은 상태이며 성공으로 처리하지 않았습니다.",
-            "CANCELLED": "확인된 Google 변경 없이 종료했습니다.",
-        }[query.result_kind]
-        return f"{heading} {ending}"
-
     heading = {
-        "SUCCESS": "I completed your request.",
+        "SUCCESS": "요청하신 작업을 완료했습니다.",
         "PARTIAL": (
-            "I could complete only part of your request."
+            "요청하신 작업 중 일부만 완료했습니다."
             if has_verified_action
-            else "I did not complete your request."
+            else "요청하신 작업을 완료하지 않았습니다."
         ),
         "BLOCKED": (
-            "I could not safely determine the information needed to handle your request."
+            "요청을 처리하는 데 필요한 조건을 충족하지 못해 안전하게 중단했습니다."
             if query.source_kind == "INVALID_REQUEST"
-            else (
-                "I did not execute the request because a safety policy or required "
-                "condition blocked it."
-            )
+            else "안전 정책 또는 필수 조건 때문에 요청하신 작업을 실행하지 않았습니다."
         ),
-        "FAILED": "I could not complete your request.",
-        "CANCELLED": "I cancelled your request.",
+        "FAILED": "요청하신 작업을 완료하지 못했습니다.",
+        "CANCELLED": "요청하신 작업을 취소했습니다.",
     }[query.result_kind]
     if action_lines:
         return f"{heading}\n\n" + "\n".join(action_lines)
     if query.result_kind == "BLOCKED":
         return format_blocked_terminal_message(
-            korean=False,
+            korean=True,
             source_kind=query.source_kind,
             reason_codes=query.reason_codes,
         )
     ending = {
-        "SUCCESS": "The response reflects the result that could be confirmed.",
-        "PARTIAL": "The completed and unfinished work are kept separate in this result.",
-        "BLOCKED": "No Google change was executed.",
-        "FAILED": "It remains unfinished and was not reported as a success.",
-        "CANCELLED": "No Google change was confirmed for this request.",
+        "SUCCESS": "확인 가능한 결과를 반영했습니다.",
+        "PARTIAL": "완료된 변경과 완료되지 않은 항목을 구분해 반영했습니다.",
+        "BLOCKED": "Google 변경은 실행하지 않았습니다.",
+        "FAILED": "완료되지 않은 상태이며 성공으로 처리하지 않았습니다.",
+        "CANCELLED": "확인된 Google 변경 없이 종료했습니다.",
     }[query.result_kind]
     return f"{heading} {ending}"
 
 
-def _format_action_outcome(outcome: TerminalActionOutcomeV1, *, korean: bool) -> str:
-    label = _action_label(outcome, korean=korean)
+def _format_action_outcome(outcome: TerminalActionOutcomeV1) -> str:
+    label = _action_label(outcome)
     read_evidence = _read_evidence_summary(outcome.evidence_excerpts)
-    if korean:
-        detail = {
-            "VERIFIED": {
-                "READ": (
-                    f"자료에서 확인한 내용은 {read_evidence}입니다."
-                    if read_evidence is not None
-                    else "자료를 읽었지만 표시할 수 있는 내용은 확인되지 않았습니다."
-                ),
-                "CREATE": "생성했고 Google에서 결과를 다시 확인했습니다.",
-                "UPDATE": "변경했고 Google에서 결과를 다시 확인했습니다.",
-                "SEND": "전송했고 Google에서 결과를 다시 확인했습니다.",
-                "DELETE": "삭제했고 Google에서 결과를 다시 확인했습니다.",
-            }[outcome.effect_type],
-            "REJECTED": "사용자 선택에 따라 실행하지 않았습니다.",
-            "FAILED": "완료하지 못했습니다.",
-            "MISMATCH": "실행 결과가 요청한 내용과 일치하지 않아 완료로 처리하지 않았습니다.",
-            "BLOCKED": "안전 조건을 충족하지 못해 실행하지 않았습니다.",
-            "DEPENDENCY_BLOCKED": "필요한 선행 작업이 완료되지 않아 실행하지 않았습니다.",
-            "CANCELLED": "완료 전에 취소했습니다.",
-        }[outcome.status]
-    else:
-        detail = {
-            "VERIFIED": {
-                "READ": (
-                    f"The source shows: {read_evidence}."
-                    if read_evidence is not None
-                    else "I read the source, but there was no displayable content."
-                ),
-                "CREATE": "Created and verified it in Google.",
-                "UPDATE": "Updated and verified it in Google.",
-                "SEND": "Sent and verified it in Google.",
-                "DELETE": "Deleted and verified the result in Google.",
-            }[outcome.effect_type],
-            "REJECTED": "Not executed because you chose not to proceed.",
-            "FAILED": "Could not be completed.",
-            "MISMATCH": (
-                "The verified result did not match the request, so it was not reported as complete."
+    detail = {
+        "VERIFIED": {
+            "READ": (
+                f"자료에서 확인한 내용은 {read_evidence}입니다."
+                if read_evidence is not None
+                else "자료를 읽었지만 표시할 수 있는 내용은 확인되지 않았습니다."
             ),
-            "BLOCKED": "Not executed because a safety condition was not met.",
-            "DEPENDENCY_BLOCKED": "Not executed because a prerequisite did not complete.",
-            "CANCELLED": "Cancelled before completion.",
-        }[outcome.status]
+            "CREATE": "생성했고 Google에서 결과를 다시 확인했습니다.",
+            "UPDATE": "변경했고 Google에서 결과를 다시 확인했습니다.",
+            "SEND": "전송했고 Google에서 결과를 다시 확인했습니다.",
+            "DELETE": "삭제했고 Google에서 결과를 다시 확인했습니다.",
+        }[outcome.effect_type],
+        "REJECTED": "사용자 선택에 따라 실행하지 않았습니다.",
+        "FAILED": "완료하지 못했습니다.",
+        "MISMATCH": "실행 결과가 요청한 내용과 일치하지 않아 완료로 처리하지 않았습니다.",
+        "BLOCKED": "안전 조건을 충족하지 못해 실행하지 않았습니다.",
+        "DEPENDENCY_BLOCKED": "필요한 선행 작업이 완료되지 않아 실행하지 않았습니다.",
+        "CANCELLED": "완료 전에 취소했습니다.",
+    }[outcome.status]
     return f"- {label}: {detail}"
 
 
-def _action_label(outcome: TerminalActionOutcomeV1, *, korean: bool) -> str:
+def _action_label(outcome: TerminalActionOutcomeV1) -> str:
     tool_name = outcome.tool_name
     if tool_name.startswith("tasks_"):
-        noun = "태스크" if korean else "Task"
+        noun = "태스크"
     elif tool_name.startswith("calendar_"):
-        noun = "일정" if korean else "Calendar event"
+        noun = "일정"
     elif tool_name == "gmail_create_draft" or "draft" in tool_name:
-        noun = "메일 초안" if korean else "Email draft"
+        noun = "메일 초안"
     elif tool_name.startswith("gmail_"):
-        noun = "메일" if korean else "Email"
+        noun = "메일"
     else:
-        noun = "Google 작업" if korean else "Google action"
+        noun = "Google 작업"
     title = _display_value(_argument_value(outcome.arguments, "title", "subject"))
     return noun if title is None else f"{noun} ‘{title}’"
 
@@ -313,11 +251,6 @@ def _read_evidence_summary(excerpts: tuple[str, ...]) -> str | None:
     summary = "; ".join(values)
     return summary if len(summary) <= 1_000 else f"{summary[:997]}..."
 
-
-def _uses_korean(request_text: str | None) -> bool:
-    if request_text is None:
-        return True
-    return any("\uac00" <= character <= "\ud7a3" for character in request_text)
 
 
 __all__ = [

@@ -45,6 +45,7 @@ from google_work_agent.application.agents.tool_routing.determine_io_resources im
 )
 from google_work_agent.application.agents.tool_routing.format_route_confirmation import (
     format_route_confirmation,
+    format_scope_confirmation,
 )
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PRODUCT_RELEASE,
@@ -325,13 +326,10 @@ class ToolRoutingSubgraph:
         signal = state.get("workflow_signal")
         if isinstance(signal, Mapping) and signal.get("kind") == "SCOPE_EXPANSION_REQUIRED":
             typed_signal = cast(ScopeExpansionRequiredV1, signal)
-            resources = ", ".join(typed_signal["required_resource_types"])
             question: request_understanding_output.ClarificationQuestionV1 = {
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
-                "question": (
-                    f"This request requires additional read scope for {resources}. Proceed?"
-                ),
+                "question": format_scope_confirmation(typed_signal["required_resource_types"]),
                 "affected_field_paths": ["requested_resource_hints"],
                 "reason_code": (
                     typed_signal["reason_codes"][0]
@@ -356,7 +354,6 @@ class ToolRoutingSubgraph:
                 "schema_version": 1,
                 "origin_target": "tool_route.finalize",
                 "question": format_route_confirmation(
-                    user_request=request_from_state(state).request_text,
                     goal=request_intent["goal"],
                 ),
                 "affected_field_paths": [

@@ -471,13 +471,14 @@ class WorkAnalysisSubgraph:
                         state,
                         origin_target="analysis.assess_operational_risks",
                         question=(
-                            "The current evidence indicates an existing duplicate or conflict. "
-                            "Do you approve proceeding with the requested action?"
+                            "조회한 자료에서 중복된 업무 또는 일정 충돌이 확인됐습니다. "
+                            "이를 감안하여 작업 제안을 계속 준비할까요? "
+                            "실제 실행은 별도로 승인받습니다."
                         ),
                         reason_code=f"{override_kind}_REQUIRED",
                         options=[
-                            {"option_id": "APPROVED", "label": "Proceed"},
-                            {"option_id": "DECLINED", "label": "Do not proceed"},
+                            {"option_id": "APPROVED", "label": "계속 준비해 주세요"},
+                            {"option_id": "DECLINED", "label": "진행하지 않을게요"},
                         ],
                         policy_confirmation={
                             "confirmation_kind": override_kind,
@@ -522,13 +523,13 @@ class WorkAnalysisSubgraph:
                 state,
                 origin_target="analysis.assess_operational_risks",
                 question=(
-                    "The current evidence indicates an existing duplicate or conflict. "
-                    "Do you approve proceeding with the requested action?"
+                    "조회한 자료에서 중복된 업무 또는 일정 충돌이 확인됐습니다. "
+                    "이를 감안하여 작업 제안을 계속 준비할까요? 실제 실행은 별도로 승인받습니다."
                 ),
                 reason_code=f"{override_kind}_REQUIRED",
                 options=[
-                    {"option_id": "APPROVED", "label": "Proceed"},
-                    {"option_id": "DECLINED", "label": "Do not proceed"},
+                    {"option_id": "APPROVED", "label": "계속 준비해 주세요"},
+                    {"option_id": "DECLINED", "label": "진행하지 않을게요"},
                 ],
                 policy_confirmation={
                     "confirmation_kind": override_kind,

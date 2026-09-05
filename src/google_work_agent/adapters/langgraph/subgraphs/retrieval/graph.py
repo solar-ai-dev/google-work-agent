@@ -1454,7 +1454,8 @@ class RetrievalSubgraph:
         question: request_understanding_output.ClarificationQuestionV1 = {
             "schema_version": 1,
             "origin_target": "retrieval.assess_sufficiency",
-            "question": f"Please clarify the retrieval requirement: {slot}",
+            "question": f"‘{request_intent['goal']}’을 위한 조회 조건을 확정하지 못했습니다. "
+            "대상이나 기간 중 원하는 조건을 알려주세요. 아직 Google 변경은 실행하지 않았습니다.",
             "affected_field_paths": [slot],
             "reason_code": reason_code,
             "known_context_summary": request_intent["goal"],
