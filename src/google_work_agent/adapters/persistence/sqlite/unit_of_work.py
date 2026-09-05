@@ -71,10 +71,14 @@ class SqliteUnitOfWork:
         *,
         now_ms: Callable[[], int] | None = None,
         read_only: bool = False,
+        environment: str = "test",
+        release_version: str = "dev",
     ) -> None:
         self._database_path = database_path
         self._now_ms = now_ms or (lambda: int(time.time() * 1000))
         self._read_only = read_only
+        self._environment = environment
+        self._release_version = release_version
         self._connection: sqlite3.Connection | None = None
         self._committed = False
 
@@ -97,8 +101,12 @@ class SqliteUnitOfWork:
         self.approvals = SqliteApprovalRepository(connection)
         self.execution_attempts = SqliteExecutionAttemptRepository(connection)
         self.verifications = SqliteVerificationRepository(connection)
-        self.audits = SqliteAuditEventRepository(connection)
-        self.traces = PostCommitTraceEventRepository(connection)
+        self.audits = SqliteAuditEventRepository(
+            connection, environment=self._environment, release_version=self._release_version,
+        )
+        self.traces = PostCommitTraceEventRepository(
+            connection, environment=self._environment, release_version=self._release_version,
+        )
         self.workflow_handoffs = SqliteWorkflowHandoffRepository(connection, now_ms=self._now_ms)
         self.recovery_contexts = SqliteRecoveryRepository(connection, now_ms=self._now_ms)
         self.retention = SqliteRetentionRepository(connection)
@@ -132,20 +140,27 @@ class SqliteUnitOfWork:
 
 
 def sqlite_unit_of_work_factory(
-    database_path: Path, *, now_ms: Callable[[], int] | None = None
+    database_path: Path, *, now_ms: Callable[[], int] | None = None,
+    environment: str = "test", release_version: str = "dev",
 ) -> Callable[[], UnitOfWork]:
     def _factory() -> SqliteUnitOfWork:
-        return SqliteUnitOfWork(database_path, now_ms=now_ms)
+        return SqliteUnitOfWork(
+            database_path, now_ms=now_ms, environment=environment, release_version=release_version,
+        )
 
     return cast(Callable[[], UnitOfWork], _factory)
 
 
 def sqlite_read_unit_of_work_factory(
-    database_path: Path, *, now_ms: Callable[[], int] | None = None
+    database_path: Path, *, now_ms: Callable[[], int] | None = None,
+    environment: str = "test", release_version: str = "dev",
 ) -> Callable[[], UnitOfWork]:
     """Build snapshot-consistent query UoWs without acquiring a writer lock."""
 
     def _factory() -> SqliteUnitOfWork:
-        return SqliteUnitOfWork(database_path, now_ms=now_ms, read_only=True)
+        return SqliteUnitOfWork(
+            database_path, now_ms=now_ms, read_only=True,
+            environment=environment, release_version=release_version,
+        )
 
     return cast(Callable[[], UnitOfWork], _factory)

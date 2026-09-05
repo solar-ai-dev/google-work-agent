@@ -17,7 +17,9 @@ def test_audit_event__repository_sanitizes__lists_and_purges() -> None:
             outcome TEXT, metadata_json TEXT, created_at_ms INTEGER
         )"""
     )
-    repository = SqliteAuditEventRepository(connection)
+    repository = SqliteAuditEventRepository(
+        connection, environment="DEVELOPMENT", release_version="0.1.0-dev",
+    )
     repository.append(
         AuditEvent(
             None,
@@ -37,4 +39,6 @@ def test_audit_event__repository_sanitizes__lists_and_purges() -> None:
     assert len(page) == 1
     assert "access_abcdefghijklmnopqrstuvwxyz0123456789" not in page[0].metadata_json
     assert loads(page[0].metadata_json)["schema_version"] == 1
+    assert loads(page[0].metadata_json)["environment"] == "DEVELOPMENT"
+    assert loads(page[0].metadata_json)["release_version"] == "0.1.0-dev"
     assert repository.purge_before(2) == 1

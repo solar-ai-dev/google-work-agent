@@ -16,7 +16,9 @@ def test_trace_event__repository_sanitizes__lists_and_purges() -> None:
             status TEXT, duration_ms INTEGER, payload_json TEXT, created_at_ms INTEGER
         )"""
     )
-    repository = SqliteTraceEventRepository(connection)
+    repository = SqliteTraceEventRepository(
+        connection, environment="DEVELOPMENT", release_version="0.1.0-dev",
+    )
     repository.append(
         TraceEvent(
             "run-1",
@@ -33,4 +35,6 @@ def test_trace_event__repository_sanitizes__lists_and_purges() -> None:
     assert len(page) == 1
     assert "access_abcdefghijklmnopqrstuvwxyz0123456789" not in page[0].payload_json
     assert loads(page[0].payload_json)["schema_version"] == 1
+    assert loads(page[0].payload_json)["environment"] == "DEVELOPMENT"
+    assert loads(page[0].payload_json)["release_version"] == "0.1.0-dev"
     assert repository.purge_before(2) == 1

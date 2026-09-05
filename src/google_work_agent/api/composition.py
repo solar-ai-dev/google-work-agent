@@ -2271,8 +2271,12 @@ def build_production_runtime(
         raise CoreInitializationError("POLICY_VERSION_MISMATCH")
     google_connector = connector_bundle.google_connector
     google_provider = google_connector.oauth_port
-    unit_of_work_factory = sqlite_unit_of_work_factory(database_path)
-    read_unit_of_work_factory = sqlite_read_unit_of_work_factory(database_path)
+    unit_of_work_factory = sqlite_unit_of_work_factory(
+        database_path, environment=oauth_environment.value, release_version=release_version,
+    )
+    read_unit_of_work_factory = sqlite_read_unit_of_work_factory(
+        database_path, environment=oauth_environment.value, release_version=release_version,
+    )
     connected_account_store_factory = sqlite_connected_account_store_factory(database_path)
     get_connection_status = GetConnectionStatusHandler(
         google_provider,

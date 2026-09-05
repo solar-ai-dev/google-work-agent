@@ -21,8 +21,13 @@ from google_work_agent.ports.system.contracts.observability import (
 
 
 class SqliteTraceEventRepository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self, connection: sqlite3.Connection, *,
+        environment: str = "test", release_version: str = "dev",
+    ) -> None:
         self._connection = connection
+        self._environment = environment
+        self._release_version = release_version
 
     def append(self, event: TraceEventRecord) -> None:
         event = replace(event, payload_json=sanitize_persistent_event_json(event.payload_json))
@@ -46,8 +51,8 @@ class SqliteTraceEventRepository:
                     occurred_at_ms=event.created_at_ms,
                     severity=Severity.INFO,
                     component="trace_event_repository",
-                    environment="test",
-                    release_version="dev",
+                    environment=self._environment,
+                    release_version=self._release_version,
                     correlation=ObservabilityContext(
                         run_id=event.run_id, action_id=event.action_id
                     ),
