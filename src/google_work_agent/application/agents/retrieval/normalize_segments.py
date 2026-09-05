@@ -15,6 +15,9 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
 from google_work_agent.application.agents.retrieval.contracts.segment_identity import (
     SourceSegmentIdentityV1,
 )
+from google_work_agent.application.agents.retrieval.format_calendar_freebusy_evidence import (
+    format_calendar_freebusy_evidence,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,6 +154,8 @@ def _resource_text(resource: dict[str, object], *, resource_type: str) -> str:
     payload = resource.get("payload")
     if not isinstance(payload, dict):
         return ""
+    if resource_type == "calendar_freebusy":
+        return format_calendar_freebusy_evidence(payload)
     parts: list[str] = []
     for key in _TEXT_KEYS:
         value = payload.get(key)

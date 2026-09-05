@@ -1,5 +1,7 @@
 from typing import cast
 
+import pytest
+
 from google_work_agent.application.agents.retrieval.contracts.retrieval_result import (
     AcquisitionResultV1,
 )
@@ -43,6 +45,34 @@ def test_segment_id__is_stable__and_content_sensitive() -> None:
     assert first == repeated
     assert first.startswith("seg_") and len(first) == 68
     assert changed != first
+
+
+@pytest.mark.parametrize("busy", [
+    [], [{"start": "2026-09-08T14:00:00+09:00", "end": "2026-09-08T14:30:00+09:00"}],
+])
+def test_freebusy_evidence__preserves_intervals_without__implying_an_event(
+    busy: list[dict[str, str]],
+) -> None:
+    acquisition = _result("unused")
+    source = acquisition["source_summaries"][0]
+    source["source"] = "CALENDAR"
+    source["resources"] = [{
+        "resource_handle": "calendar_freebusy:primary", "resource_type": "calendar_freebusy",
+        "resource_id": "primary", "version": "1",
+        "payload": {
+            "time_min": "2026-09-08T14:00:00+09:00",
+            "time_max": "2026-09-08T14:30:00+09:00", "busy_intervals": busy,
+        },
+    }]
+    text = normalize_segments(acquisition)[0].text
+    assert "not an event or a write result" in text
+    assert "query_time_min: 2026-09-08T14:00:00+09:00" in text
+    assert "query_time_max: 2026-09-08T14:30:00+09:00" in text
+    assert "busy_intervals:" in text
+    if busy:
+        assert '"start": "2026-09-08T14:00:00+09:00"' in text
+    else:
+        assert "busy_intervals: []" in text
 
 
 def test_normalize_segments__shares_bounded_context_across_resources() -> None:
