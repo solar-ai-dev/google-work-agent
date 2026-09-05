@@ -7,6 +7,9 @@ from google_work_agent.application.agents.tool_routing.contracts.tool_route_plan
 from google_work_agent.application.agents.tool_routing.resolve_policy_preconditions import (
     policy_analysis_required,
 )
+from google_work_agent.application.agents.work_analysis.contracts.work_analysis_result import (
+    WorkFactV1,
+)
 from google_work_agent.application.agents.work_analysis.resolve_entity_relations import (
     entity_relation_candidate_llm_required,
 )
@@ -31,9 +34,10 @@ def route_after_extract_work_facts(state: object) -> str:
             return "detect_duplicate_conflict_candidates"
         facts = state.get("fact_candidates")
         if isinstance(facts, list):
-            if entity_relation_candidate_llm_required(cast(list, facts)):
+            work_facts = cast(list[WorkFactV1], facts)
+            if entity_relation_candidate_llm_required(work_facts):
                 return "resolve_entity_relations"
-            if temporal_dependency_candidate_llm_required(cast(list, facts)):
+            if temporal_dependency_candidate_llm_required(work_facts):
                 return "resolve_temporal_dependencies"
             if len(facts) >= 2 or policy_required:
                 return "detect_duplicate_conflict_candidates"
