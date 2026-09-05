@@ -50,6 +50,9 @@ def main() -> None:
         elif message_type == "tool_call":
             arguments = cast(dict[str, object], request.get("arguments") or {})
             if arguments.get("__test_exit_after_dispatch") is True:
+                if arguments.get("__test_stderr_exception") is True:
+                    sys.stderr.write("RuntimeError: secret-access-token private-message-body\n")
+                    sys.stderr.flush()
                 os._exit(0)
             certainty = arguments.get("__test_delivery_certainty")
             if isinstance(certainty, str):

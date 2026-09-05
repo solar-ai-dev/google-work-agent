@@ -263,3 +263,31 @@ def _config(manifest_path: Path, registry_hash: str) -> MCPArtifactConfig:
         service_instance_id="service-1",
         module_name="tests.fakes.mcp_server",
     )
+
+
+def test_subprocess_failure_logs__exception_type_without__sensitive_message(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture,
+) -> None:
+    manifest_path = tmp_path / "mcp-manifest.json"
+    manifest_path.write_text(json.dumps(build_manifest_payload()), encoding="utf-8")
+    registry = load_signed_tool_registry()
+    transport = StdioMCPClientAdapter(
+        descriptor=build_google_workspace_connector_descriptor(
+            _config(manifest_path, registry.entries_hash),
+            expected_tool_descriptors=tuple(registry.descriptor_expectations("google_workspace")),
+        ),
+        runtime_registry=ConnectorRuntimeRegistry(),
+    )
+    try:
+        result = transport.call_tool(
+            "google_workspace", "gmail_get_thread",
+            {"__test_exit_after_dispatch": True, "__test_stderr_exception": True}, 1_000,
+        )
+        assert result.transport_status == "DISCONNECTED"
+        assert result.error_code == MCPClientPortErrorCode.CONNECTION_CLOSED.value
+    finally:
+        transport.close()
+    assert "type=RuntimeError" in caplog.text
+    assert "request_id=" in caplog.text
+    assert "secret-access-token" not in caplog.text
+    assert "private-message-body" not in caplog.text

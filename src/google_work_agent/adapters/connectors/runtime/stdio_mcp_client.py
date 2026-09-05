@@ -5,7 +5,9 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import os
+import re
 import secrets
 import subprocess
 import threading
@@ -635,6 +637,10 @@ class StdioMCPClientAdapter:
             except Empty as error:
                 process = self._process
                 if process is None or process.poll() is not None:
+                    logging.getLogger(__name__).error(
+                        "MCP child exited before response: request_id=%s returncode=%s",
+                        request_id, None if process is None else process.returncode,
+                    )
                     raise MCPClientPortError(
                         code=MCPClientPortErrorCode.CONNECTION_CLOSED,
                         message="mcp child exited before responding",
@@ -704,6 +710,11 @@ class StdioMCPClientAdapter:
             return
         for line in process.stderr:
             self._stderr_lines.append(line.rstrip())
+            error_type = re.match(r"^([A-Za-z_][\w.]*(?:Error|Exception)):", line)
+            if error_type is not None:
+                logging.getLogger(__name__).error(
+                    "MCP child exception: type=%s", error_type.group(1),
+                )
 
 
 @dataclass(frozen=True, slots=True)
