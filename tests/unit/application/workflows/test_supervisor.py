@@ -803,6 +803,30 @@ def test_durable_priority__with_lifecycle_fact__preempts_normal_planning(
     assert decision["target"] == expected_target.value
 
 
+@pytest.mark.parametrize("target", [
+    SupervisorTarget.ACTION_EXECUTION, SupervisorTarget.RESPONSE_SYNTHESIS,
+    SupervisorTarget.FINALIZE,
+])
+@pytest.mark.parametrize("statuses, may_close", [
+    (("REJECTED",), True), (("REJECTED", "DEPENDENCY_BLOCKED"), True),
+    (("REJECTED", "PROPOSED"), False), ((), False),
+])
+def test_waiting_approval__allows_existing_closure_owner__only_for_settled_actions(
+    target: SupervisorTarget, statuses: tuple[str, ...], may_close: bool,
+) -> None:
+    candidate = make_supervisor_decision(
+        target=target, next_phase=None, state_update={}, reason_code="WRITE_RUN_COMPLETABLE",
+    )
+    result = apply_durable_priority(
+        state=_state(), decision=candidate,
+        facts=SupervisorObservationV1(
+            run_status="WAITING_APPROVAL", next_allowed_commands=(),
+            action_statuses=statuses, cancel_intent_active=False,
+        ),
+    )
+    assert result["target"] == (target if may_close else SupervisorTarget.WAITING_APPROVAL).value
+
+
 def test_waiting_approval__during_fresh_review__allows_domain_validation() -> None:
     decision = route_supervisor(
         phase=WorkflowPhase.PLAN_REVIEW,

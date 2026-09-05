@@ -10,6 +10,7 @@ from google_work_agent.adapters.langgraph.main.supervisor_decision import (
     boundary_supervisor_state_update,
     make_supervisor_decision,
 )
+from google_work_agent.adapters.langgraph.write_execution import write_action_statuses_are_closed
 from google_work_agent.application.use_cases.run.get_supervisor_observation import (
     SupervisorObservationV1,
 )
@@ -114,6 +115,18 @@ def apply_durable_priority(
             phase=WorkflowPhase.WAITING_CONFIRMATION,
             reason_code="WAITING_CONFIRMATION",
         )
+    if (
+        status == "WAITING_APPROVAL"
+        and write_action_statuses_are_closed(facts.action_statuses)
+        and candidate in {
+            SupervisorTarget.ACTION_EXECUTION.value,
+            SupervisorTarget.RESPONSE_SYNTHESIS.value,
+            SupervisorTarget.FINALIZE.value,
+        }
+    ):
+        # Preflight/Write completion still owns closure and attempt checks.
+        # All declined actions must reach that owner, not wait for approval forever.
+        return decision
     if status == "WAITING_APPROVAL" and candidate not in {
         SupervisorTarget.WAITING_APPROVAL.value,
         SupervisorTarget.DOMAIN_VALIDATION.value,
