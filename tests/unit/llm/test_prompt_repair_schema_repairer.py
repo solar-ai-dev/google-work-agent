@@ -20,6 +20,9 @@ from google_work_agent.adapters.llm.runtime.prompt_repair_schema_repairer import
     PromptRepairSchemaRepairer,
 )
 from google_work_agent.application.prompt_runtime.assemble_prompt import assemble_prompt
+from google_work_agent.application.prompt_runtime.contracts.failure_record import (
+    build_failure_record_v1,
+)
 from google_work_agent.application.prompt_runtime.prompt_registry import (
     PromptRegistry,
     default_prompt_manifest_path,
@@ -57,8 +60,10 @@ def _provider(transport: FakeAPIProviderTransport) -> GeminiStructuredInferenceA
     )
 
 
+@pytest.mark.parametrize("is_semantic_revision", [False, True])
 def test_repair_dispatches_the__same_base_prompt__with_full_input_shape(
     tmp_path: Path,
+    is_semantic_revision: bool,
 ) -> None:
     manifest_path = _active_manifest(tmp_path)
     transport = FakeAPIProviderTransport()
@@ -84,7 +89,16 @@ def test_repair_dispatches_the__same_base_prompt__with_full_input_shape(
     result = repairer.repair(
         provider=_provider(transport),
         prompt_ref=active_prompt_ref,
-        prompt_input=base_projection,
+        prompt_input={
+            "base_projection": base_projection,
+            "candidate_output": {"answer": "Ungrounded answer"},
+            "failure_record": build_failure_record_v1(
+                failure_reason_code="EVIDENCE_SELECTION_SEMANTIC_INVALID",
+                failure_origin="RETRIEVAL_RESULT", detected_by="RUNTIME_DOMAIN_VALIDATOR",
+                runtime_disposition="RETRYABLE", experiment_disposition="RUN_REVISION",
+                affected_field_paths=["$.answer"],
+            ),
+        } if is_semantic_revision else base_projection,
         failed_output={"answer": 123},
         output_schema=OUTPUT_SCHEMA,
         runtime_policy=RuntimePolicy(),

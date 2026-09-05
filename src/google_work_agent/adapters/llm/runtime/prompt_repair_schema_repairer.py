@@ -112,6 +112,15 @@ def _build_repair_input(
     validator_errors: tuple[str, ...],
 ) -> dict[str, object]:
     del max_attempts
+    base_projection = prompt_input
+    if set(prompt_input) == {"base_projection", "candidate_output", "failure_record"}:
+        revision_base = prompt_input["base_projection"]
+        if not isinstance(revision_base, Mapping):
+            raise LLMInvocationError(
+                LLMErrorCode.OUTPUT_SCHEMA_INVALID,
+                "revision base_projection must be an object before schema repair",
+            )
+        base_projection = revision_base
     affected_field_paths = sorted(
         {
             match.group(0)
@@ -120,7 +129,7 @@ def _build_repair_input(
         }
     )
     return {
-        "base_projection": dict(prompt_input),
+        "base_projection": dict(base_projection),
         "candidate_output": failed_output,
         "failure_record": build_failure_record_v1(
             failure_id=f"{prompt_ref.prompt_id}:{attempt_no}",
