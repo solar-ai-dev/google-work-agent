@@ -62,6 +62,31 @@ def test_vague_read_semantics__does_not_use_discussion_verbs_as_search_terms() -
     assert by_field["search_terms"] == ["프로젝트", "일정"]
 
 
+def test_explicit_gmail_subject__replaces_broad_search_terms_with_exact_literal() -> None:
+    request_text = (
+        "Gmail에서 제목이 '절대로 존재하지 않는 3/8 검증 메일 20260905'인 "
+        "메일을 찾아 분석해줘."
+    )
+    candidate = _candidate()
+    candidate["constraints"] = [
+        {
+            "kind": "RESOURCE",
+            "field": "search_terms",
+            "value": "제목:절대로 존재하지 않는 3/8 검증 메일 20260905",
+        },
+        {"kind": "USER_REQUIREMENT", "field": "search_terms", "value": ["검증"]},
+    ]
+    result = operation.preserve_vague_read_semantics(
+        candidate,
+        request_text=request_text,
+        entry_mode="AGENT_SEARCH",
+    )
+
+    by_field = {constraint["field"]: constraint["value"] for constraint in result["constraints"]}
+    assert by_field["subject"] == ["절대로 존재하지 않는 3/8 검증 메일 20260905"]
+    assert "search_terms" not in by_field
+
+
 def test_vague_read_semantics__replaces_model_broad_query_with_source_terms() -> None:
     candidate = _candidate()
     candidate["constraints"].append(

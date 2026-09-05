@@ -28,6 +28,12 @@ _PERSON_PATTERN = re.compile(r"[가-힣]{1,4}(?:대리|과장|차장|부장|팀�
 _PERIOD_PATTERN = re.compile(
     r"지난\s*주|이번\s*주|다음\s*주|지난\s*달|이번\s*달|최근|오늘|어제|그제"
 )
+_EXPLICIT_SUBJECT_PATTERNS = (
+    re.compile(r"(?:제목)(?:이|가|은|는)?\s*(?:[:：]\s*)?['‘\"](?P<subject>[^'’\"]+)['’\"]"),
+    re.compile(
+        r"(?i)(?:subject)\s*(?:is\s*)?(?:[:：]\s*)?['‘\"](?P<subject>[^'’\"]+)['’\"]"
+    ),
+)
 _DIRECT_TOPIC_PATTERNS = (
     re.compile(r"(?P<topic>[0-9A-Za-z가-힣_+\-]{2,})\s*(?:관련|에\s*관한)\s*(?:메일|이메일)"),
     re.compile(r"(?P<topic>[0-9A-Za-z가-힣_+\-]{2,})\s*(?:메일|이메일)"),
@@ -97,13 +103,29 @@ def preserve_vague_read_semantics(
         values=[request_text],
         replace_existing=True,
     )
-    _merge_constraint(
-        constraints,
-        kind="USER_REQUIREMENT",
-        field="search_terms",
-        values=_search_topics(request_text),
-        replace_existing=True,
-    )
+    explicit_subjects = _explicit_subjects(request_text)
+    if explicit_subjects:
+        constraints = [
+            constraint
+            for constraint in constraints
+            if constraint["field"]
+            not in {"subject", "search_criteria_subject", "search_terms"}
+        ]
+        _merge_constraint(
+            constraints,
+            kind="RESOURCE",
+            field="subject",
+            values=explicit_subjects,
+            replace_existing=True,
+        )
+    else:
+        _merge_constraint(
+            constraints,
+            kind="USER_REQUIREMENT",
+            field="search_terms",
+            values=_search_topics(request_text),
+            replace_existing=True,
+        )
     _merge_constraint(
         constraints,
         kind="PERSON",
@@ -127,6 +149,17 @@ def preserve_vague_read_semantics(
         values=_required_information(request_text),
     )
     return {**candidate, "constraints": constraints}
+
+
+def _explicit_subjects(request_text: str) -> list[str]:
+    return list(
+        dict.fromkeys(
+            match.group("subject").strip()
+            for pattern in _EXPLICIT_SUBJECT_PATTERNS
+            for match in pattern.finditer(request_text)
+            if match.group("subject").strip()
+        )
+    )
 
 
 def _without_unstated_placeholders(
