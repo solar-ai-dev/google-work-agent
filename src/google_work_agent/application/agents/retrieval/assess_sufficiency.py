@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Collection, Mapping
+from collections.abc import Collection
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
@@ -23,6 +23,9 @@ from google_work_agent.application.agents.retrieval.contracts.retrieval_result i
     SufficiencyIssueV2,
     SufficiencyResolutionSourceValue,
     SufficiencyResultV2,
+)
+from google_work_agent.application.agents.retrieval.is_complete_create_policy_read import (
+    is_complete_create_policy_read,
 )
 from google_work_agent.application.agents.retrieval.normalize_segments import (
     RetrievalValidationError,
@@ -72,7 +75,7 @@ def assess_sufficiency(
         confirmation_response=confirmation_response,
     ):
         return {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
-    if _is_complete_calendar_create_policy_read(
+    if is_complete_create_policy_read(
         request_intent=request_intent,
         tool_route_plan=tool_route_plan,
         acquisition_result=acquisition_result,
@@ -203,64 +206,6 @@ def _is_complete_selected_gmail_read(
     )
 
 
-def _is_complete_calendar_create_policy_read(
-    *,
-    request_intent: RequestIntentV2,
-    tool_route_plan: ToolRoutePlanV2 | None,
-    acquisition_result: AcquisitionResultV1,
-    confirmation_response: ConfirmationResponseProjectionV1 | None,
-) -> bool:
-    """Accept a fully executed exact Calendar conflict-check plan without an LLM.
-
-    A completed event lookup may correctly return zero resources.  Together
-    with the authoritative calendar and free/busy reads this is a complete
-    policy input, not a missing-data signal that should trigger a broader
-    search.
-    """
-
-    if (
-        confirmation_response is not None
-        or tool_route_plan is None
-        or request_intent["analysis_requirement"] != "NONE"
-        or set(request_intent["requested_effect_hints"]) != {"CREATE"}
-        or set(request_intent["requested_resource_hints"]) != {"CALENDAR_EVENT"}
-        or acquisition_result["status"] != "COMPLETE"
-        or acquisition_result["missing_slots"]
-    ):
-        return False
-    output_routes = tool_route_plan["output_plan"].get("output_routes")
-    if (
-        tool_route_plan["output_plan"]["output_mode"] != "ACTION"
-        or not isinstance(output_routes, list)
-        or len(output_routes) != 1
-        or not isinstance(output_routes[0], Mapping)
-        or output_routes[0].get("effect") != "CREATE"
-        or output_routes[0].get("resource_type") != "CALENDAR_EVENT"
-    ):
-        return False
-    input_routes = tool_route_plan["input_plan"]["input_routes"]
-    if {route["resource_type"] for route in input_routes} != {
-        "CALENDAR",
-        "CALENDAR_EVENT",
-        "CALENDAR_FREEBUSY",
-    }:
-        return False
-    if any(
-        not route["required"]
-        or route["reason_codes"] != ["POLICY_CALENDAR_CONFLICT_CHECK"]
-        for route in input_routes
-    ):
-        return False
-    summaries_by_route = {
-        summary.get("route_id"): summary
-        for summary in acquisition_result["source_summaries"]
-        if isinstance(summary.get("route_id"), str)
-    }
-    return all(
-        route["route_id"] in summaries_by_route
-        and summaries_by_route[route["route_id"]].get("status") == "COMPLETE"
-        for route in input_routes
-    )
 
 
 # Preserved insufficient-data policy is owned by this sufficiency operation.

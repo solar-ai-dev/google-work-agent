@@ -2,6 +2,7 @@ from collections import deque
 from dataclasses import replace
 from typing import cast
 
+import pytest
 from tests.support.context_retrieval import (
     SUFFICIENCY_PROMPT_REF,
     FakeLLMRuntime,
@@ -153,11 +154,15 @@ def test_assess_sufficiency__complete_selected_gmail_read__skips_llm() -> None:
     assert runtime.calls == []
 
 
-def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
-    runtime = FakeLLMRuntime()
+@pytest.mark.parametrize("resource", ["TASK", "CALENDAR_EVENT"])
+@pytest.mark.parametrize("incomplete", [None, "failed_route", "missing_route", "source_request"])
+def test_assess_sufficiency__only_complete_create_policy_reads__skip_llm(
+    resource: str, incomplete: str | None,
+) -> None:
+    runtime = FakeLLMRuntime(deque([_llm_result(_sufficiency_output("SUFFICIENT"))]))
     intent = _intent()
     intent["requested_effect_hints"] = ["CREATE"]
-    intent["requested_resource_hints"] = ["CALENDAR_EVENT"]
+    intent["requested_resource_hints"] = [resource]
     intent["analysis_requirement"] = "NONE"
     routes = [
         {
@@ -185,6 +190,21 @@ def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
             "reason_codes": ["POLICY_CALENDAR_CONFLICT_CHECK"],
         },
     ]
+    if resource == "TASK":
+        routes = [
+            {
+                "route_id": "task-route", "resource_type": "TASK",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["tasks_list_tasks"],
+                "required": True, "reason_codes": ["POLICY_TASK_DUPLICATE_CHECK"],
+            },
+            {
+                "route_id": "list-route", "resource_type": "TASK_LIST",
+                "connector_id": "google_workspace",
+                "allowed_read_tool_ids": ["tasks_list_tasklists"],
+                "required": True, "reason_codes": ["POLICY_TASK_DUPLICATE_CHECK"],
+            },
+        ]
     route_plan = _tool_route_plan(routes)
     route_plan["output_plan"] = {
         "schema_version": 1,
@@ -193,10 +213,12 @@ def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
         "output_routes": [
             {
                 "route_id": "create-route",
-                "resource_type": "CALENDAR_EVENT",
+                "resource_type": resource,
                 "connector_id": "google_workspace",
                 "effect": "CREATE",
-                "selected_tool_id": "calendar_create_event",
+                "selected_tool_id": (
+                    "tasks_create_task" if resource == "TASK" else "calendar_create_event"
+                ),
                 "reason_codes": ["REGISTRY_SINGLE_CANDIDATE"],
             }
         ],
@@ -206,7 +228,7 @@ def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
     acquisition["source_summaries"] = [
         {
             "route_id": route["route_id"],
-            "source": "CALENDAR",
+            "source": "TASKS" if resource == "TASK" else "CALENDAR",
             "status": "COMPLETE",
             "required": True,
             "resource_count": 0 if route["resource_type"] == "CALENDAR_EVENT" else 1,
@@ -215,6 +237,13 @@ def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
         }
         for route in routes
     ]
+
+    if incomplete == "failed_route":
+        acquisition["source_summaries"][0]["status"] = "FAILED"
+    elif incomplete == "missing_route":
+        acquisition["source_summaries"].pop()
+    elif incomplete == "source_request":
+        route_plan["input_plan"]["input_routes"][0]["reason_codes"] = ["USER_REQUESTED"]
 
     result = assess_sufficiency(
         llm_runtime=runtime,
@@ -227,8 +256,12 @@ def test_assess_sufficiency__complete_calendar_policy_reads__skip_llm() -> None:
         retry_budget=_run_budget(used=0),
     )
 
-    assert result == {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
-    assert runtime.calls == []
+    if incomplete is None:
+        assert result == {"schema_version": 2, "status": "SUFFICIENT", "issues": []}
+        assert runtime.calls == []
+    else:
+        assert result["status"] != "SUFFICIENT"
+        assert len(runtime.calls) == 1
 
 
 def test_assess_sufficiency__rejects_required_lookup__without_evidence() -> None:
