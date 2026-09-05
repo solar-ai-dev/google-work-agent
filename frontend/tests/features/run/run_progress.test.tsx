@@ -5,6 +5,13 @@ import type { RunSnapshot } from "../../../src/api/contract";
 import { RunProgress } from "../../../src/features/run/run_progress";
 import type { RunSseEvent } from "../../../src/features/run/api/run_sse_event";
 
+test("a newer snapshot makes the current state primary over a stale status event", () => {
+  const snapshot = { run: { run_id: "run-1", version: 3, status: "WAITING_APPROVAL" }, terminal_result_kind: "NONE" } as RunSnapshot;
+  const latestEvent = { schema_version: 1, event_id: "old", run_id: "run-1", action_id: null, occurred_at_ms: 1, event_type: "run_status", payload: { status: "ANALYZING", snapshot_version: 1 }, projection_version: 1 } as RunSseEvent;
+  render(<RunProgress snapshot={snapshot} latestEvent={latestEvent} busy={null} onResume={vi.fn()} />);
+  expect(screen.getByTestId("run-event-progress")).toHaveTextContent("실행 전 승인을 기다리고 있습니다.");
+});
+
 test("RunProgress exposes only the server-projected resume action", async () => {
   const snapshot = { run: { status: "BLOCKED", next_allowed_commands: ["REQUEST_CANCEL"] }, execution_status: { action_count: 1, terminal_action_count: 0 }, terminal_result_kind: "NONE", error: { actions: [{ kind: "RESUME_SAFE_CHECKPOINT", resume_kind: "SAFE_CHECKPOINT_RESUME" }] } } as RunSnapshot;
   const onResume = vi.fn();

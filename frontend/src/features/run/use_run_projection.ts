@@ -4,6 +4,7 @@ import { getRunContext, getRunSnapshot } from "./api/get_run_snapshot";
 import { adjustRunContext, cancelRun, confirmRun, resumeRun } from "./api/run_commands";
 import { subscribeRunEvents } from "./api/subscribe_run_events";
 import type { RunSseEvent } from "./api/run_sse_event";
+import { isWorkflowExecutionActive } from "./run_execution_state";
 
 export type PendingConfirmation = {
   interruptId: string;
@@ -37,11 +38,13 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
   const [confirmationText, setConfirmationText] = useState("");
   const subscriptionRef = useRef<(() => void) | null>(null);
   const subscriptionRunIdRef = useRef<string | null>(null);
+  const snapshotVersionRef = useRef<{ runId: string; generation: number; version: number } | null>(null);
 
   const resetRunProjection = useCallback((): void => {
     subscriptionRef.current?.();
     subscriptionRef.current = null;
     subscriptionRunIdRef.current = null;
+    snapshotVersionRef.current = null;
     setRunSnapshot(null);
     setRunContext(null);
     setLatestRunEvent(null);
@@ -54,6 +57,9 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
   const refreshRun = useCallback(async (runId: string, conversationId = getConversationProjection().conversationId, generation = getConversationProjection().generation): Promise<boolean> => {
     const [snapshot, contextResponse] = await Promise.all([getRunSnapshot(runId), getRunContext(runId)]);
     if (conversationId === null || snapshot.run.conversation_id !== conversationId || !isCurrentProjection(conversationId, generation)) return false;
+    const previous = snapshotVersionRef.current;
+    if (previous?.runId === runId && previous.generation === generation && previous.version > snapshot.run.version) return true;
+    snapshotVersionRef.current = { runId, generation, version: snapshot.run.version };
     setRunSnapshot(snapshot);
     setRunContext(contextResponse.context);
     const pending = snapshot.pending_interrupt;
@@ -64,6 +70,24 @@ export function useRunProjection({ busyCommand, setBusyCommand, commandIdFor, co
     }
     return true;
   }, [getConversationProjection, isCurrentProjection, isRunHistorySynced, markRunHistorySynced, reloadConversationHistory]);
+
+  const activeRunId = isWorkflowExecutionActive(runSnapshot) ? runSnapshot!.run.run_id : null;
+  useEffect(() => {
+    if (!activeRunId) return;
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const reconcile = async (): Promise<void> => {
+      try {
+        await refreshRun(activeRunId);
+      } catch {
+        if (!disposed) onStatusLine("실행 상태를 확인하지 못했습니다. 자동으로 다시 확인합니다.");
+      } finally {
+        if (!disposed) timer = setTimeout(() => void reconcile(), 3000);
+      }
+    };
+    timer = setTimeout(() => void reconcile(), 3000);
+    return () => { disposed = true; clearTimeout(timer); };
+  }, [activeRunId, onStatusLine, refreshRun]);
 
   const selectRun = useCallback(async (runId: string, conversationId = getConversationProjection().conversationId, generation = getConversationProjection().generation): Promise<void> => {
     if (conversationId === null) {

@@ -27,9 +27,14 @@ export function RunProgress({ snapshot, latestEvent = null, busy, onResume }: {
       return { runId: snapshot.run.run_id, lines: [...lines, { eventId: latestEvent.event_id, label }].slice(-12) };
     });
   }, [latestEvent, snapshot.run.run_id]);
-  const lines = activity.runId === snapshot.run.run_id && activity.lines.length > 0
+  const recordedLines = activity.runId === snapshot.run.run_id && activity.lines.length > 0
     ? activity.lines
     : [{ eventId: `snapshot-${snapshot.run.version}`, label: statusProgressLabel(snapshot.run.status) }];
+  const hasOlderStatusEvent = latestEvent?.event_type === "run_status"
+    && latestEvent.payload.snapshot_version < snapshot.run.version;
+  const lines = hasOlderStatusEvent
+    ? [...recordedLines, { eventId: `current-${snapshot.run.version}`, label: statusProgressLabel(snapshot.run.status) }]
+    : recordedLines;
   const activelyWorking = ["CREATED", "ANALYZING", "RETRIEVING", "PLANNING", "EXECUTING", "VERIFYING"].includes(snapshot.run.status);
   return (
     <section className="agent-progress" aria-label="에이전트 진행">
