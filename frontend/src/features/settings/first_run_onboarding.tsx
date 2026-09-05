@@ -131,14 +131,14 @@ export function FirstRunOnboardingScreen({
             <label><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} /> 외부 LLM으로 요청 컨텍스트를 전송하는 데 동의합니다.</label>
             <button className="button-primary" type="button" onClick={() => void saveConsent()} disabled={busy || !consent}>동의 저장</button>
           </ChecklistItem>
-          <ChecklistItem title="PC와 Runtime 진단" complete={diagnosticsReady}>
-            <p>Launcher {runtime.launcher_status} · 배포 프로필 {runtime.deployment_profile}</p>
+          <ChecklistItem title="PC와 실행 환경 진단" complete={diagnosticsReady}>
+            <p>{diagnosticsReady ? "실행 환경이 준비되었습니다." : "실행 환경 점검이 필요합니다."}</p>
           </ChecklistItem>
           <ChecklistItem title="LLM 자동 연결" complete={llmReady}>
-            <p>시스템이 Local LLM을 우선 확인하고 사용할 수 없으면 구성된 API LLM을 사용합니다.</p>
-            <label>API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
+            <p>시스템이 로컬 LLM을 우선 확인하고 사용할 수 없으면 구성된 API LLM을 사용합니다.</p>
+            <label>API 키<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} autoComplete="off" /></label>
             <label>저장 방식<select value={storageMode} onChange={(event) => setStorageMode(event.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}><option value="KEYRING">PC에 안전하게 저장</option><option value="SESSION_ONLY">이번 실행에서만 사용</option></select></label>
-            <button className="button-primary" type="button" onClick={() => void connectLLM()} disabled={busy || !apiKey.trim()}>API Key 저장 후 자동 연결</button>
+            <button className="button-primary" type="button" onClick={() => void connectLLM()} disabled={busy || !apiKey.trim()}>API 키 저장 후 자동 연결</button>
           </ChecklistItem>
           <ChecklistItem title="시작 준비" complete={false}>
             <button className="button-primary" type="button" onClick={onComplete} disabled={busy || google.connection_status !== "CONNECTED" || google.missing_required_scopes.length > 0 || !consentSaved || !diagnosticsReady || !llmReady}>설정 완료하고 시작</button>

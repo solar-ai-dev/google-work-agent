@@ -16,7 +16,7 @@ export function ActionPlanCard({ snapshot, busy, retryActionIds, formatTime, onA
 }): JSX.Element | null {
   if (!snapshot.current_plan || snapshot.actions.length === 0) return null;
   return (
-    <section className="action-plan-conversation" aria-label="Action Plan">
+    <section className="action-plan-conversation" aria-label="실행 계획">
       {snapshot.current_plan.summary_text ? <p className="agent-status-line">계획 에이전트 · {snapshot.current_plan.summary_text}</p> : null}
       {snapshot.actions.map((action) => (
         <ActionDecisionCard key={action.action_id} action={action} approval={snapshot.approvals.find((item) => item.action_id === action.action_id)} busy={busy} canRetry={retryActionIds.has(action.action_id)} formatTime={formatTime} onApprove={onApprove} onModify={onModify} onReject={onReject} onRetry={onRetry} onAttachDescriptors={onAttachDescriptors} />

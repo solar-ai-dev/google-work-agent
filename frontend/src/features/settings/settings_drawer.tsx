@@ -11,6 +11,23 @@ import { updateSettings } from "./api/update_settings";
 
 const OLLAMA_WINDOWS_INSTALL_GUIDE_URL = "https://ollama.com/download/windows";
 
+const runtimeModeLabels: Record<RuntimeMode, string> = {
+  AUTO: "자동 선택", LOCAL_GPU: "로컬 GPU", API_LLM: "외부 API 모델",
+};
+const googleConnectionLabels: Record<GoogleConnection["connection_status"], string> = {
+  CONNECTING: "연결 중", CONNECTED: "연결됨", DISCONNECTED: "연결되지 않음",
+  REAUTH_REQUIRED: "다시 로그인해야 합니다", UNAVAILABLE: "연결 상태를 확인할 수 없습니다",
+};
+const credentialValidationLabels: Record<LlmCredentialStatus["validation_status"], string> = {
+  VALID: "확인됨", INVALID: "키를 확인해 주세요", UNAVAILABLE: "확인할 수 없음",
+  NOT_CONFIGURED: "설정되지 않음",
+};
+
+function runtimeModeLabel(mode: string | null | undefined): string {
+  if (mode === "MIXED") return "로컬·외부 모델 함께 사용";
+  return mode && mode in runtimeModeLabels ? runtimeModeLabels[mode as RuntimeMode] : "확인 중";
+}
+
 type Props = {
   runtime: RuntimeSummary | null;
   theme: string;
@@ -113,10 +130,10 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
       <div className="panel-header"><strong>설정·진단</strong><button className="button-secondary" type="button" onClick={close}>닫기</button></div>
       <div className="panel-body">
         {message ? <p role="status" className="status-warn">{message}</p> : null}
-        <section className="info-card"><strong>표시</strong><div className="button-row"><button type="button" className={theme === "light" ? "button-primary" : "button-secondary"} onClick={() => onThemeChange("light")}>Light</button><button type="button" className={theme === "dark" ? "button-primary" : "button-secondary"} onClick={() => onThemeChange("dark")}>Dark</button></div></section>
+        <section className="info-card"><strong>표시</strong><div className="button-row"><button type="button" className={theme === "light" ? "button-primary" : "button-secondary"} onClick={() => onThemeChange("light")}>밝게</button><button type="button" className={theme === "dark" ? "button-primary" : "button-secondary"} onClick={() => onThemeChange("dark")}>어둡게</button></div></section>
         <section className="info-card" aria-label="Google 연결">
-          <strong>Google</strong><p>{google?.connection_status === "CONNECTED" ? google.display_email : google?.connection_status ?? "확인 중"}</p>
-          {google?.missing_required_scopes.length ? <p className="status-warn">누락 scope: {google.missing_required_scopes.join(", ")}</p> : null}
+          <strong>Google</strong><p>{google?.connection_status === "CONNECTED" ? google.display_email : google ? googleConnectionLabels[google.connection_status] : "확인 중"}</p>
+          {google?.missing_required_scopes.length ? <p className="status-warn">추가로 필요한 권한: {google.missing_required_scopes.join(", ")}</p> : null}
           <div className="button-row">
             {google?.connection_status !== "CONNECTED" ? <button type="button" className="button-primary" disabled={busy} onClick={() => void run("google:connect", async (id) => { const result = await startGoogleConnection(id); window.open(requireOAuthUrl(result.authorization_url), "_blank", "noopener,noreferrer"); }, "Google 연결 완료를 기다리고 있습니다.")}>연결</button> : null}
             {google?.connection_status === "CONNECTED" ? <button type="button" className="button-danger" disabled={busy} onClick={() => void run("google:disconnect", async (id) => { await disconnectGoogle(id); }, "Google 연결을 해제했습니다.")}>연결 해제</button> : null}
@@ -124,25 +141,25 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
         </section>
         {settings ? <section className="info-card" aria-label="작업 설정">
           <strong>작업 설정</strong>
-          <label>Timezone<input value={settings.timezone} onChange={(e) => patch("timezone", e.target.value)} /></label>
-          <label>기본 Calendar<select value={settings.default_calendar_id ?? ""} onChange={(e) => patch("default_calendar_id", e.target.value || null)}><option value="">선택</option>{calendars.map((item) => <option key={item.calendar_id} value={item.calendar_id}>{item.title}{item.primary ? " (기본)" : ""}</option>)}</select></label>
-          <label>기본 Task list<select value={settings.default_tasklist_id ?? ""} onChange={(e) => patch("default_tasklist_id", e.target.value || null)}><option value="">선택</option>{taskLists.map((item) => <option key={item.tasklist_id} value={item.tasklist_id}>{item.title}</option>)}</select></label>
+          <label>시간대<input value={settings.timezone} onChange={(e) => patch("timezone", e.target.value)} /></label>
+          <label>기본 캘린더<select value={settings.default_calendar_id ?? ""} onChange={(e) => patch("default_calendar_id", e.target.value || null)}><option value="">선택</option>{calendars.map((item) => <option key={item.calendar_id} value={item.calendar_id}>{item.title}{item.primary ? " (기본)" : ""}</option>)}</select></label>
+          <label>기본 태스크 목록<select value={settings.default_tasklist_id ?? ""} onChange={(e) => patch("default_tasklist_id", e.target.value || null)}><option value="">선택</option>{taskLists.map((item) => <option key={item.tasklist_id} value={item.tasklist_id}>{item.title}</option>)}</select></label>
           <label>업무 시작<input type="time" value={settings.working_day_start_local} onChange={(e) => patch("working_day_start_local", e.target.value)} /></label>
           <label>업무 종료<input type="time" value={settings.working_day_end_local} onChange={(e) => patch("working_day_end_local", e.target.value)} /></label>
           <label><input type="checkbox" checked={settings.include_weekends} onChange={(e) => patch("include_weekends", e.target.checked)} />주말 포함</label>
-          <label>일정 buffer(분)<input type="number" min="0" value={settings.calendar_buffer_minutes} onChange={(e) => patch("calendar_buffer_minutes", Number(e.target.value))} /></label>
+          <label>일정 사이 여유 시간(분)<input type="number" min="0" value={settings.calendar_buffer_minutes} onChange={(e) => patch("calendar_buffer_minutes", Number(e.target.value))} /></label>
           <label>보존 기간(일)<input type="number" min="1" value={settings.retention_days} onChange={(e) => patch("retention_days", Number(e.target.value))} /></label>
-          <label>Requested mode<select value={settings.preferred_llm_mode} onChange={(e) => patch("preferred_llm_mode", e.target.value as RuntimeMode)}>{runtimeModes.map((mode) => <option key={mode}>{mode}</option>)}</select></label>
+          <label>사용할 모델 실행 방식<select value={settings.preferred_llm_mode} onChange={(e) => patch("preferred_llm_mode", e.target.value as RuntimeMode)}>{runtimeModes.map((mode) => <option key={mode} value={mode}>{runtimeModeLabels[mode]}</option>)}</select></label>
           <label><input type="checkbox" checked={settings.external_llm_consent} onChange={(e) => patch("external_llm_consent", e.target.checked)} />외부 LLM 사용 동의</label>
           <button type="button" className="button-primary" disabled={busy} onClick={() => void saveSettings()}>LLM 설정 저장</button>
         </section> : null}
         <section className="info-card" aria-label="런타임 모드">
-          <strong>런타임 모드</strong><p>요청 {runtime?.runtime_mode.requested_mode ?? "-"} · 실제 {runtime?.runtime_mode.actual_runtime ?? "-"}</p>{runtime?.runtime_mode.fallback_reason ? <p className="status-warn">Fallback: {runtime.runtime_mode.fallback_reason}</p> : null}
-          <div className="button-row">{runtimeModes.map((mode) => <button key={mode} type="button" className="button-secondary" disabled={busy} onClick={() => void run(`runtime:${mode}`, async (id) => { await updateRuntimeMode(id, mode); }, `${mode} 모드를 요청했습니다.`)}>{mode}</button>)}</div>
+          <strong>런타임 모드</strong><p>요청 {runtimeModeLabel(runtime?.runtime_mode.requested_mode)} · 실제 {runtimeModeLabel(runtime?.runtime_mode.actual_runtime)}</p>{runtime?.runtime_mode.fallback_reason ? <p className="status-warn">요청한 실행 방식 대신 사용 가능한 방식으로 전환되었습니다.</p> : null}
+          <div className="button-row">{runtimeModes.map((mode) => <button key={mode} type="button" className="button-secondary" disabled={busy} onClick={() => void run(`runtime:${mode}`, async (id) => { await updateRuntimeMode(id, mode); }, `${runtimeModeLabels[mode]} 방식을 요청했습니다.`)}>{runtimeModeLabels[mode]}</button>)}</div>
         </section>
-        {runtime?.deployment_profile === "LOCAL_CAPABLE" ? <section className="info-card" aria-label="Local AI 준비">
-          <strong>Local AI</strong>
-          <p>{isLocalReady ? "제품 Local AI가 준비되었습니다." : "Ollama와 제품 Local AI 모델 준비가 필요합니다."}</p>
+        {runtime?.deployment_profile === "LOCAL_CAPABLE" ? <section className="info-card" aria-label="로컬 AI 준비">
+          <strong>로컬 AI</strong>
+          <p>{isLocalReady ? "제품 로컬 AI가 준비되었습니다." : "Ollama와 제품 로컬 AI 모델 준비가 필요합니다."}</p>
           {productLocalModels.length ? <ul>{productLocalModels.map((model) => <li key={model.model_id}>{model.model_id} · {model.installed && model.approved ? "준비됨" : "준비 필요"}</li>)}</ul> : <p className="muted">제품 모델 상태를 확인하고 있습니다.</p>}
           <div className="button-row">
             <a className="button-secondary" href={OLLAMA_WINDOWS_INSTALL_GUIDE_URL} target="_blank" rel="noreferrer">Ollama 설치 안내 열기</a>
@@ -150,9 +167,9 @@ export function SettingsDrawer({ runtime, theme, onThemeChange, onClose, onOpera
           </div>
         </section> : null}
         <section className="info-card" aria-label="LLM 자격증명">
-          <strong>LLM 자격증명</strong><p>{credential?.configured ? `${credential.storage_mode} / ${credential.validation_status}` : "설정되지 않음"}</p>
-          <label>저장 방식<select value={storageMode} onChange={(e) => setStorageMode(e.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}><option>KEYRING</option><option>SESSION_ONLY</option></select></label>
-          <label>API key<input type="password" autoComplete="off" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
+          <strong>LLM 자격증명</strong><p>{credential?.configured ? `${credential.storage_mode === "KEYRING" ? "PC에 안전하게 저장" : "이번 실행에서만 사용"} / ${credentialValidationLabels[credential.validation_status]}` : "설정되지 않음"}</p>
+          <label>저장 방식<select value={storageMode} onChange={(e) => setStorageMode(e.target.value === "SESSION_ONLY" ? "SESSION_ONLY" : "KEYRING")}><option value="KEYRING">PC에 안전하게 저장</option><option value="SESSION_ONLY">이번 실행에서만 사용</option></select></label>
+          <label>API 키<input type="password" autoComplete="off" placeholder="sk-..." value={apiKey} onChange={(e) => setApiKey(e.target.value)} /></label>
           <div className="button-row"><button type="button" className="button-primary" disabled={busy || !apiKey.trim()} onClick={() => void run("credential:store", async (id) => { await storeLlmCredential(id, apiKey, storageMode); }, "자격증명을 저장했습니다.", true)}>API 키 저장</button><button type="button" className="button-danger" disabled={busy} onClick={() => void run("credential:delete", async (id) => { await deleteLlmCredential(id); }, "자격증명을 삭제했습니다.", true)}>API 키 삭제</button><button type="button" className="button-secondary" disabled={busy} onClick={() => void load()}>연결 테스트</button></div>
         </section>
         <DiagnosticsPanel runtime={runtime} onRefresh={onOperationalStateChanged} />

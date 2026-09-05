@@ -146,7 +146,7 @@ export class BrowserProductHarness {
 
   async beginNewConversation(): Promise<void> {
     await this.page.getByRole("button", { name: /새 대화/ }).click();
-    await expect(this.page.getByRole("region", { name: "Action Plan" })).toHaveCount(0);
+    await expect(this.page.getByRole("region", { name: "실행 계획" })).toHaveCount(0);
   }
 
   async startNewRun(requestText: string): Promise<StartedRun> {
@@ -230,7 +230,7 @@ export class BrowserProductHarness {
 
   async actionCard(toolName: string): Promise<Locator> {
     const card = this.page
-      .getByRole("region", { name: "Action Plan" })
+      .getByRole("region", { name: "실행 계획" })
       .locator(`[data-tool-name="${toolName}"]`);
     await expect(card).toBeVisible();
     return card;

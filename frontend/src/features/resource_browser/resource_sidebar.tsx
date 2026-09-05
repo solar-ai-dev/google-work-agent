@@ -120,7 +120,7 @@ export function ResourceSidebar({ scopeKey, accountId, connected, timezone, onPr
       <div className="panel-body">
         <div className="resource-tabbar">
           <div className="resource-tabs" role="tablist" aria-label="자료 종류">
-            {(["gmail", "tasks", "calendar"] as ResourceSource[]).map((tab) => <button key={tab} className={`resource-tab ${source === tab ? "selected" : ""}`} type="button" role="tab" aria-selected={source === tab} onClick={() => { setFilter(""); setSource(tab); setParentId(null); setFocusedItem(null); }}><span className="resource-tab-icon" aria-hidden="true">{tabIcon(tab)}</span><span className="resource-tab-label">{tabLabel(tab)}</span>{tab !== "calendar" ? <span className="resource-tab-count">{formatCount(tab === "gmail" ? gmail.count : tasks.count)}</span> : null}<span className="sr-only">{tab.toUpperCase()}</span></button>)}
+            {(["gmail", "tasks", "calendar"] as ResourceSource[]).map((tab) => <button key={tab} className={`resource-tab ${source === tab ? "selected" : ""}`} type="button" role="tab" aria-selected={source === tab} onClick={() => { setFilter(""); setSource(tab); setParentId(null); setFocusedItem(null); }}><span className="resource-tab-icon" aria-hidden="true">{tabIcon(tab)}</span><span className="resource-tab-label">{tabLabel(tab)}</span>{tab !== "calendar" ? <span className="resource-tab-count">{formatCount(tab === "gmail" ? gmail.count : tasks.count)}</span> : null}</button>)}
           </div>
           <button className="icon-button" type="button" aria-label="현재 목록 새로고침" title="새로고침" onClick={() => { if (source === "gmail") void gmail.refresh(); else if (source === "tasks") void tasks.refresh(); else void calendar.refresh(); }}>↻</button>
         </div>

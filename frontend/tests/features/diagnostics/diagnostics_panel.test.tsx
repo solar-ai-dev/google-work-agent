@@ -12,4 +12,6 @@ test("DiagnosticsPanel exposes only opaque bundle metadata", async () => {
   await userEvent.setup().click(screen.getByRole("button", { name: "진단 번들 만들기" }));
   expect(await screen.findByText(/bundle-ref/)).toBeInTheDocument();
   expect(document.body.textContent).not.toContain("C:\\");
+  expect(screen.getByText("꺼짐")).toBeInTheDocument();
+  expect(screen.getByText("유효함")).toBeInTheDocument();
 });

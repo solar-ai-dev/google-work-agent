@@ -23,6 +23,12 @@ test("SettingsDrawer loads typed non-secret settings, connection, credentials, a
   expect(await screen.findByLabelText("작업 설정")).toBeInTheDocument();
   expect(screen.getByLabelText("LLM 자격증명").querySelector('input[type="password"]')).toHaveValue("");
   expect(document.body.textContent).not.toContain("sk-");
+  expect(screen.getByRole("button", { name: "밝게" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "어둡게" })).toBeInTheDocument();
+  expect(screen.getByLabelText("시간대")).toHaveValue("Asia/Seoul");
+  expect(screen.getByText("연결되지 않음")).toBeInTheDocument();
+  expect(screen.getByRole("option", { name: "PC에 안전하게 저장" })).toHaveValue("KEYRING");
+  expect(screen.getByRole("option", { name: "이번 실행에서만 사용" })).toHaveValue("SESSION_ONLY");
 });
 
 test("constrains API_ONLY mode choices without exposing process controls", async () => {
@@ -32,9 +38,9 @@ test("constrains API_ONLY mode choices without exposing process controls", async
   vi.mocked(resourceApi.listTaskLists).mockResolvedValue({ schema_version: 1, items: [], next_page_token: null });
   vi.mocked(resourceApi.listCalendars).mockResolvedValue({ schema_version: 1, items: [], next_page_token: null });
   render(<SettingsDrawer runtime={{ deployment_profile: "API_ONLY", runtime_mode: { requested_mode: "API_LLM", actual_runtime: "API_LLM", fallback_reason: null } } as never} theme="light" onThemeChange={vi.fn()} onClose={vi.fn()} onOperationalStateChanged={vi.fn()} />);
-  const mode = await screen.findByLabelText("Requested mode");
+  const mode = await screen.findByLabelText("사용할 모델 실행 방식");
   expect([...mode.querySelectorAll("option")].map((option) => option.value)).toEqual(["API_LLM"]);
-  expect(screen.queryByLabelText("Local AI 준비")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("로컬 AI 준비")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "안전하게 종료" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "백업 만들기" })).not.toBeInTheDocument();
 });
@@ -47,10 +53,10 @@ test("allows runtime mode selection without exposing local model selection", asy
   vi.mocked(resourceApi.listCalendars).mockResolvedValue({ schema_version: 1, items: [], next_page_token: null });
   render(<SettingsDrawer runtime={{ deployment_profile: "LOCAL_CAPABLE", runtime_mode: { requested_mode: "LOCAL_GPU", actual_runtime: "LOCAL_GPU", fallback_reason: null }, local_models: [{ schema_version: 1, model_id: "qwen3.5:4b", installed: true, approved: true, selected: true }, { schema_version: 1, model_id: "qwen3.5:9b", installed: false, approved: true, selected: true }] } as never} theme="light" onThemeChange={vi.fn()} onClose={vi.fn()} onOperationalStateChanged={vi.fn()} />);
 
-  const mode = await screen.findByLabelText("Requested mode");
+  const mode = await screen.findByLabelText("사용할 모델 실행 방식");
   expect([...mode.querySelectorAll("option")].map((option) => option.value)).toEqual(["AUTO", "LOCAL_GPU", "API_LLM"]);
   expect(screen.queryByLabelText("Local model")).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Local AI 준비")).toHaveTextContent("qwen3.5:4b · 준비됨");
-  expect(screen.getByLabelText("Local AI 준비")).toHaveTextContent("qwen3.5:9b · 준비 필요");
+  expect(screen.getByLabelText("로컬 AI 준비")).toHaveTextContent("qwen3.5:4b · 준비됨");
+  expect(screen.getByLabelText("로컬 AI 준비")).toHaveTextContent("qwen3.5:9b · 준비 필요");
   expect(screen.getByRole("link", { name: "Ollama 설치 안내 열기" })).toHaveAttribute("href", "https://ollama.com/download/windows");
 });
