@@ -327,11 +327,23 @@ def _apply_quoted_literal_authority(
         outside_literals = pattern.sub(" ", outside_literals)
     if not quoted_literals:
         return candidate
+    literal_values: dict[str, set[str]] = {}
+    for literal in quoted_literals:
+        original = literal[1:-1]
+        literal_values.setdefault(re.sub(r"\s+", "", original), set()).add(original)
+    constraints = []
+    for constraint in candidate["constraints"]:
+        value = constraint["value"]
+        if isinstance(value, str):
+            matches = literal_values.get(re.sub(r"\s+", "", value), set())
+            if len(matches) == 1:
+                constraint = {**constraint, "value": next(iter(matches))}
+        constraints.append(constraint)
     outside_has_date_signal = _EXPLICIT_DATE_SIGNAL.search(outside_literals) is not None
     quoted_text = " ".join(quoted_literals)
     constraints = [
         constraint
-        for constraint in candidate["constraints"]
+        for constraint in constraints
         if constraint["kind"] != "DATE"
         or (
             outside_has_date_signal

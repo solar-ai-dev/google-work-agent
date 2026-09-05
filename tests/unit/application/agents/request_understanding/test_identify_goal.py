@@ -47,6 +47,24 @@ def test_identify_goal__payload_literals_do_not__add_unrequested_resources(
     assert candidate["requested_effect_hints"] == ["CREATE"]
 
 
+def test_identify_goal__preserves_exact_quoted__description_spacing() -> None:
+    runtime = FakeStructuredInferencePort(outputs=[{
+        "goal": "일정 생성", "completion_conditions": ["일정을 생성한다"],
+        "constraints": [{
+            "kind": "RESOURCE", "field": "description",
+            "value": "Task 와 Calendar 검증 결과를 확인합니다.",
+        }],
+        "requested_effect_hints": ["CREATE"],
+        "requested_resource_hints": ["CALENDAR_EVENT"], "analysis_requirement": "NONE",
+    }])
+    result = identify_goal(
+        llm_runtime=runtime,
+        request=_request("일정을 만들어줘. 설명은 'Task와 Calendar 검증 결과를 확인합니다.'야."),
+        prompt_ref=_prompt_ref("request_understanding.identify_goal", "identify_goal"),
+    )
+    assert result["constraints"][0]["value"] == "Task와 Calendar 검증 결과를 확인합니다."
+
+
 def test_identify_goal__canonical_call__uses_bounded_current_run_prompt() -> None:
     runtime = FakeStructuredInferencePort(
         outputs=[
