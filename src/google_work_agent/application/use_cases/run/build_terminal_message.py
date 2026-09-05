@@ -170,7 +170,6 @@ def _format_terminal_content(query: BuildTerminalMessageQueryV1) -> str:
         return f"{heading}\n\n" + "\n".join(action_lines)
     if query.result_kind == "BLOCKED":
         return format_blocked_terminal_message(
-            korean=True,
             source_kind=query.source_kind,
             reason_codes=query.reason_codes,
         )

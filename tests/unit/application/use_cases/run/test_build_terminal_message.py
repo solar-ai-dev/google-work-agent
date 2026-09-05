@@ -131,7 +131,7 @@ def test_blocked_result__does_not_expose__reason_code() -> None:
     assert "PLAN_REVIEW_BLOCK" not in result.content
 
 
-def test_context_block__explains_missing_source_and_next_action() -> None:
+def test_context_block__does_not_claim_zero_resources__without_that_fact() -> None:
     result = BuildTerminalMessageHandler()(
         BuildTerminalMessageQueryV1(
             1,
@@ -145,7 +145,8 @@ def test_context_block__explains_missing_source_and_next_action() -> None:
         )
     )
 
-    assert "일치하는 Google 자료를 찾지 못해" in result.content
+    assert "충분한 근거를 확보하지 못해" in result.content
+    assert "자료를 찾지 못해" not in result.content
     assert "검색 조건을 바꾸거나" in result.content
     assert "Google 변경은 실행하지 않았습니다" in result.content
     assert "CONTEXT_BLOCKED" not in result.content
