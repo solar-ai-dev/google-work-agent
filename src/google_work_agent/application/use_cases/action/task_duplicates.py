@@ -138,8 +138,12 @@ def task_create_duplicate_input(
     title = payload.get("title")
     if not isinstance(title, str) or not title.strip():
         raise PolicyViolationError("tasks_create_task requires a non-empty title")
+    if "due" in payload:
+        raise PolicyViolationError(
+            "legacy Task due arguments require a new plan and approval using scheduled_date"
+        )
     try:
-        scheduled_date = normalize_scheduled_date(payload.get("due"))
+        scheduled_date = normalize_scheduled_date(payload.get("scheduled_date"))
     except ValueError as error:
         raise PolicyViolationError(str(error)) from error
     return task_list_id, title, scheduled_date

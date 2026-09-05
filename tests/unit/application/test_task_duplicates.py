@@ -58,10 +58,10 @@ class _PagedGateway:
         return self.pages[page_token]
 
 
-def _arguments(*, due: str | None = None) -> dict[str, object]:
+def _arguments(*, scheduled_date: str | None = None) -> dict[str, object]:
     payload: dict[str, object] = {"title": "Send summary"}
-    if due is not None:
-        payload["due"] = due
+    if scheduled_date is not None:
+        payload["scheduled_date"] = scheduled_date
     return {"task_list_id": "list-1", "payload": payload}
 
 
@@ -103,10 +103,36 @@ def test_fresh_check__has_no__date_window() -> None:
     )
 
     risk = TaskDuplicateValidator(gateway=gateway, now_ms=lambda: 123).fresh_risk(
-        _arguments(due="2001-01-01T23:59:59Z")
+        _arguments(scheduled_date="2001-01-01")
     )
 
     assert risk["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
+
+
+def test_legacy_due__fails_closed_before__duplicate_read() -> None:
+    gateway = _PagedGateway({})
+    with pytest.raises(PolicyViolationError, match="new plan and approval"):
+        TaskDuplicateValidator(gateway=gateway, now_ms=lambda: 123).fresh_risk({
+            "task_list_id": "list-1", "payload": {"title": "Send summary", "due": "2026-09-07"},
+        })
+    assert gateway.calls == []
+
+
+def test_evidence_and_fresh_check__agree_on__canonical_scheduled_date() -> None:
+    snapshot = _task("existing", due="2026-09-07T00:00:00Z")
+    arguments = _arguments(scheduled_date="2026-09-07")
+    evidence = evidence_duplicate_risk(
+        arguments=arguments,
+        acquisition_result={"source_summaries": [{"source": "TASKS", "resources": [{
+            "resource_type": "task", "resource_id": snapshot.resource_id,
+            "parent_id": snapshot.parent_id, "payload": snapshot.payload,
+        }]}]},
+        checked_at_ms=123,
+    )
+    gateway = _PagedGateway({None: ResourcePage(items=(snapshot,), next_page_token=None)})
+    fresh = TaskDuplicateValidator(gateway=gateway, now_ms=lambda: 123).fresh_risk(arguments)
+    assert evidence["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
+    assert fresh["duplicate"]["decision"] == "CLEAR_DUPLICATE"  # type: ignore[index]
 
 
 def test_fresh_check__detects_page__token_cycle() -> None:
