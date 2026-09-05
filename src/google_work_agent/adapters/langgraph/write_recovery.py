@@ -137,6 +137,7 @@ class WriteRecoveryCoordinator:
         return {
             **state,
             "__target__": "action_execution",
+            "__logical_target__": "action_execution",
             "workflow_phase": WorkflowPhase.ACTION_EXECUTION.value,
             "execution_summary": _execution_summary(
                 action_id=action.id,
@@ -202,6 +203,7 @@ class WriteRecoveryCoordinator:
                 return {
                     **state,
                     "__target__": "end",
+                    "__logical_target__": "end",
                     "workflow_phase": WorkflowPhase.VERIFICATION.value,
                     "__workflow_control__": {
                         "schema_version": 1,
@@ -325,6 +327,7 @@ class WriteRecoveryCoordinator:
         return {
             **state,
             "__target__": target,
+            "__logical_target__": target,
             "workflow_phase": (
                 WorkflowPhase.RECOVERY.value
                 if target == "end" or target == "recovery"
@@ -364,6 +367,7 @@ class WriteRecoveryCoordinator:
         return {
             **state,
             "__target__": target,
+            "__logical_target__": target,
             "workflow_phase": (
                 WorkflowPhase.RECOVERY.value
                 if target == "end" or target == "recovery"
@@ -395,6 +399,7 @@ class WriteRecoveryCoordinator:
         return {
             **state,
             "__target__": "end",
+            "__logical_target__": "end",
             "workflow_phase": WorkflowPhase.RECOVERY.value,
             "__workflow_control__": {
                 "schema_version": 1,

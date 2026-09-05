@@ -3,7 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from google_work_agent.adapters.langgraph.main.state import GraphState
+from google_work_agent.adapters.langgraph.main.state import GraphState, WorkflowPhase
+from google_work_agent.adapters.langgraph.main.supervisor_control_adapter import (
+    project_lifecycle_control,
+)
 from google_work_agent.adapters.langgraph.write_execution_driver import (
     WriteExecutionStructuralDriver,
 )
@@ -155,6 +158,27 @@ def test_recover_unknown_applied__false_is_never__reported_recovered_or_retried(
     assert result["__target__"] == "end"
     assert phase.recover_calls == 1
     assert completion_calls == 0
+
+
+def test_recovery_confirmed_not_executed_suspends_without_inherited_recovery_target() -> None:
+    action = _action(ActionStatusV1.UNKNOWN_RESULT)
+    phase = _Phase(recover_response=_action_response(applied=True, status=ActionStatusV1.FAILED))
+    coordinator = _coordinator(
+        phase=phase, action=action,
+        begin_verification=lambda *_: None,
+        completion=lambda *_: False,
+    )
+    state = cast(GraphState, {
+        "run_id": "run-1", "__target__": "recovery", "__logical_target__": "recovery",
+    })
+    result = coordinator.recover_unknown(state)
+    _, decision = project_lifecycle_control(
+        source_phase=WorkflowPhase.RECOVERY, prior_state=state, control_result=result,
+    )
+    assert decision["target"] == "SUSPEND"
+    assert decision["reason_code"] == "RECOVERY_NOT_VERIFIED"
+    assert phase.recover_calls == 1
+    assert phase.verify_calls == 0
 
 
 def test_begin_verification__applied_false_stops__verification_and_completion() -> None:
