@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+from json import dumps
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -246,6 +248,34 @@ def test_stale_attempt__verification_is_rejected__before_connector_io() -> None:
         )
 
     assert connector.calls == 0
+
+
+def test_legacy_calendar_expectation__cannot_skip_approved_fields__before_verification() -> None:
+    connector = _ConnectorRead()
+    action = replace(
+        _action(ActionStatusV1.EXECUTED),
+        tool_name="calendar_create_event",
+        arguments_json=dumps({"payload": {"title": "Review", "attendees": ["a@example.com"]}}),
+        expected_json=dumps({"payload": {"title": "Review"}}),
+    )
+    unit_of_work = _UnitOfWork(
+        action=action,
+        approval=_approval(),
+        attempt=_attempt(ExecutionAttemptStatusV1.SUCCEEDED),
+    )
+    handler = VerifyEffectHandler(
+        connector_read=cast(Any, connector),
+        tool_registry=load_signed_tool_registry(),
+        unit_of_work_factory=cast(Any, lambda: unit_of_work),
+    )
+
+    with pytest.raises(ValueError, match="does not cover approved arguments"):
+        handler(VerifyEffectQueryV1(
+            "run-1", "action-1", "attempt-1", "CREATE", {"payload": {"title": "Review"}}, None,
+        ))
+
+    assert connector.calls == 0
+    assert unit_of_work.commit_calls == 0
 
 
 def test_begin_verification__rejects_stale__attempt_before_mutation() -> None:

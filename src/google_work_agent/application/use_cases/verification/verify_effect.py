@@ -14,6 +14,7 @@ from google_work_agent.application.use_cases.resource_ref.resolve_resource_ref i
     ResolveResourceRefQuery,
 )
 from google_work_agent.application.use_cases.verification.write_verification_projection import (
+    build_expected_verification_projection,
     calculate_verification_subset_diff,
     normalize_actual_verification_projection,
 )
@@ -236,6 +237,18 @@ class VerifyEffectHandler:
             attempt = binding.attempt
             _require_verification_source_state(action.status, attempt.status)
             expected = cast(dict[str, object], loads(action.expected_json))
+            if action.tool_name in {"calendar_create_event", "calendar_update_event"}:
+                required_expected = build_expected_verification_projection(
+                    tool_name=action.tool_name,
+                    arguments=loads(action.arguments_json),
+                )
+                if calculate_verification_subset_diff(
+                    _business_expected(required_expected, normalizer_tool_name=action.tool_name),
+                    _business_expected(expected, normalizer_tool_name=action.tool_name),
+                ):
+                    raise ValueError(
+                        "persisted Calendar expectation does not cover approved arguments"
+                    )
             if action.effect_type == "SEND":
                 expected = {
                     **expected,

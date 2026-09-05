@@ -65,12 +65,9 @@ def build_expected_verification_projection(
     if tool_name in {"calendar_create_event", "calendar_update_event"}:
         payload = _mapping(args.get("payload"), "payload")
         event_expected_payload: dict[str, object] = {}
-        # The current Event verification snapshot exposes only title/start/end
-        # from the mutable business fields. description/attendees are approved
-        # business arguments but are intentionally omitted until the Connector
-        # verification snapshot exposes them; comparing an unobservable field
-        # would turn every otherwise-correct write into MISMATCH.
-        for argument_name in ("title", "start", "end"):
+        # Calendar GET exposes these approved fields. Missing or altered values
+        # must fail comparison, including lost attendees or description.
+        for argument_name in ("title", "start", "end", "description", "attendees"):
             if argument_name in payload:
                 event_expected_payload[argument_name] = payload[argument_name]
         return {"payload": event_expected_payload}
